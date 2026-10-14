@@ -4,6 +4,7 @@ extends CanvasLayer
 
 const SV = preload("res://scripts/save_data.gd")
 const PAD = preload("res://scripts/pad.gd")
+const PADI = preload("res://scripts/padicons.gd")
 const IC = preload("res://scripts/icons.gd")
 const L = preload("res://scripts/lang.gd")
 const Aud = preload("res://scripts/audio.gd")
@@ -282,6 +283,7 @@ func _badge(t: String) -> PanelContainer:
 
 func _txt(t: String) -> Label:
 	var l := _label(t, 19, Color("#b9cbf0"))
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return l
 
 
@@ -289,17 +291,15 @@ func _txt(t: String) -> Label:
 func _refresh_hints() -> void:
 	for c in hint_row.get_children():
 		c.queue_free()
-	var lay: int = PAD.layout()
-	var ls: String = "LS" if lay == 0 else L.t("Stick izq.")
-	hint_row.add_child(_badge(ls))
+	hint_row.add_child(PADI.rect(7, 30.0))
 	hint_row.add_child(_txt("mover"))
 	hint_row.add_child(_txt("·"))
-	hint_row.add_child(_badge(PAD.btn_name(PAD.btn("prev"))))
+	hint_row.add_child(PADI.rect(PAD.btn("prev"), 30.0))
 	hint_row.add_child(_txt("/"))
-	hint_row.add_child(_badge(PAD.btn_name(PAD.btn("next"))))
+	hint_row.add_child(PADI.rect(PAD.btn("next"), 30.0))
 	hint_row.add_child(_txt("cambiar"))
 	hint_row.add_child(_txt("·"))
-	hint_row.add_child(_badge(PAD.btn_name(PAD.btn("pause"))))
+	hint_row.add_child(PADI.rect(PAD.btn("pause"), 30.0))
 	hint_row.add_child(_txt("pausa"))
 
 

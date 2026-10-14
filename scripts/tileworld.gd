@@ -13,6 +13,9 @@ const FLOOR := 0
 const WALL := 1
 const LIQUID := 2
 const FADE := 2.6
+const LAKE_CELL := 30.0
+const LAKE_P := 0.6
+const SHORE_WALL := 0.66
 
 const NORMAL := [
 	{"name": "Bosque Umbrío", "liquid": "water", "prop": "tree",
@@ -33,12 +36,13 @@ const NORMAL := [
 ]
 
 # cantidad de terreno (ajustable): liquido y paredes crecen con la distancia al inicio
-var liq_base := 0.03
-var liq_grow := 0.25
+var liq_base := 0.05
+var liq_grow := 0.17
 var wall_grow := 0.27
 
 var seed_v := 1
 var biome := 0
+var prev_biome := 0
 var center := Vector2.ZERO
 var terr := {}
 var dirt := {}
@@ -364,8 +368,8 @@ func _dirt_img(S: Dictionary, key: int, v: int) -> Image:
 	return im
 
 
-func prop_tex(name: String) -> Texture2D:
-	var S: Dictionary = tset(biome)
+func prop_tex(name: String, b: int = -1) -> Texture2D:
+	var S: Dictionary = tset(biome if b < 0 else b)
 	var spr: Dictionary = S["spr"]
 	if spr.is_empty():
 		var a = AS.new()
@@ -380,17 +384,57 @@ func prop_tex(name: String) -> Texture2D:
 
 # ---------------- terreno ----------------
 
+# Lagos grandes: cada celda de LAKE_CELL casillas puede tener un lago (elipse con orilla irregular),
+# asi no salen charcos pequenos. Solo depende de las coordenadas.
+func _lake(tx: int, ty: int) -> bool:
+	var cx0: int = floori(float(tx) / LAKE_CELL)
+	var cy0: int = floori(float(ty) / LAKE_CELL)
+	var px: float = float(tx) + 0.5
+	var py: float = float(ty) + 0.5
+	for cy in range(cy0 - 1, cy0 + 2):
+		for cx in range(cx0 - 1, cx0 + 2):
+			if AS.hsh(cx, cy, seed_v + 500) > LAKE_P:
+				continue
+			var mx: float = (float(cx) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 501)) * LAKE_CELL
+			var my: float = (float(cy) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 502)) * LAKE_CELL
+			if Vector2(mx, my).length() < 15.0:
+				continue
+			var rx: float = 3.4 + 2.6 * AS.hsh(cx, cy, seed_v + 503)
+			var ry: float = 3.0 + 2.2 * AS.hsh(cx, cy, seed_v + 504)
+			var dx: float = (px - mx) / rx
+			var dy: float = (py - my) / ry
+			var wob: float = (AS.fbm(px / 5.0, py / 5.0, seed_v + 111) - 0.5) * 1.5 + (AS.fbm(px / 2.2, py / 2.2, seed_v + 113) - 0.5) * 0.5
+			if dx * dx + dy * dy < 1.0 + wob:
+				return true
+	return false
+
+
+# Terreno "crudo": suelo, pared o liquido (sin cache; solo depende de las coordenadas).
+func _raw(tx: int, ty: int) -> int:
+	var d: float = Vector2(float(tx) + 0.5, float(ty) + 0.5).length()
+	if d >= 9.0:
+		var ramp: float = clampf((d - 9.0) / 8.0, 0.0, 1.0)
+		if _lake(tx, ty):
+			return LIQUID
+		if AS.fbm(float(tx) / 8.0, float(ty) / 8.0, seed_v + 202) > 1.0 - wall_grow * ramp:
+			return WALL
+	return FLOOR
+
+
 func terrain(tx: int, ty: int) -> int:
 	var k := Vector2i(tx, ty)
 	if terr.has(k):
 		return terr[k]
-	var res := FLOOR
-	var d: float = Vector2(float(tx) + 0.5, float(ty) + 0.5).length()
-	if d >= 9.0:
-		var ramp: float = clampf((d - 9.0) / 8.0, 0.0, 1.0)
-		if AS.fbm(float(tx) / 13.0, float(ty) / 13.0, seed_v + 101) < liq_base + liq_grow * ramp:
-			res = LIQUID
-		elif AS.fbm(float(tx) / 8.0, float(ty) / 8.0, seed_v + 202) > 1.0 - wall_grow * ramp:
+	var res: int = _raw(tx, ty)
+	# Orilla: junto al agua aparecen tramos de pared de tierra (como barrancos)
+	if res == FLOOR and Vector2(float(tx) + 0.5, float(ty) + 0.5).length() >= 12.0:
+		var near_liq := false
+		for oy in range(-3, 4):
+			for ox in range(-3, 4):
+				if (absi(ox) + absi(oy)) <= 2 and _raw(tx + ox, ty + oy) == LIQUID:
+					near_liq = true
+		# barrancos: tramos de pared de tierra pegados a la orilla (se rompen con ruido para dejar pasos)
+		if near_liq and AS.fbm(float(tx) / 3.5, float(ty) / 3.5, seed_v + 910) > SHORE_WALL:
 			res = WALL
 	terr[k] = res
 	return res
@@ -418,6 +462,15 @@ func liquid_at(pos: Vector2) -> String:
 
 func open_at(tx: int, ty: int) -> bool:
 	for b in range(-1, 2):
+		for a in range(-1, 2):
+			if terrain(tx + a, ty + b) != FLOOR:
+				return false
+	return true
+
+
+# Los arboles son altos: necesitan casillas libres tambien alrededor y hacia arriba (para que la copa no se meta en una pared).
+func tree_clear(tx: int, ty: int) -> bool:
+	for b in range(-2, 2):
 		for a in range(-1, 2):
 			if terrain(tx + a, ty + b) != FLOOR:
 				return false
@@ -467,6 +520,7 @@ func set_biome(b: int, instant: bool = false) -> void:
 	b = posmod(b, count())
 	if b == biome:
 		return
+	prev_biome = biome
 	biome = b
 	fade_t = 1.0 if instant else 0.0
 	for key in chunks:

@@ -13,6 +13,7 @@ const PXF = preload("res://scripts/pxfont.gd")
 const DSP = preload("res://scripts/display.gd")
 const SLOTS = preload("res://scripts/slots.gd")
 const PAD = preload("res://scripts/pad.gd")
+const PADI = preload("res://scripts/padicons.gd")
 
 const C_PANEL := Color("#27449a")
 const C_PANEL_D := Color("#18296a")
@@ -44,7 +45,8 @@ var ach_t := 0.0
 var toast_t := 0.0
 var back_btn: Button
 var credit_lbl: Label
-var pad_hint: Label
+var pad_hint: HBoxContainer
+var pad_hint_key := ""
 var shade: ColorRect
 var focus_first: Control = null
 
@@ -335,25 +337,23 @@ class Mon extends Node2D:
 
 # Fondo del menu: un trozo del mapa del juego que se desplaza solo, con Pokemon caminando.
 class MenuWorld extends Node2D:
-	const CH := 480.0
-	const SC := 3.0
-	const TILE := 192.0
-	const TINTS := [Color(1, 1, 1), Color(0.55, 0.68, 1.15), Color(1.25, 0.72, 0.55)]
-	const PERIOD := 24.0   # segundos por ambiente (bosque -> cueva -> volcan)
-	const TREES := ["tree_a", "tree_b", "tree_a", "tree_b", "tree_dark", "tree_autumn"]
-	const WALLS := ["wall_a", "wall_b", "wall_c"]
+	const TW = preload("res://scripts/tileworld.gd")
+	const MAINS = preload("res://scripts/main.gd")
+	const PERIOD := 30.0   # segundos por ambiente, como en el menu del juego original (bosque -> cueva -> volcan)
+	const CAST := [1, 4, 7, 25, 133, 52, 39, 35, 16, 43, 60, 69, 74, 92, 129, 147, 113, 143, 54, 79]
 	var cam := Vector2.ZERO
 	var t := 0.0
-	var seed_v := 0
-	var chunks := {}
-	var ground: GroundLayer
+	var tw: Node2D            # el mismo terreno que una partida (lagos, paredes, tierra)
+	var gen: Node2D           # instancia de main.gd sin escena: solo genera arboles, rocas, hierba y objetos igual que la partida
 	var props: Node2D
 	var mons: Array = []
-	var texs := {}
 	var vs := Vector2(1280, 720)
 	var drift := Vector2(1, 0.3)
 	var pool: Array = []
 	var amb: Ambient = null
+	var cur_chunk := Vector2i(99999, 99999)
+	var gen_q: Array = []
+	var biome_i := 0
 
 	# Particulas de ambiente en pantalla: luciernagas, motas de cueva y ascuas de volcan.
 	class Ambient extends Node2D:
@@ -391,145 +391,96 @@ class MenuWorld extends Node2D:
 						col = Color(1.0, 0.55 + 0.3 * r2, 0.15, 0.9 * (1.0 - yy / vs.y) * wk)
 					draw_rect(Rect2(pos.round(), Vector2(sz, sz)), col)
 
-	class GroundLayer extends Node2D:
-		var cam := Vector2.ZERO
-		var vs := Vector2(1280, 720)
-		var tile: Texture2D
-		var decor := {}
-
-		func _draw() -> void:
-			var tl: Vector2 = cam - vs * 0.5
-			var x0: int = int(floor(tl.x / 192.0))
-			var x1: int = int(ceil((tl.x + vs.x) / 192.0))
-			var y0: int = int(floor(tl.y / 192.0))
-			var y1: int = int(ceil((tl.y + vs.y) / 192.0))
-			for ix in range(x0, x1 + 1):
-				for iy in range(y0, y1 + 1):
-					if tile != null:
-						draw_texture_rect(tile, Rect2(ix * 192.0, iy * 192.0, 192.0, 192.0), false)
-					else:
-						draw_rect(Rect2(ix * 192.0, iy * 192.0, 192.0, 192.0), Color("#1f3d2e") if posmod(ix + iy, 2) == 0 else Color("#244632"))
-			for key in decor:
-				for it in decor[key]:
-					var tx: Texture2D = it[0]
-					var sz := Vector2(tx.get_width(), tx.get_height()) * 3.0
-					draw_texture_rect(tx, Rect2(it[1] - sz * 0.5, sz), false)
-
 	func _init() -> void:
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	func start() -> void:
 		var SVl = load("res://scripts/save_data.gd")
 		SVl.ensure()
-		for p in SVl.dex_list:
-			if SVl.smeta.has(str(int(p["dex"]))):
-				pool.append(p)
-		seed_v = randi() % 100000
+		# Los mismos 20 Pokemon que pasean por el menu del juego original
+		for d in CAST:
+			for p in SVl.dex_list:
+				if int(p["dex"]) == d and SVl.smeta.has(str(d)):
+					pool.append(p)
+					break
 		cam = Vector2(randf_range(-3000.0, 3000.0), randf_range(-3000.0, 3000.0))
-		ground = GroundLayer.new()
-		ground.tile = _tex("ground_grass")
-		add_child(ground)
+		var sd: int = randi() % 100000
+		tw = TW.new()
+		add_child(tw)
+		tw.setup(sd)
 		props = Node2D.new()
 		props.y_sort_enabled = true
 		add_child(props)
+		gen = MAINS.new()
+		gen.ground = tw
+		gen.world = props
+		gen.world_seed = sd
+		gen.menu_mode = true
+		MAINS.Prop.tw = tw
 		vs = get_viewport_rect().size
-		_update_chunks()
-		for i in range(14):
+		_update_chunks(true)
+		for i in range(pool.size()):
 			_spawn_mon(true)
 		amb = Ambient.new()
 		get_parent().add_child(amb)
 		get_parent().move_child(amb, get_index() + 1)
+		tree_exiting.connect(func():
+			if is_instance_valid(gen):
+				gen.free())
 
-	func _tex(n: String) -> Texture2D:
-		if not texs.has(n):
-			var p: String = "res://assets/world/%s.png" % n
-			texs[n] = load(p) if ResourceLoader.exists(p) else null
-		return texs[n]
-
-	func _spr(n: String, pos: Vector2) -> void:
-		var tx: Texture2D = _tex(n)
-		if tx == null:
-			return
-		var s := Sprite2D.new()
-		s.texture = tx
-		s.centered = false
-		s.scale = Vector2(SC, SC)
-		s.offset = Vector2(-tx.get_width() * 0.5, -tx.get_height() + 1.0)
-		s.position = pos
-		props.add_child(s)
-		chunks[_ck].append(s)
-
-	var _ck := Vector2i.ZERO
-
-	func _gen(cx: int, cy: int) -> void:
-		var key := Vector2i(cx, cy)
-		_ck = key
-		chunks[key] = []
-		var rng := RandomNumberGenerator.new()
-		rng.seed = absi((cx * 73856093) ^ (cy * 19349663) ^ (seed_v * 83492791)) + 1
-		var org := Vector2(float(cx) * CH, float(cy) * CH)
-		var dec: Array = []
-		for i in range(rng.randi_range(0, 2)):
-			var tx: Texture2D = _tex("dirt_%d" % rng.randi_range(0, 2))
-			if tx != null:
-				dec.append([tx, org + Vector2(rng.randf_range(40.0, CH - 40.0), rng.randf_range(40.0, CH - 40.0))])
-		for i in range(rng.randi_range(4, 10)):
-			var tx2: Texture2D = _tex("flower_pink" if rng.randf() < 0.6 else "flower_yellow")
-			if tx2 != null:
-				dec.append([tx2, org + Vector2(rng.randf_range(10.0, CH - 10.0), rng.randf_range(10.0, CH - 10.0))])
-		ground.decor[key] = dec
-		if rng.randf() < 0.65:
-			var cc: Vector2 = org + Vector2(rng.randf_range(60.0, CH - 60.0), rng.randf_range(60.0, CH - 60.0))
-			for j in range(rng.randi_range(2, 5)):
-				_spr(String(TREES[rng.randi() % TREES.size()]), cc + Vector2(rng.randf_range(-100.0, 100.0), rng.randf_range(-70.0, 70.0)))
-		for i in range(rng.randi_range(8, 16)):
-			_spr("tuft_a" if rng.randf() < 0.5 else "tuft_b", org + Vector2(rng.randf_range(10.0, CH - 10.0), rng.randf_range(10.0, CH - 10.0)))
-		if rng.randf() < 0.5:
-			_spr("rock_a" if rng.randf() < 0.5 else "rock_b", org + Vector2(rng.randf_range(30.0, CH - 30.0), rng.randf_range(30.0, CH - 30.0)))
-		for i in range(rng.randi_range(0, 2)):
-			_spr("bush", org + Vector2(rng.randf_range(30.0, CH - 30.0), rng.randf_range(30.0, CH - 30.0)))
-		for i in range(rng.randi_range(0, 3)):
-			_spr("pebble", org + Vector2(rng.randf_range(10.0, CH - 10.0), rng.randf_range(10.0, CH - 10.0)))
-		if rng.randf() < 0.22:
-			_spr(String(WALLS[rng.randi() % WALLS.size()]), org + Vector2(rng.randf_range(100.0, CH - 100.0), rng.randf_range(150.0, CH - 40.0)))
-		if rng.randf() < 0.06:
-			_spr("altar_used", org + Vector2(rng.randf_range(60.0, CH - 60.0), rng.randf_range(100.0, CH - 60.0)))
-
-	func _update_chunks() -> void:
-		var x0: int = int(floor((cam.x - vs.x * 0.5 - 160.0) / CH))
-		var x1: int = int(floor((cam.x + vs.x * 0.5 + 160.0) / CH))
-		var y0: int = int(floor((cam.y - vs.y * 0.5 - 200.0) / CH))
-		var y1: int = int(floor((cam.y + vs.y * 0.5 + 160.0) / CH))
-		for cx in range(x0, x1 + 1):
-			for cy in range(y0, y1 + 1):
-				if not chunks.has(Vector2i(cx, cy)):
-					_gen(cx, cy)
-		for key in chunks.keys():
-			if key.x < x0 - 1 or key.x > x1 + 1 or key.y < y0 - 1 or key.y > y1 + 1:
-				for n in chunks[key]:
-					n.queue_free()
-				chunks.erase(key)
-				ground.decor.erase(key)
+	func _update_chunks(first: bool = false) -> void:
+		var c: Vector2i = tw.chunk_of(cam)
+		tw.center = cam
+		if c != cur_chunk:
+			cur_chunk = c
+			tw.set_center(c)
+			for dx in range(-2, 3):
+				for dy in range(-2, 3):
+					var key := Vector2i(c.x + dx, c.y + dy)
+					if not gen.chunks.has(key) and not gen_q.has(key):
+						gen_q.append(key)
+			gen_q.sort_custom(func(a, b): return absi(a.x - c.x) + absi(a.y - c.y) < absi(b.x - c.x) + absi(b.y - c.y))
+			for key in gen.chunks.keys():
+				if absi(key.x - c.x) > 3 or absi(key.y - c.y) > 3:
+					gen._free_chunk(key)
+		# los trozos nuevos se crean de uno en uno (sin tirones); al empezar, todos de golpe
+		while not gen_q.is_empty():
+			var nk: Vector2i = gen_q.pop_front()
+			if not gen.chunks.has(nk):
+				gen.chunks[nk] = gen._gen_chunk(nk.x, nk.y)
+			if not first:
+				break
 
 	func _spawn_mon(anywhere: bool) -> void:
 		if pool.is_empty():
 			return
-		var p: Dictionary = pool[randi() % pool.size()]
-		for tries in range(6):
-			if int(p["rarity"]) <= 3 or randf() < 0.08:
+		# Uno de los 20 del menu original que ahora no este en pantalla
+		var used := {}
+		for mm in mons:
+			used[mm.dex] = true
+		var free: Array = []
+		for pp in pool:
+			if not used.has(int(pp["dex"])):
+				free.append(pp)
+		if free.is_empty():
+			free = pool
+		var p: Dictionary = free[randi() % free.size()]
+		var pos: Vector2 = Vector2.ZERO
+		for tries in range(12):
+			if anywhere:
+				pos = cam + Vector2(randf_range(-vs.x * 0.5, vs.x * 0.5), randf_range(-vs.y * 0.5, vs.y * 0.5))
+			else:
+				var side: Vector2 = drift.normalized()
+				var perp := Vector2(-side.y, side.x)
+				pos = cam + side * (vs.x * 0.5 + 120.0) + perp * randf_range(-vs.y * 0.5, vs.y * 0.5)
+			if tw.collide(pos, 14.0) == pos and tw.liquid_at(pos) == "":
 				break
-			p = pool[randi() % pool.size()]
-		var pos: Vector2
-		if anywhere:
-			pos = cam + Vector2(randf_range(-vs.x * 0.5, vs.x * 0.5), randf_range(-vs.y * 0.5, vs.y * 0.5))
-		else:
-			var side: Vector2 = drift.normalized()
-			var perp := Vector2(-side.y, side.x)
-			pos = cam + side * (vs.x * 0.5 + 120.0) + perp * randf_range(-vs.y * 0.5, vs.y * 0.5)
 		var m := Mon.new()
 		m.ysort = true
-		m.setup(int(p["dex"]), 3.0, randf() < 0.03, Rect2(pos - Vector2(170.0, 90.0), Vector2(340.0, 180.0)), true)
+		m.setup(int(p["dex"]), 2.4, randf() < 0.03, Rect2(pos - Vector2(170.0, 90.0), Vector2(340.0, 180.0)), true)
 		m.position = pos
+		m.set_meta("types", p.get("types", []))
+		m.set_meta("lp", pos)
 		props.add_child(m)
 		mons.append(m)
 
@@ -540,27 +491,38 @@ class MenuWorld extends Node2D:
 		drift = Vector2.from_angle(ang)
 		cam += drift * 26.0 * delta
 		position = vs * 0.5 - cam
-		ground.cam = cam
-		ground.vs = vs
-		ground.queue_redraw()
 		_update_chunks()
 		for m in mons.duplicate():
+			m.position = tw.collide(m.position, 12.0)   # no atraviesan paredes (como en el juego original)
+			# agua: solo tipo agua o volador; lava: solo fuego o volador; el resto da la vuelta
+			var liq: String = tw.liquid_at(m.position)
+			if liq != "":
+				var ty: Array = m.get_meta("types")
+				var ok: bool = ty.has("flying") or (liq == "water" and ty.has("water")) or (liq == "lava" and ty.has("fire")) or (liq == "swamp" and (ty.has("water") or ty.has("poison")))
+				if not ok:
+					m.position = m.get_meta("lp")
+					m.target = m.position
+					m.wait = 0.5
+			m.set_meta("lp", m.position)
 			if absf(m.position.x - cam.x) > vs.x * 0.5 + 520.0 or absf(m.position.y - cam.y) > vs.y * 0.5 + 420.0:
 				mons.erase(m)
 				m.queue_free()
 				_spawn_mon(false)
-		# ambiente: bosque -> cueva -> volcan, con fundidos suaves
-		var ph: float = t / PERIOD
-		var i: int = int(floor(ph)) % 3
-		var f: float = smoothstep(0.7, 1.0, ph - floor(ph))
-		modulate = (TINTS[i] as Color).lerp(TINTS[(i + 1) % 3], f)
+		# ambiente: bosque -> cueva de cristal -> volcan, como el original: el mismo mapa con los recursos de cada bioma
+		var bi: int = int(floor(t / PERIOD)) % 3
+		if bi != biome_i:
+			biome_i = bi
+			tw.set_biome(bi)
 		if amb != null:
+			var pv := [0.0, 0.0, 0.0]
+			var kf: float = tw.fade_t * tw.fade_t * (3.0 - 2.0 * tw.fade_t)
+			pv[tw.prev_biome % 3] += 1.0 - kf
+			pv[biome_i] += kf
 			amb.t = t
 			amb.vs = vs
-			amb.w = [0.0, 0.0, 0.0]
-			amb.w[i] = 1.0 - f
-			amb.w[(i + 1) % 3] += f
+			amb.w = pv
 			amb.queue_redraw()
+
 
 
 # Escenario del Gacha: degradado de la region + Pokemon que se mueven.
@@ -802,15 +764,13 @@ func _ready() -> void:
 	ach_box.add_theme_constant_override("separation", 12)
 	ach_pop.add_child(ach_box)
 	add_child(ach_pop)
-	pad_hint = Label.new()
+	pad_hint = HBoxContainer.new()
 	pad_hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	pad_hint.offset_left = 24
-	pad_hint.offset_top = -34
+	pad_hint.offset_top = -46
 	pad_hint.offset_bottom = -6
-	pad_hint.add_theme_font_size_override("font_size", 18)
-	pad_hint.add_theme_color_override("font_color", Color("#c8d6ee"))
-	pad_hint.add_theme_color_override("font_outline_color", Color.BLACK)
-	pad_hint.add_theme_constant_override("outline_size", 4)
+	pad_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	pad_hint.add_theme_constant_override("separation", 8)
 	pad_hint.z_index = 49
 	pad_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(pad_hint)
@@ -1131,12 +1091,31 @@ func toast(msg: String) -> void:
 	toast_t = 2.6
 
 
+# Ayuda de mando abajo a la izquierda: icono del boton + accion (sin texto del boton).
+func _build_pad_hint() -> void:
+	for c in pad_hint.get_children():
+		pad_hint.remove_child(c)
+		c.queue_free()
+	for pair in [[PAD.confirm_btn(), "Aceptar"], [PAD.cancel_btn(), "Atrás"]]:
+		pad_hint.add_child(PADI.rect(int(pair[0]), 36.0))
+		var l := _label(L.t(String(pair[1])), 20, Color("#c8d6ee"))
+		l.add_theme_color_override("font_outline_color", Color.BLACK)
+		l.add_theme_constant_override("outline_size", 4)
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		pad_hint.add_child(l)
+		pad_hint.add_child(_gap(10))
+
+
 func _process(delta: float) -> void:
 	if pad_hint != null:
 		var has_pad := Input.get_connected_joypads().size() > 0
 		pad_hint.visible = has_pad and cur != "test"
 		if has_pad:
-			pad_hint.text = L.t("%s Aceptar   %s Atrás") % [PAD.confirm_name(), PAD.cancel_name()]
+			var hk := "%d_%d_%d_%s" % [PAD.layout(), PAD.confirm_btn(), PAD.cancel_btn(), L.t("Aceptar")]
+			if hk != pad_hint_key:
+				pad_hint_key = hk
+				_build_pad_hint()
 	if toast_t > 0.0:
 		toast_t -= delta
 		if toast_t <= 0.0:
@@ -3215,13 +3194,18 @@ func _set_controls() -> void:
 		_refresh_settings(), false))
 	for a in PAD.ACTIONS:
 		var act: String = a
-		var txt: String = L.t("Pulsa un botón…") if listening == act else PAD.btn_name(PAD.btn(act))
+		var txt: String = L.t("Pulsa un botón…") if listening == act else ""
 		var cb := _btn(txt, func():
 			listening = "" if listening == act else act
 			last_act = act
 			_refresh_listen(), Vector2(190, 46))
 		if listening == act:
 			_gold_btn(cb, true)
+		else:
+			cb.icon = PADI.tex(PAD.btn(act))
+			cb.expand_icon = true
+			cb.add_theme_constant_override("icon_max_width", 36)
+			cb.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_srow(PAD.LABELS[act], "", cb)
 		if act == last_act:
 			focus_first = cb

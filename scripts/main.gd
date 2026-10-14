@@ -15,6 +15,7 @@ const IC = preload("res://scripts/icons.gd")
 const PXF = preload("res://scripts/pxfont.gd")
 const DSP = preload("res://scripts/display.gd")
 const PAD = preload("res://scripts/pad.gd")
+const PADI = preload("res://scripts/padicons.gd")
 const ARENA = preload("res://scripts/arena.gd")
 const TW = preload("res://scripts/tileworld.gd")
 const JDM = preload("res://scripts/judgment.gd")
@@ -135,6 +136,7 @@ var kills := 0
 var spawn_acc := 0.0
 var shake := 0.0
 var death_t := 0.0
+var death_done_t := -1.0   # segundos desde que termino la animacion de muerte (-1: aun no)
 const DEATH_SLOW := 0.3      # camara lenta al desmayarse
 const DEATH_SLOW_T := 0.6    # segundos de juego en camara lenta (0,6 / 0,3 = 2 s reales)
 var choosing := false
@@ -188,6 +190,7 @@ var quality := 0
 var q_auto := 1.0
 var q_bad_t := 0.0
 var world_seed := 0
+var menu_mode := false   # fondo del menu: solo trampas, sin cofres, altares ni fuentes (como el juego original)
 var chunks := {}
 var player_chunk := Vector2i(99999, 99999)
 var power_kind := ""
@@ -429,7 +432,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		go = true
 		tpos = event.position
 	if player.dead:
-		if (go or confirm or cancel or toggle_pause or slot >= 0) and death_t > 1.3:
+		if (go or confirm or cancel or toggle_pause or slot >= 0) and _death_clock() > 1.3:
 			_go_menu()
 	elif paused:
 		if toggle_pause or cancel:
@@ -445,11 +448,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_active(posmod(player.slot + cyc, _slot_list().size()))
 
 
+# Reloj de la pantalla final: empieza cuando acaba la animacion de muerte (0 mientras se esta cayendo)
+func _death_clock() -> float:
+	return 0.0 if death_done_t < 0.0 else death_done_t + 0.3
+
+
 # Boton atras de Android: pausa / reanuda; en la pantalla final vuelve al menu.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and player != null:
 		if player.dead:
-			if death_t > 1.3:
+			if _death_clock() > 1.3:
 				_go_menu()
 		elif paused:
 			paused = false
@@ -581,6 +589,13 @@ func _process(delta: float) -> void:
 				over -= 1
 	if player.dead:
 		death_t += delta
+		# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
+		if death_done_t < 0.0:
+			var fa: bool = player.anim == "Faint" and player.frame >= (player._am("Faint")["d"] as Array).size() - 1
+			if player.anim != "Faint" or fa or death_t > 6.0:
+				death_done_t = 0.0
+		else:
+			death_done_t += delta
 		if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
 			Engine.time_scale = 1.0
 		if not run_saved:
@@ -625,8 +640,8 @@ func _process(delta: float) -> void:
 	hud.run_time = run_time
 	hud.kills = kills
 	hud.dead = player.dead
-	hud.death_t = death_t
-	hud.show_end = player.dead and death_t > 1.3
+	hud.death_t = _death_clock()
+	hud.show_end = player.dead and _death_clock() > 1.3
 	hud.level = player.level
 	hud.xp = player.xp
 	hud.xp_next = player.xp_next
@@ -2166,8 +2181,10 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 			e.shot_cd = float(e.def.get("shotCd", 2.0))
 			_enemy_special(e, dirv)
 	e.position += (v + e.knock) * delta
-	if not e.flying and e.jump == null:
+	# Solo los voladores pasan por encima de las paredes
+	if not e.flying:
 		e.position = _collide(e.position, e.radius * 0.5)
+		e.position = _spring_push(e.position)
 	e.knock *= kn_decay
 	var moving: bool = v.length() > 2.0
 	var face: float = to.angle()
@@ -2325,6 +2342,8 @@ func _update_jump(e: Enemy, delta: float) -> void:
 	var s := Vector2(float(j["sx"]), float(j["sy"]))
 	var tg := Vector2(float(j["tx"]), float(j["ty"]))
 	e.position = s.lerp(tg, k)
+	if not e.flying:
+		e.position = _collide(e.position, e.radius * 0.5)   # el salto no cruza paredes
 	e.lift_extra = sin(k * PI) * 46.0
 	e.face_angle((tg - s).angle())
 	if k >= 1.0:
@@ -2665,6 +2684,14 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 	var props: Array = []
 	var placed: Array = []
 	var grass_items: Array = []
+	# Objetos de los trozos vecinos ya generados: evita arboles/rocas/cofres encima de otros en los bordes
+	for ddy in range(-1, 2):
+		for ddx in range(-1, 2):
+			var nk := Vector2i(cx + ddx, cy + ddy)
+			if (ddx != 0 or ddy != 0) and chunks.has(nk):
+				for np in chunks[nk]["props"]:
+					if is_instance_valid(np):
+						placed.append([np.position, np.r, np.kind])
 	var bx: int = cx * 16
 	var by: int = cy * 16
 	for j in range(16):
@@ -2680,21 +2707,54 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 			var h: float = ARENA.hsh(tx, ty, world_seed + 404)
 			var grove: bool = ARENA.fbm(float(tx) / 10.0, float(ty) / 10.0, world_seed + 505) > 0.62
 			var wp := Vector2((float(tx) + 0.5) * ground.TS + rng.randf_range(-8.0, 8.0), (float(ty) + 0.5) * ground.TS + rng.randf_range(-6.0, 6.0))
-			if open and h < (0.045 if grove else 0.004):
+			if open and h < (0.045 if grove else 0.004) and ground.tree_clear(tx, ty):
 				_add_prop(props, placed, "tree", wp, 15.0, rng)
 			elif open and h > 0.994:
 				_add_prop(props, placed, "rock", wp, 18.0, rng)
-			elif ARENA.fbm(float(tx) / 5.0, float(ty) / 5.0, world_seed + 707) > 0.66 and ARENA.hsh(tx, ty, world_seed + 808) < 0.7:
-				grass_items.append(Vector3(wp.x, wp.y + 14.0, rng.randf() * TAU))
 	# Especiales (en sitios abiertos, lejos del inicio y de cualquier otro objeto)
-	if rng.randf() < 0.22:
+	if rng.randf() < 0.22 and not menu_mode:
 		_place_special("chest", 16.0, 7.0, props, placed, rng, cx, cy)
-	if rng.randf() < 0.08:
-		_place_special("spring", 20.0, 10.0, props, placed, rng, cx, cy)
-	if rng.randf() < 0.08:
+	if rng.randf() < 0.08 and not menu_mode:
+		_place_special("spring", 40.0, 10.0, props, placed, rng, cx, cy)
+	if rng.randf() < 0.08 and not menu_mode:
 		_place_special("altar", 18.0, 10.0, props, placed, rng, cx, cy)
 	if rng.randf() < 0.3:
 		_place_special("trap", 16.0, 13.0, props, placed, rng, cx, cy)
+	# Hierba en parches: matas a media casilla, con las filas alternadas, para que se unan y no queden una por casilla
+	var half: float = ground.TS * 0.5
+	for sj in range(32):
+		for si in range(32):
+			var gx: float = float(bx) * ground.TS + float(si) * half + half * 0.5 + (half * 0.5 if sj % 2 == 1 else 0.0)
+			var gy: float = float(by) * ground.TS + float(sj) * half + half * 0.5
+			var gtx: int = floori(gx / ground.TS)
+			var gty: int = floori(gy / ground.TS)
+			if Vector2(gx, gy).length() < 8.0 * ground.TS or ground.terrain(gtx, gty) != 0:
+				continue
+			# nada de hierba junto al agua ni pegada a paredes: dos casillas de margen
+			var near_bad := false
+			for oy in range(-2, 3):
+				for ox in range(-2, 3):
+					if ground.terrain(gtx + ox, gty + oy) != 0:
+						near_bad = true
+						break
+				if near_bad:
+					break
+			if near_bad:
+				continue
+			var gf: float = ARENA.fbm(gx / (ground.TS * 5.0), gy / (ground.TS * 5.0), world_seed + 707)
+			if gf < 0.66 or ARENA.hsh(si + bx * 2, sj + by * 2, world_seed + 808) > 0.38:
+				continue
+			var gp := Vector2(gx + ARENA.hsh(si, sj + bx, world_seed + 909) * 6.0 - 3.0, gy + ARENA.hsh(sj, si + by, world_seed + 919) * 4.0 - 2.0)
+			var blocked := false
+			for pl in placed:
+				var pk: String = String(pl[2]) if pl.size() > 2 else ""
+				var margin: float = 40.0 if (pk == "rock" or pk == "altar" or pk == "chest" or pk == "spring" or pk == "trap") else 22.0
+				if gp.distance_to(pl[0]) < float(pl[1]) + margin:
+					blocked = true
+					break
+			if not blocked:
+				grass_items.append(Vector3(gp.x, gp.y + 14.0, rng.randf() * TAU))
+	grass_items.sort_custom(func(u: Vector3, v: Vector3) -> bool: return u.y < v.y)
 	ground.add_grass(Vector2i(cx, cy), grass_items)
 	return {"props": props}
 
@@ -2712,16 +2772,61 @@ func _place_special(kind: String, r: float, min_tiles: float, props: Array, plac
 			return
 
 
+# La copa de un arbol tapa lo que queda detras o debajo: cofres, altares, fuentes y trampas no van ahi (ni al reves)
+func _hidden_by_tree(pa: Vector2, ka: String, ra: float, pb: Vector2, kb: String, rb: float) -> bool:
+	var tree_p: Vector2
+	var other_p: Vector2
+	var other_r: float
+	if ka == "tree" and (kb == "chest" or kb == "spring" or kb == "altar" or kb == "trap"):
+		tree_p = pa
+		other_p = pb
+		other_r = rb
+	elif kb == "tree" and (ka == "chest" or ka == "spring" or ka == "altar" or ka == "trap"):
+		tree_p = pb
+		other_p = pa
+		other_r = ra
+	else:
+		return false
+	var dy: float = other_p.y - tree_p.y
+	return absf(other_p.x - tree_p.x) < 38.0 + other_r * 0.9 and dy > -110.0 and dy < 50.0 + other_r
+
+
+func _grass_near(pos: Vector2, rad: float) -> bool:
+	var c: Vector2i = _chunk_of(pos)
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			var arr = ground.grass.get(Vector2i(c.x + dx, c.y + dy))
+			if arr == null:
+				continue
+			for g in arr:
+				if Vector2(g.x, g.y - 14.0).distance_to(pos) < rad:
+					return true
+	return false
+
+
 func _add_prop(props: Array, placed: Array, kind: String, pos: Vector2, r: float, rng: RandomNumberGenerator) -> bool:
+	# Radio visual (copa del arbol / roca): evita que los dibujos se solapen aunque las colisiones sean mas pequenas
+	var vis: float = {"tree": 28.0, "rock": 24.0}.get(kind, r)
 	for pl in placed:
-		if pos.distance_to(pl[0]) < float(pl[1]) + r + 10.0:
+		if pos.distance_to(pl[0]) < float(pl[1]) + vis + 6.0:
 			return false
+		if pl.size() > 2 and _hidden_by_tree(pos, kind, r, pl[0], String(pl[2]), float(pl[1])):
+			return false
+	if (kind == "tree" or kind == "rock") and _grass_near(pos, 30.0):
+		return false
+	if (kind == "chest" or kind == "spring" or kind == "altar" or kind == "trap") and _grass_near(pos, r + 34.0):
+		return false
 	var p := Prop.new()
 	p.kind = kind
 	p.r = r
 	p.solid = kind == "tree" or kind == "rock"
 	p.v = rng.randf()
 	p.position = pos
+	if kind == "spring" or kind == "trap":
+		p.z_index = -1   # al ras del suelo: todo lo demas se dibuja por encima
+	if kind == "chest" and rng.randf() < 0.2:
+		p.sub = "big"
+		p.r = 22.0
 	if kind == "trap":
 		p.sub = ["poison", "ice", "fire"][rng.randi() % 3]
 	if kind == "altar":
@@ -2730,7 +2835,7 @@ func _add_prop(props: Array, placed: Array, kind: String, pos: Vector2, r: float
 		p.color = Color.html(String(pw["color"]))
 	world.add_child(p)
 	props.append(p)
-	placed.append([pos, r])
+	placed.append([pos, maxf(p.r, vis), kind])
 	return true
 
 
@@ -2775,9 +2880,10 @@ func _cut_grass(pos: Vector2, r: float) -> void:
 		fx.add_child(f)
 	for gp in cut:
 		var rr: float = randf()
-		if rr < 0.04:
+		# ~2 matas por casilla (el original: 1): la mitad de probabilidad por mata para soltar lo mismo
+		if rr < 0.03:
 			_spawn_orb(gp, "heal", 0.0)
-		elif rr < 0.09:
+		elif rr < 0.07:
 			_spawn_orb(gp, "coin", 1.0)
 
 
@@ -2818,6 +2924,23 @@ func _props_near(pos: Vector2) -> Array:
 			if ch != null:
 				out.append_array(ch["props"])
 	return out
+
+
+# Los enemigos que no vuelan no pisan las fuentes de curacion (solo las usas tu)
+func _spring_push(pos: Vector2) -> Vector2:
+	for p in _props_near(pos):
+		if not is_instance_valid(p) or p.kind != "spring" or p.used:
+			continue
+		var d: Vector2 = pos - p.position
+		var q := Vector2(d.x / 30.0, d.y / 19.0)
+		var l: float = q.length()
+		if l < 1.0:
+			if l < 0.001:
+				q = Vector2(1.0, 0.0)
+				l = 1.0
+			q /= l
+			pos = p.position + Vector2(q.x * 30.0, q.y * 19.0)
+	return pos
 
 
 func _collide(pos: Vector2, rad: float) -> Vector2:
@@ -2956,9 +3079,19 @@ func _update_props(delta: float) -> void:
 		if not is_instance_valid(p):
 			continue
 		var d: float = p.position.distance_to(pp)
-		if p.kind == "chest" and not p.used and d < p.r + player.radius + 14.0:
-			p.used = true
-			_open_chest(p)
+		if p.kind == "chest" and not p.used:
+			if p.sub == "big":
+				# Cofre grande: hay que quedarse pegado a el unos segundos
+				if d < p.r + player.radius + 22.0:
+					p.charge += delta
+					if p.charge >= CHEST_HOLD:
+						p.used = true
+						_open_chest(p)
+				else:
+					p.charge = maxf(0.0, p.charge - delta * 1.5)
+			elif d < p.r + player.radius + 14.0:
+				p.used = true
+				_open_chest(p)
 		elif p.kind == "spring" and not p.used and d < 52.0:
 			var amt: float = minf(player.max_hp * 0.07 * delta, p.charge)
 			if player.hp < player.max_hp and amt > 0.0:
@@ -2967,6 +3100,12 @@ func _update_props(delta: float) -> void:
 				p.queue_redraw()
 				if p.charge <= 0.0:
 					p.used = true
+					# La fuente se seca y desaparece
+					var st: Tween = p.create_tween()
+					st.tween_interval(0.6)
+					st.tween_property(p, "modulate:a", 0.0, 1.2)
+					st.tween_callback(p.queue_free)
+					_forget_prop(p)
 		elif p.kind == "altar" and not p.used and d < 50.0:
 			p.used = true
 			_use_altar(p)
@@ -3018,14 +3157,41 @@ func _forget_prop(p: Prop) -> void:
 		(chunks[key]["props"] as Array).erase(p)
 
 
+const CHEST_HOLD := 3.5
+
+
 func _open_chest(p: Prop) -> void:
 	run_chests += 1
 	PG.event("chest")
 	Aud.sfx("chest")
 	p.queue_redraw()
-	_ring(p.position, 6.0, 60.0, Color("#ffd23f"), 0.45)
-	var r: float = randf()
 	var pos: Vector2 = p.position
+	var big: bool = p.sub == "big"
+	# Como el original: el cofre estalla en particulas doradas, onda y sacudida
+	pfx.burst(pos + Vector2(0.0, -14.0), Color("#f2c443"), 34 if big else 22, 220.0 if big else 180.0)
+	_ring(pos, 6.0, 80.0 if big else 46.0, Color("#f2c443"), 0.6 if big else 0.45, 5.0 if big else 4.0)
+	shake = maxf(shake, 4.0 if big else 2.5)
+	if big:
+		# Botin grande: monedas, tickets, objeto y experiencia para subir un nivel
+		for i in range(9):
+			_spawn_orb(pos + Vector2(randf_range(-22.0, 22.0), randf_range(-14.0, 14.0)), "coin", 4.0)
+		for i in range(1 + randi() % 3):
+			_spawn_orb(pos + Vector2(randf_range(-16.0, 16.0), randf_range(-10.0, 10.0)), "ticket", 1.0)
+		if randf() < 0.15:
+			_spawn_orb(pos + Vector2(0.0, -10.0), "ticket10", 1.0)
+		if randf() < 0.5:
+			_spawn_orb(pos + Vector2(14.0, -14.0), "item", 0.0)
+		_spawn_orb(pos, "xpBig", float(_xp_for(player.level)))
+		add_text(pos + Vector2(0.0, -40.0), L.t("¡Cofre de experiencia!"), Color("#ffd23f"), 24)
+	else:
+		_chest_roll(pos, Vector2.ZERO)
+	p.queue_free()
+	_forget_prop(p)
+
+
+func _chest_roll(pos: Vector2, off: Vector2) -> void:
+	pos += off
+	var r: float = randf()
 	if r < 0.40:
 		for i in range(10):
 			_spawn_orb(pos, "coin", 5.0)
@@ -3046,10 +3212,6 @@ func _open_chest(p: Prop) -> void:
 	else:
 		_spawn_orb(pos, "magnet", 0.0)
 		_spawn_orb(pos, "bomb", 0.0)
-	var t: Tween = p.create_tween()
-	t.tween_property(p, "modulate:a", 0.0, 0.5)
-	t.tween_callback(p.queue_free)
-	_forget_prop(p)
 
 
 func _use_altar(p: Prop) -> void:
@@ -4297,7 +4459,7 @@ class Actor extends Node2D:
 		if flash > 0.0:
 			flash = maxf(0.0, flash - delta * 8.0)
 			mat.set_shader_parameter("flash", flash * flash_k)
-		if active and not meta.is_empty():
+		if (active or hold) and not meta.is_empty():   # hold: la animacion de muerte sigue aunque el actor este inactivo
 			tick_anim(delta)
 		elif hover or lift_extra != 0.0:
 			_apply()
@@ -4437,9 +4599,13 @@ class Enemy extends Actor:
 			var y := -body_h - 12.0
 			draw_rect(Rect2(-w * 0.5, y, w, 4.0), Color(0, 0, 0, 0.6))
 			draw_rect(Rect2(-w * 0.5, y, w * clampf(hp / max_hp, 0.0, 1.0), 4.0), Color("#ff6b7a"))
-		if behavior == "healer" or behavior == "shielder" or behavior == "summoner":
-			var ic: Color = Color("#5fe08a") if behavior == "healer" else (Color("#7fc8ff") if behavior == "shielder" else Color("#c47bff"))
-			draw_circle(Vector2(0.0, -body_h - (22.0 if boss else 20.0)), 4.0, ic)
+		if behavior == "healer" or behavior == "shielder":
+			# Icono sobre la cabeza: corazon = cura, escudo = da escudo
+			var ip := Vector2(0.0, -body_h - (30.0 if boss else 28.0))
+			draw_circle(ip, 10.0, Color(0.05, 0.08, 0.16, 0.65))
+			IC.draw_in(self, "heart" if behavior == "healer" else "shield", ip, 17.0)
+		elif behavior == "summoner":
+			draw_circle(Vector2(0.0, -body_h - (22.0 if boss else 20.0)), 4.0, Color("#c47bff"))
 
 
 # Aviso en el suelo (hazards.js): zona circular o rayo; hace dano al cumplirse el retraso.
@@ -4611,11 +4777,22 @@ class Prop extends Node2D:
 		t = v * 10.0
 		if kind == "spring":
 			charge = 120.0
-		set_process(kind == "spring" or kind == "altar" or kind == "chest" or kind == "trap")
+		set_process(true)
 
 	var _trap_off := false
 
+	var _fading := false
+
 	func _process(delta: float) -> void:
+		if kind == "tree" or kind == "rock":
+			# solo se redibujan mientras dura el cambio de bioma
+			var fd: bool = tw != null and tw.fade_t < 1.0
+			if fd or _fading:
+				queue_redraw()
+			_fading = fd
+			return
+		if kind != "spring" and kind != "altar" and kind != "chest" and kind != "trap":
+			return
 		t += delta
 		if kind == "trap":
 			# las trampas se quedan quietas: solo se redibujan al activarse o recargarse
@@ -4650,12 +4827,35 @@ class Prop extends Node2D:
 			var tx: Texture2D = tw.prop_tex(key) if tw != null else null
 			if tx != null:
 				var sz := Vector2(tx.get_width(), tx.get_height()) * 2.4
-				draw_texture_rect(tx, Rect2(Vector2(-sz.x * 0.5, -sz.y + 5.0), sz), false)
+				var rc := Rect2(Vector2(-sz.x * 0.5, -sz.y + 5.0), sz)
+				if tw.fade_t < 1.0 and tw.prev_biome != tw.biome:
+					# cambio de bioma: el dibujo viejo se desvanece mientras aparece el nuevo
+					var k: float = tw.fade_t * tw.fade_t * (3.0 - 2.0 * tw.fade_t)
+					var old: Texture2D = tw.prop_tex(key, tw.prev_biome)
+					if old != null:
+						var osz := Vector2(old.get_width(), old.get_height()) * 2.4
+						draw_texture_rect(old, Rect2(Vector2(-osz.x * 0.5, -osz.y + 5.0), osz), false, Color(1, 1, 1, 1.0 - k))
+					draw_texture_rect(tx, rc, false, Color(1, 1, 1, k))
+				else:
+					draw_texture_rect(tx, rc, false)
 				return
 		elif kind == "chest":
-			if _spr("chest_open" if used else "chest_closed"):
+			var big: bool = sub == "big"
+			if big:
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.5, 1.5))
+			var okc: bool = _spr("chest_open" if used else "chest_closed")
+			if big:
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			if okc:
 				if not used:
-					draw_circle(Vector2(0.0, -58.0 - 3.0 * sin(t * 3.0)), 3.0, Color(1.0, 0.9, 0.4, 0.8))
+					draw_circle(Vector2(0.0, (-88.0 if big else -58.0) - 3.0 * sin(t * 3.0)), 3.0, Color(1.0, 0.9, 0.4, 0.8))
+					if big:
+						draw_rect(Rect2(-7.0, -34.0, 14.0, 11.0), Color("#f2c443"))
+						draw_rect(Rect2(-7.0, -34.0, 14.0, 11.0), Color("#1e0f06"), false, 2.0)
+						draw_arc(Vector2(0.0, -34.0), 5.0, PI, TAU, 10, Color("#9aa6b5"), 2.5)
+						draw_arc(Vector2(0.0, -40.0), 34.0, 0.0, TAU, 40, Color(1, 0.82, 0.25, 0.25), 2.0)
+						if charge > 0.0:
+							draw_arc(Vector2(0.0, -40.0), 34.0, -PI * 0.5, -PI * 0.5 + TAU * clampf(charge / 3.5, 0.0, 1.0), 40, Color(1, 0.85, 0.25, 0.95), 4.0)
 				return
 		elif kind == "altar":
 			if used:
@@ -5238,14 +5438,58 @@ class Cards extends Node2D:
 			if rerolls > 0:
 				draw_rect(brs[0], Color("#1b2a44"))
 				draw_rect(brs[0], Color("#7fe0ff"), false, 2.0)
-				draw_string(font, brs[0].position + Vector2(0.0, 32.0), L.t("Cambiar (%d)  [R]") % rerolls, HORIZONTAL_ALIGNMENT_CENTER, brs[0].size.x, 20, Color.WHITE)
+				_draw_key_label(brs[0], L.t("Cambiar (%d)  [R]") % rerolls, "reroll")
 			if bans > 0:
 				draw_rect(brs[1], Color("#5a1f2a") if ban_mode else Color("#1b2a44"))
 				draw_rect(brs[1], Color("#ff6b7a"), false, 2.0)
-				draw_string(font, brs[1].position + Vector2(0.0, 32.0), L.t("Vetar (%d)  [B]") % bans, HORIZONTAL_ALIGNMENT_CENTER, brs[1].size.x, 20, Color.WHITE)
+				_draw_key_label(brs[1], L.t("Vetar (%d)  [B]") % bans, "ban")
 			if ban_mode:
 				draw_string(font, Vector2(0.0, vp.y * 0.5 + 214.0), L.t("Elige un movimiento nuevo para vetarlo"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color("#ff9aa5"))
-		draw_string(font, Vector2(0.0, vp.y - 24.0), L.t("Toca una carta  |  Mando: izq/der + A  |  Teclado: 1 2 3"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, Color("#8fa8cc"))
+		_draw_footer(vp)
+
+
+	# Texto de un boton de la pantalla; con mando conectado cambia "[R]" por el icono del boton asignado.
+	func _draw_key_label(r: Rect2, txt: String, action: String) -> void:
+		var font := ThemeDB.fallback_font
+		var pad: bool = Input.get_connected_joypads().size() > 0
+		if not pad:
+			draw_string(font, r.position + Vector2(0.0, 32.0), txt, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 20, Color.WHITE)
+			return
+		var rx := RegEx.new()
+		rx.compile("\\s*\\[[^\\]]*\\]")
+		var clean: String = rx.sub(txt, "", true)
+		var tw: float = font.get_string_size(clean, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20).x
+		var isz := 30.0
+		var x0: float = r.position.x + (r.size.x - (tw + 8.0 + isz)) * 0.5
+		draw_string(font, Vector2(x0, r.position.y + 32.0), clean, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
+		draw_texture_rect(PADI.tex(PAD.btn(action)), Rect2(Vector2(x0 + tw + 8.0, r.position.y + (r.size.y - isz) * 0.5), Vector2(isz, isz)), false)
+
+
+	# Pie: "Toca una carta | Mando: [cruceta] [aceptar] | Teclado: 1 2 3" con los iconos del mando elegido.
+	func _draw_footer(vp: Vector2) -> void:
+		var font := ThemeDB.fallback_font
+		var col := Color("#8fa8cc")
+		var parts: Array = [{"t": L.t("Toca una carta") + "  |  "}]
+		if Input.get_connected_joypads().size() > 0:
+			parts.append({"t": L.t("Mando") + ": "})
+			parts.append({"i": PADI.named("dpad_lr")})
+			parts.append({"t": " + "})
+			parts.append({"i": PADI.tex(PAD.btn("confirm"))})
+			parts.append({"t": "  |  "})
+		parts.append({"t": L.t("Teclado: 1 2 3")})
+		var isz := 28.0
+		var total := 0.0
+		for p in parts:
+			total += isz if p.has("i") else font.get_string_size(String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var x: float = (vp.x - total) * 0.5
+		var y: float = vp.y - 24.0
+		for p in parts:
+			if p.has("i"):
+				draw_texture_rect(p["i"], Rect2(Vector2(x, y - 21.0), Vector2(isz, isz)), false)
+				x += isz
+			else:
+				draw_string(font, Vector2(x, y), String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, col)
+				x += font.get_string_size(String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
 
 
 # ---------------------------------------------------------------
