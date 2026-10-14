@@ -1,0 +1,2545 @@
+extends Node2D
+# main.gd - Etapa 6: tabla de tipos, clima, objetos y estados (sobre la etapa 5: 64 movimientos).
+# Teclado (WASD / flechas), mando (stick izquierdo / cruceta) o joystick tactil.
+# Movimientos: teclas 1-4 / Q / E, LB / RB del mando, o toca el icono abajo a la derecha.
+# Provisional: F1 / F2 (o boton Back del mando) cambian de Pokemon y reinician.
+# Al caer: cualquier tecla, boton del mando o toque de pantalla reinicia.
+# Cartas de nivel: tocalas, o 1/2/3, o izquierda/derecha + A en el mando.
+
+const MD = preload("res://scripts/moves_data.gd")
+const TD = preload("res://scripts/types_data.gd")
+
+static var selected_dex: int = 25
+
+const ENEMY_CAP := 64
+const ENEMY_DEXES := [10, 13, 16, 19]
+const AIM_REACH := 520.0
+const MAX_MOVES := 4
+const ORB_CAP := 420
+const BASE_MAGNET := 78.0
+const XP_ENEMY := 20.0        # 3.5 * 5.6 (enemies.js)
+const LIFT := 18.0
+
+const MULT_KEYS := ["dmg", "cd", "speed", "radius", "dur", "amount", "arc", "width", "spread", "life", "size", "rate"]
+const ADD_KEYS := ["count", "pierce", "stacks"]
+const TARGETED := ["melee", "beam", "projectile", "boomerang", "chain", "meteor", "dash", "cone"]
+
+const FLASH_SHADER := "shader_type canvas_item;\nuniform float flash : hint_range(0.0, 1.0) = 0.0;\nvoid fragment() {\n\tvec4 m = COLOR;\n\tvec4 c = texture(TEXTURE, UV);\n\tCOLOR = vec4(mix(c.rgb, vec3(1.0), flash), c.a) * m;\n}\n"
+
+# Geometria de sprites copiada de sprites-meta.js.
+# w,h = tamano de fotograma, n = fotogramas, d = duracion de cada uno (1/60 s),
+# ax,ay = ancla en los pies dentro del fotograma, shadow = tamano de sombra.
+const META := {
+	25: {"shadow": 1, "Idle": {"w": 40, "h": 56, "n": 6, "d": [40, 2, 3, 3, 3, 2], "ax": 19.5, "ay": 31.5}, "Walk": {"w": 32, "h": 40, "n": 4, "d": [8, 10, 8, 10], "ax": 15.5, "ay": 23.5}, "Shoot": {"w": 40, "h": 56, "n": 11, "d": [1, 2, 6, 2, 2, 2, 2, 2, 2, 2, 2], "ax": 19.5, "ay": 30.5}},
+	4: {"shadow": 1, "Idle": {"w": 32, "h": 40, "n": 4, "d": [12, 8, 8, 8], "ax": 15.5, "ay": 23.5}, "Walk": {"w": 32, "h": 32, "n": 4, "d": [6, 8, 6, 8], "ax": 15.5, "ay": 19.5}, "Shoot": {"w": 32, "h": 40, "n": 10, "d": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2], "ax": 16.5, "ay": 23.5}},
+	10: {"shadow": 0, "Idle": {"w": 32, "h": 32, "n": 10, "d": [8, 8, 8, 8, 8, 8, 8, 4, 10, 4], "ax": 15.5, "ay": 19.5}, "Walk": {"w": 32, "h": 32, "n": 3, "d": [10, 10, 10], "ax": 15.5, "ay": 19.5}},
+	13: {"shadow": 0, "Idle": {"w": 32, "h": 40, "n": 4, "d": [40, 8, 8, 8], "ax": 15.5, "ay": 23.5}, "Walk": {"w": 32, "h": 40, "n": 3, "d": [8, 10, 8], "ax": 15.5, "ay": 23.5}},
+	16: {"shadow": 0, "Idle": {"w": 24, "h": 40, "n": 5, "d": [30, 4, 4, 4, 4], "ax": 11.5, "ay": 23.5}, "Walk": {"w": 32, "h": 32, "n": 5, "d": [6, 4, 4, 4, 4], "ax": 15.5, "ay": 19.5}},
+	19: {"shadow": 1, "Idle": {"w": 32, "h": 32, "n": 8, "d": [40, 2, 2, 2, 4, 2, 2, 2], "ax": 15.5, "ay": 19.5}, "Walk": {"w": 48, "h": 40, "n": 7, "d": [6, 4, 4, 4, 4, 4, 4], "ax": 23.5, "ay": 23.5}},
+}
+
+# Stats (de pokedex.js). Los dos primeros son jugables; el resto son enemigos.
+const DEX := {
+	25: {"name": "Pikachu", "types": ["electric"], "hp": 86, "spd": 116, "atk": 1.0, "move": "thunder-shock"},
+	4: {"name": "Charmander", "types": ["fire"], "hp": 88, "spd": 105, "atk": 1.03, "move": "ember"},
+	10: {"name": "Caterpie", "types": ["bug"], "hp": 90, "spd": 97},
+	13: {"name": "Weedle", "types": ["bug", "poison"], "hp": 88, "spd": 99},
+	16: {"name": "Pidgey", "types": ["normal", "flying"], "hp": 88, "spd": 102},
+	19: {"name": "Rattata", "types": ["normal"], "hp": 84, "spd": 108},
+}
+
+# Mejoras de estadistica (levelup.js). "w" = peso al sortear la carta.
+const STAT_IDS := ["hp", "atk", "spd", "cd", "def", "rgn", "mag", "xp", "heal"]
+const STATS := {
+	"hp": {"title": "Vigor", "desc": "+20 de vida máxima (y la recupera).", "max": 9999},
+	"atk": {"title": "Potencia", "desc": "+10% de daño con todos los movimientos.", "max": 40},
+	"spd": {"title": "Carrera", "desc": "+7% de velocidad de movimiento.", "max": 8},
+	"cd": {"title": "Reflejos", "desc": "-8% de recarga en todos los movimientos.", "max": 10},
+	"def": {"title": "Coraza", "desc": "+6% de reducción de daño recibido.", "max": 12},
+	"rgn": {"title": "Síntesis", "desc": "+0.9 de vida regenerada por segundo.", "max": 9999},
+	"mag": {"title": "Imán", "desc": "+30% de radio de recogida de experiencia.", "max": 6},
+	"xp": {"title": "Aprendizaje", "desc": "+12% de experiencia ganada.", "max": 8},
+	"heal": {"title": "Baya Zidra", "desc": "Recupera el 45% de tu vida ahora mismo.", "max": 99999},
+}
+
+var flash_shader: Shader
+var ground: Ground
+var gfx: Node2D
+var world: Node2D
+var fx: Node2D
+var player: Player
+var cam: Camera2D
+var hud: Hud
+var stick: Stick
+var slots: Slots
+var cards: Cards
+var enemies: Array = []
+var bullets: Array = []
+var orbs: Array = []
+var fields: Array = []
+var target: Node2D = null
+var run_time := 0.0
+var kills := 0
+var spawn_acc := 0.0
+var shake := 0.0
+var death_t := 0.0
+var choosing := false
+var pending_levels := 0
+var stat_lv := {}
+var base_spd := 100.0
+var base_atk := 1.0
+var item := ""
+var sash_t := -999.0
+var bell_heal := 0.0
+var wx_kind := ""
+var wx_t := 0.0
+var wx_dur := 0.0
+var wx_check := 60.0
+var wx_chip := 0.0
+var wx_banner := 0.0
+var wx: WeatherFx
+
+
+func _ready() -> void:
+	RenderingServer.set_default_clear_color(Color("#16233a"))
+	randomize()
+	_add_input_actions()
+	flash_shader = Shader.new()
+	flash_shader.code = FLASH_SHADER
+
+	ground = Ground.new()
+	add_child(ground)
+	gfx = Node2D.new()
+	add_child(gfx)
+	world = Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	fx = Node2D.new()
+	add_child(fx)
+
+	var st: Dictionary = DEX[selected_dex]
+	player = Player.new()
+	player.setup(selected_dex, META[selected_dex], flash_shader)
+	player.max_hp = float(st["hp"])
+	player.hp = player.max_hp
+	player.spd = float(st["spd"])
+	player.atk = float(st["atk"])
+	player.types = st["types"]
+	base_spd = player.spd
+	base_atk = player.atk
+	for sid in STAT_IDS:
+		stat_lv[sid] = 0
+	player.xp_next = float(_xp_for(1))
+	player.moves = [_new_move(String(st["move"]), 1)]
+	player.slot = 0
+	world.add_child(player)
+	cam = Camera2D.new()
+	player.add_child(cam)
+	cam.make_current()
+
+	var ui := CanvasLayer.new()
+	add_child(ui)
+	wx = WeatherFx.new()
+	ui.add_child(wx)
+	hud = Hud.new()
+	hud.poke_name = String(st["name"])
+	ui.add_child(hud)
+	stick = Stick.new()
+	ui.add_child(stick)
+	slots = Slots.new()
+	ui.add_child(slots)
+	slots.picked.connect(_set_active)
+	cards = Cards.new()
+	ui.add_child(cards)
+	cards.chosen.connect(_on_card_chosen)
+
+	# Unos pocos al empezar, para que no se vea vacio al probar.
+	for i in range(3):
+		_spawn_enemy(true)
+
+
+func _add_input_actions() -> void:
+	if InputMap.has_action("move_left"):
+		return
+	var keys := {
+		"move_left": [KEY_A, KEY_LEFT],
+		"move_right": [KEY_D, KEY_RIGHT],
+		"move_up": [KEY_W, KEY_UP],
+		"move_down": [KEY_S, KEY_DOWN],
+	}
+	var dpad := {
+		"move_left": JOY_BUTTON_DPAD_LEFT,
+		"move_right": JOY_BUTTON_DPAD_RIGHT,
+		"move_up": JOY_BUTTON_DPAD_UP,
+		"move_down": JOY_BUTTON_DPAD_DOWN,
+	}
+	var sticks := {
+		"move_left": [JOY_AXIS_LEFT_X, -1.0],
+		"move_right": [JOY_AXIS_LEFT_X, 1.0],
+		"move_up": [JOY_AXIS_LEFT_Y, -1.0],
+		"move_down": [JOY_AXIS_LEFT_Y, 1.0],
+	}
+	for action in keys:
+		InputMap.add_action(action, 0.2)
+		for k in keys[action]:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = k
+			InputMap.action_add_event(action, ev)
+		var b := InputEventJoypadButton.new()
+		b.button_index = dpad[action]
+		InputMap.action_add_event(action, b)
+		var m := InputEventJoypadMotion.new()
+		m.axis = sticks[action][0]
+		m.axis_value = sticks[action][1]
+		InputMap.action_add_event(action, m)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var pick := 0
+	var restart := false
+	var slot := -1
+	var cyc := 0
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_F1:
+				pick = 25
+			KEY_F2:
+				pick = 4
+			KEY_1:
+				slot = 0
+			KEY_2:
+				slot = 1
+			KEY_3:
+				slot = 2
+			KEY_4:
+				slot = 3
+			KEY_Q:
+				cyc = -1
+			KEY_E:
+				cyc = 1
+			_:
+				restart = true
+	elif event is InputEventJoypadButton and event.pressed:
+		match event.button_index:
+			JOY_BUTTON_LEFT_SHOULDER:
+				cyc = -1
+			JOY_BUTTON_RIGHT_SHOULDER:
+				cyc = 1
+			JOY_BUTTON_BACK:
+				pick = 4 if selected_dex == 25 else 25
+			_:
+				restart = true
+	elif event is InputEventScreenTouch and event.pressed:
+		restart = true
+	if pick != 0:
+		selected_dex = pick
+		get_tree().reload_current_scene()
+	elif player.dead:
+		if restart and death_t > 1.0:
+			get_tree().reload_current_scene()
+	elif not choosing:
+		if slot >= 0:
+			_set_active(slot)
+		elif cyc != 0:
+			_set_active(posmod(player.slot + cyc, player.moves.size()))
+
+
+func _process(delta: float) -> void:
+	if player.dead:
+		death_t += delta
+	elif not choosing:
+		run_time += delta
+		_update_player(delta)
+		_update_spawner(delta)
+		_update_weather(delta)
+		_update_enemies(delta)
+		_update_fields(delta)
+		_update_bullets(delta)
+		_update_orbs(delta)
+		_cleanup_enemies()
+		if pending_levels > 0 and not choosing:
+			_open_cards()
+	ground.center = player.position
+	cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake
+	shake = maxf(0.0, shake - 30.0 * delta)
+	hud.hp = player.hp
+	hud.max_hp = player.max_hp
+	hud.run_time = run_time
+	hud.kills = kills
+	hud.dead = player.dead
+	hud.show_end = player.dead and death_t > 1.0
+	hud.level = player.level
+	hud.xp = player.xp
+	hud.xp_next = player.xp_next
+	hud.buff_text = _buff_text()
+	hud.item_name = _item_name()
+	hud.weather_text = _weather_text()
+	hud.banner = _weather_banner()
+	wx.kind = wx_kind
+	wx.level = _wx_level()
+	_refresh_slots()
+
+
+func _refresh_slots() -> void:
+	var info: Array = []
+	for m in player.moves:
+		var cdm: float = maxf(0.05, _f(m, "cd") * _cd_mul())
+		info.append({
+			"name": String(m["name"]),
+			"color": _col(m),
+			"lvl": int(m["lvl"]),
+			"max": _max_lvl(m),
+			"frac": clampf(1.0 - maxf(0.0, _f(m, "t")) / cdm, 0.0, 1.0),
+			"evo": bool(m["evolved"]),
+		})
+	slots.info = info
+	slots.active = player.slot
+	slots.enabled = not choosing and not player.dead
+
+
+# ---------------------------------------------------------------
+# Estadisticas de la run (levelup.js / player.js)
+# ---------------------------------------------------------------
+func _lv(id: String) -> int:
+	return int(stat_lv.get(id, 0))
+
+
+func _buff_mul(stat: String) -> float:
+	var b: Dictionary = player.buffs[stat]
+	return float(b["n"]) * float(b["amount"])
+
+
+func _has_item(id: String) -> bool:
+	return item == id
+
+
+func _item_name() -> String:
+	if item == "":
+		return ""
+	for it in TD.ITEMS:
+		if String(it["id"]) == item:
+			return String(it["name"])
+	return ""
+
+
+func _atk() -> float:
+	var k: float = 1.0
+	if _has_item("choiceband"):
+		k = 1.4
+	elif _has_item("lifeorb"):
+		k = 1.3
+	return base_atk * pow(1.10, float(_lv("atk"))) * (1.0 + _buff_mul("atk")) * k
+
+
+func _spd() -> float:
+	var k: float = 1.35 if _has_item("choicescarf") else 1.0
+	return base_spd * pow(1.07, float(_lv("spd"))) * (1.0 + _buff_mul("spd")) * k
+
+
+func _cd_mul() -> float:
+	var k: float = 0.8 if _has_item("quickclaw") else 1.0
+	return pow(0.92, float(_lv("cd"))) * k
+
+
+func _reduction() -> float:
+	var vest: float = 0.2 if _has_item("assaultvest") else 0.0
+	return minf(0.8, minf(0.7, 0.06 * float(_lv("def"))) + vest + _buff_mul("def"))
+
+
+func _regen() -> float:
+	var left: float = player.max_hp * 0.015 if _has_item("leftovers") else 0.0
+	return 0.9 * float(_lv("rgn")) + _buff_mul("regen") + left
+
+
+func _magnet() -> float:
+	return BASE_MAGNET * pow(1.30, float(_lv("mag")))
+
+
+func _xp_mul() -> float:
+	var k: float = 1.3 if _has_item("luckyegg") else 1.0
+	return pow(1.12, float(_lv("xp"))) * k
+
+
+func _buff_text() -> String:
+	var parts: Array = []
+	var names := {"atk": "ATQ", "spd": "VEL", "def": "DEF", "regen": "REG"}
+	for k in names:
+		var b: Dictionary = player.buffs[k]
+		if int(b["n"]) > 0:
+			parts.append("%s x%d" % [names[k], int(b["n"])])
+	return "  ".join(parts)
+
+
+# ---------------------------------------------------------------
+# Movimientos: instancias, mejoras y evolucion (moves.js)
+# ---------------------------------------------------------------
+func _f(m: Dictionary, key: String, def: float = 0.0) -> float:
+	return float(m.get(key, def))
+
+
+func _col(m: Dictionary) -> Color:
+	return Color.html(String(MD.TYPE_COLOR[String(m["type"])]))
+
+
+func _apply_mods(m: Dictionary, mods: Dictionary) -> void:
+	for k in mods:
+		if MULT_KEYS.has(k) and m.has(k):
+			m[k] = float(m[k]) * float(mods[k])
+		elif ADD_KEYS.has(k):
+			m[k] = float(m.get(k, 0)) + float(mods[k])
+		else:
+			m[k] = mods[k]
+
+
+func _new_move(id: String, lvl: int) -> Dictionary:
+	var def: Dictionary = MD.MOVES[id]
+	var m: Dictionary = def.duplicate(true)
+	m["lvl"] = 1
+	m["t"] = 0.0
+	m["evolved"] = false
+	var ladder: Array = MD.LADDERS[String(m["kind"])]
+	for i in range(lvl - 1):
+		_apply_mods(m, ladder[i]["m"])
+		m["lvl"] = int(m["lvl"]) + 1
+	return m
+
+
+func _max_lvl(m: Dictionary) -> int:
+	var ladder: Array = MD.LADDERS[String(m["kind"])]
+	return ladder.size() + 1
+
+
+func _level_up_move(m: Dictionary) -> void:
+	var ladder: Array = MD.LADDERS[String(m["kind"])]
+	var lv: int = int(m["lvl"])
+	if lv >= _max_lvl(m):
+		return
+	_apply_mods(m, ladder[lv - 1]["m"])
+	m["lvl"] = lv + 1
+
+
+# Devuelve {} si no puede evolucionar todavia.
+func _evo_info(m: Dictionary) -> Dictionary:
+	var id: String = String(m["id"])
+	var kind: String = String(m["kind"])
+	if not MD.EVO.has(id) or bool(m["evolved"]) or int(m["lvl"]) < _max_lvl(m) or not MD.EVO_MODS.has(kind):
+		return {}
+	var e: Array = MD.EVO[id]
+	var needs: String = String(e[1])
+	return {
+		"name": String(e[0]),
+		"needs": needs,
+		"need_name": String(MD.NEED_NAME[needs]),
+		"text": String(MD.EVO_MODS[kind]["t"]),
+		"ready": _lv(needs) > 0,
+	}
+
+
+func _evolve(m: Dictionary) -> void:
+	var id: String = String(m["id"])
+	if not MD.EVO.has(id) or bool(m["evolved"]):
+		return
+	var e: Array = MD.EVO[id]
+	_apply_mods(m, MD.EVO_MODS[String(m["kind"])]["m"])
+	m["name"] = String(e[0])
+	m["evolved"] = true
+	_ring(player.position, 8.0, 120.0, Color("#ffd23f"), 0.8)
+	shake = 6.0
+
+
+func _set_active(i: int) -> void:
+	if i < 0 or i >= player.moves.size() or i == player.slot:
+		return
+	if _has_item("choiceband"):
+		add_text(player.position + Vector2(0.0, -player.body_h - 8.0), "Cinta Elección", Color("#ff8ad8"))
+		return
+	_clear_orbit_orbs()
+	player.slot = i
+	var m: Dictionary = player.moves[i]
+	m["t"] = minf(_f(m, "t"), _f(m, "cd") * 0.35)
+	_ring(player.position, 6.0, player.radius * 3.4, _col(m), 0.3)
+
+
+func _clear_orbit_orbs() -> void:
+	for i in range(bullets.size() - 1, -1, -1):
+		if bullets[i].orb:
+			bullets[i].queue_free()
+			bullets.remove_at(i)
+
+
+# ---------------------------------------------------------------
+# Jugador
+# ---------------------------------------------------------------
+func _update_player(delta: float) -> void:
+	var v: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if v == Vector2.ZERO and stick.axis.length() > 0.15:
+		v = stick.axis
+	if v.length() > 1.0:
+		v = v.normalized()
+	var moving: bool = v.length() > 0.05
+	var spd: float = _spd()
+	player.position += v * spd * delta
+	player.invuln = maxf(0.0, player.invuln - delta)
+	if bell_heal > 0.0:
+		var bh: float = minf(bell_heal, 4.0 * delta)
+		player.hp = minf(player.max_hp, player.hp + bh)
+		bell_heal -= bh
+	var reg: float = _regen()
+	if reg > 0.0:
+		player.hp = minf(player.max_hp, player.hp + reg * delta)
+	player.attack_face = maxf(0.0, player.attack_face - delta)
+	# Los potenciadores caducan.
+	for k in player.buffs:
+		var b: Dictionary = player.buffs[k]
+		if int(b["n"]) > 0:
+			b["t"] = float(b["t"]) - delta
+			if float(b["t"]) <= 0.0:
+				b["n"] = 0
+
+	target = _nearest_enemy(player.position, AIM_REACH)
+	if target != null:
+		player.aim = (target.position - player.position).angle()
+	elif moving:
+		player.aim = v.angle()
+
+	var face: float = player.aim
+	if moving and player.attack_face <= 0.0:
+		face = v.angle()
+	player.face_angle(face)
+	if moving:
+		player.loop_anim("Walk", spd / 110.0)
+	else:
+		player.loop_anim("Idle", 1.0)
+
+	var m: Dictionary = player.moves[player.slot]
+	_tick_move(m, delta)
+
+
+func _hurt_player(amount: float, atk_type: String = "") -> void:
+	if player.invuln > 0.0 or player.dead:
+		return
+	var eff: String = ""
+	if atk_type != "":
+		var tk: float = _types_mult(atk_type, player.types)
+		amount *= tk * _weather_mult(atk_type)
+		eff = _eff_label(tk)
+	var close: float = 1.0
+	if String(player.moves[player.slot]["kind"]) == "melee":
+		close = 0.75        # cuerpo a cuerpo: recibes un 25% menos
+	var d: float = maxf(1.0, amount * (1.0 - _reduction()) * close)
+	player.hp -= d
+	player.invuln = 0.45
+	player.flash = 0.6
+	shake = 5.0
+	var tcol := Color("#ff6b7a")
+	if eff == "super":
+		tcol = Color("#ff3048")
+	elif eff == "weak":
+		tcol = Color("#c9a0a8")
+	add_text(player.position + Vector2(0.0, -player.body_h - 4.0), "-" + str(roundi(d)), tcol, 24 if eff == "super" else 18)
+	# Banda Focus: aguanta el golpe con 1 de vida (una vez cada 60 s).
+	if player.hp <= 0.0 and _has_item("focussash") and run_time - sash_t > 60.0:
+		sash_t = run_time
+		player.hp = 1.0
+		player.invuln = 1.2
+		add_text(player.position + Vector2(0.0, -player.body_h - 20.0), "¡Banda Focus!", Color("#ff9a3d"), 24)
+		_ring(player.position, 6.0, 70.0, Color("#ff9a3d"), 0.5)
+	if player.hp <= 0.0:
+		player.hp = 0.0
+		player.dead = true
+		player.sprite.modulate = Color(1, 1, 1, 0.5)
+		player.active = false
+		_clear_orbit_orbs()
+		for e in enemies:
+			e.active = false
+
+
+# ---------------------------------------------------------------
+# Ejecucion de movimientos (combat.js)
+# ---------------------------------------------------------------
+func _reach(m: Dictionary) -> float:
+	var k: String = String(m["kind"])
+	if k == "melee":
+		return _f(m, "radius") + 30.0
+	if k == "beam":
+		return _f(m, "radius") + 20.0
+	if k == "boomerang":
+		return _f(m, "radius") + 40.0
+	if k == "chain":
+		return 280.0
+	if k == "meteor":
+		return 340.0
+	if k == "dash":
+		return _f(m, "radius") + 60.0
+	if k == "cone":
+		return _f(m, "speed") * _f(m, "life") + 30.0
+	return 520.0
+
+
+func _tick_move(m: Dictionary, delta: float) -> void:
+	var kind: String = String(m["kind"])
+	if kind == "orbit":
+		_orbit(m, delta)
+		return
+	m["t"] = _f(m, "t") - delta
+	if _f(m, "t") > 0.0:
+		return
+	# Los ataques con blanco esperan a tenerlo a tiro.
+	if TARGETED.has(kind):
+		if target == null or player.position.distance_to(target.position) > _reach(m):
+			m["t"] = 0.05
+			return
+	var cd: float = maxf(0.05, _f(m, "cd") * _cd_mul())
+	m["t"] = cd
+	if _has_item("lifeorb") and kind != "trail":
+		player.hp = maxf(1.0, player.hp - maxf(1.0, player.max_hp * 0.01))
+	if m.has("iframes"):
+		player.invuln = maxf(player.invuln, float(m["iframes"]))
+	if kind != "trail":
+		player.attack_face = 0.35
+		player.play_attack("Shoot", maxf(0.12, cd))
+	match kind:
+		"projectile":
+			_fire_projectiles(m)
+		"melee":
+			_melee(m)
+		"beam":
+			_beam(m)
+		"nova":
+			_nova(m)
+		"aura":
+			_aura(m)
+		"buff":
+			_buff(m)
+		"boomerang":
+			_boomerang(m)
+		"chain":
+			_chain(m)
+		"mine":
+			_mines(m)
+		"meteor":
+			_meteors(m)
+		"turret":
+			_turret(m)
+		"dash":
+			_dash(m)
+		"trail":
+			_trail_patch(m)
+		"cone":
+			_cone(m)
+
+
+func _make_bullet(m: Dictionary, pos: Vector2, vel: Vector2, life: float, pierce: int) -> Bullet:
+	var b := Bullet.new()
+	b.position = pos
+	b.ppos = pos
+	b.vel = vel
+	b.dmg = _f(m, "dmg") * _atk()
+	b.r = _f(m, "size", 6.0)
+	b.life = life
+	b.pierce = pierce
+	b.color = _col(m)
+	b.homing = _f(m, "homing")
+	b.burn = int(_f(m, "burn"))
+	b.poison = int(_f(m, "poison"))
+	b.slow = _f(m, "slow")
+	b.knock = _f(m, "knock")
+	b.mtype = String(m["type"])
+	fx.add_child(b)
+	bullets.append(b)
+	return b
+
+
+func _fire_projectiles(m: Dictionary) -> void:
+	var n: int = maxi(1, int(_f(m, "count", 1.0)))
+	var spread: float = _f(m, "spread")
+	for i in range(n):
+		var off: float = 0.0
+		if n > 1:
+			off = (float(i) / float(n - 1) - 0.5) * spread * float(n)
+		var a: float = player.aim + off + randf_range(-0.03, 0.03)
+		var d: Vector2 = Vector2.from_angle(a)
+		_make_bullet(m, player.position + d * 3.0, d * _f(m, "speed"), _f(m, "life", 1.4), int(_f(m, "pierce")))
+
+
+func _nova(m: Dictionary) -> void:
+	var n: int = maxi(3, int(_f(m, "count", 8.0)))
+	for i in range(n):
+		var a: float = float(i) / float(n) * TAU + randf_range(-0.06, 0.06)
+		var d: Vector2 = Vector2.from_angle(a)
+		_make_bullet(m, player.position + d * 3.0, d * _f(m, "speed"), _f(m, "life", 1.2), int(_f(m, "pierce")))
+	_ring(player.position, player.radius, player.radius * 4.0, _col(m), 0.3)
+
+
+func _cone(m: Dictionary) -> void:
+	var n: int = maxi(2, int(_f(m, "count", 5.0)))
+	var arc: float = _f(m, "arc", 0.9)
+	for i in range(n):
+		var a: float = player.aim + (float(i) / float(n - 1) - 0.5) * arc + randf_range(-0.05, 0.05)
+		var sp: float = _f(m, "speed") * randf_range(0.85, 1.1)
+		var d: Vector2 = Vector2.from_angle(a)
+		_make_bullet(m, player.position + d * 4.0, d * sp, _f(m, "life", 0.5) * randf_range(0.85, 1.05), int(_f(m, "pierce")))
+
+
+func _boomerang(m: Dictionary) -> void:
+	var n: int = maxi(1, int(_f(m, "count", 1.0)))
+	var spread: float = _f(m, "spread", 0.5)
+	var out: float = _f(m, "radius") / maxf(1.0, _f(m, "speed"))
+	for i in range(n):
+		var off: float = 0.0
+		if n > 1:
+			off = (float(i) / float(n - 1) - 0.5) * spread * float(minf(float(n), 3.0))
+		var d: Vector2 = Vector2.from_angle(player.aim + off)
+		var b: Bullet = _make_bullet(m, player.position, d * _f(m, "speed"), out * 4.0 + 1.5, 999)
+		b.boom = out
+		b.bsp = _f(m, "speed") * 1.1
+
+
+func _in_arc(from: Vector2, p: Vector2, aim: float, half: float) -> bool:
+	var a: float = (p - from).angle()
+	return absf(fposmod(a - aim + PI * 3.0, TAU) - PI) <= half
+
+
+func _melee(m: Dictionary) -> void:
+	var rad: float = _f(m, "radius")
+	var arc: float = _f(m, "arc", 1.6)
+	var half: float = minf(arc, TAU) * 0.5
+	var f := Fx.new()
+	f.kind = "arc"
+	f.color = _col(m)
+	f.position = player.position
+	f.ang = player.aim
+	f.arc = minf(arc, TAU)
+	f.r1 = rad
+	f.life = 0.18
+	fx.add_child(f)
+	for e in enemies:
+		if e.dead:
+			continue
+		if e.position.distance_to(player.position) > rad + e.radius * 0.5:
+			continue
+		if not _in_arc(player.position, e.position, player.aim, half):
+			continue
+		_hit_move(e, _f(m, "dmg") * _atk(), e.position - player.position, m)
+
+
+func _beam(m: Dictionary) -> void:
+	var ln: float = _f(m, "radius")
+	var w: float = _f(m, "width", 30.0)
+	var d: Vector2 = Vector2.from_angle(player.aim)
+	var f := Fx.new()
+	f.kind = "beam"
+	f.color = _col(m)
+	f.position = player.position
+	f.ang = player.aim
+	f.length = ln
+	f.width = w
+	f.life = 0.2
+	fx.add_child(f)
+	shake = maxf(shake, 1.5)
+	for e in enemies:
+		if e.dead:
+			continue
+		var rel: Vector2 = e.position - player.position
+		var along: float = rel.dot(d)
+		if along < -e.radius or along > ln + e.radius:
+			continue
+		var side: float = absf(-rel.x * d.y + rel.y * d.x)
+		if side <= w * 0.5 + e.radius:
+			_hit_move(e, _f(m, "dmg") * _atk(), d, m)
+
+
+func _aura(m: Dictionary) -> void:
+	var rad: float = _f(m, "radius")
+	_ring(player.position, rad * 0.5, rad, _col(m), 0.28)
+	for e in enemies:
+		if e.dead:
+			continue
+		if e.position.distance_to(player.position) <= rad + e.radius * 0.5:
+			_hit_move(e, _f(m, "dmg") * _atk(), e.position - player.position, m)
+
+
+func _buff(m: Dictionary) -> void:
+	var stat: String = String(m["stat"])
+	if player.buffs.has(stat):
+		var b: Dictionary = player.buffs[stat]
+		b["amount"] = _f(m, "amount")
+		b["n"] = mini(int(_f(m, "stacks")), int(b["n"]) + 1)
+		b["t"] = _f(m, "dur")
+	_ring(player.position, player.radius * 2.4, player.radius * 1.1, _col(m), 0.35)
+
+
+func _chain(m: Dictionary) -> void:
+	var cur: Node2D = null
+	if target != null and not target.dead and player.position.distance_to(target.position) <= _reach(m):
+		cur = target
+	else:
+		cur = _nearest_enemy(player.position, _reach(m))
+	if cur == null:
+		return
+	var from: Vector2 = player.position + Vector2(0.0, -LIFT)
+	var k: float = 1.0
+	var done := {}
+	var n: int = maxi(1, int(_f(m, "count", 1.0)))
+	var jump: float = _f(m, "radius", 140.0)
+	for i in range(n):
+		if cur == null:
+			break
+		done[cur.get_instance_id()] = true
+		var to: Vector2 = cur.position + Vector2(0.0, -cur.body_h * 0.5)
+		var f := Fx.new()
+		f.kind = "line"
+		f.color = _col(m)
+		f.position = from
+		f.p2 = to - from
+		f.width = 5.0
+		f.life = 0.2
+		fx.add_child(f)
+		var hex: float = 1.0
+		if m.has("hex") and (cur.burn > 0 or cur.poison > 0 or cur.slow > 0.0):
+			hex = _f(m, "hex")
+		_hit_move(cur, _f(m, "dmg") * _atk() * k * hex, to - from, m)
+		k *= 0.85
+		from = to
+		var best: Node2D = null
+		var bd: float = jump * jump
+		for e in enemies:
+			if e.dead or done.has(e.get_instance_id()):
+				continue
+			var d2: float = cur.position.distance_squared_to(e.position)
+			if d2 < bd:
+				bd = d2
+				best = e
+		cur = best
+	shake = maxf(shake, 1.0)
+
+
+func _new_field(kind: String, m: Dictionary, pos: Vector2) -> Field:
+	var f := Field.new()
+	f.kind = kind
+	f.move = m
+	f.color = _col(m)
+	f.position = pos
+	f.dmg = _f(m, "dmg") * _atk()
+	if kind == "turret":
+		world.add_child(f)
+	else:
+		gfx.add_child(f)
+	fields.append(f)
+	return f
+
+
+func _trim_fields(kind: String, keep: int) -> void:
+	var mine: Array = []
+	for f in fields:
+		if f.kind == kind and not f.gone:
+			mine.append(f)
+	var extra: int = mine.size() - keep
+	for i in range(maxi(0, extra)):
+		mine[i].gone = true
+
+
+func _mines(m: Dictionary) -> void:
+	var n: int = maxi(1, int(_f(m, "count", 1.0)))
+	for i in range(n):
+		var a: float = randf() * TAU
+		var d: float = 0.0
+		if n > 1:
+			d = randf_range(18.0, 46.0)
+		var f: Field = _new_field("mine", m, player.position + Vector2(cos(a) * d, sin(a) * d * 0.8))
+		f.arm = 0.35
+		f.life = _f(m, "dur", 7.0)
+		f.r = _f(m, "radius")
+	_trim_fields("mine", 4 + n * 2)
+
+
+func _meteors(m: Dictionary) -> void:
+	var n: int = maxi(1, int(_f(m, "count", 1.0)))
+	var near: Array = []
+	for e in enemies:
+		if not e.dead and e.position.distance_to(player.position) <= _reach(m):
+			near.append(e)
+	near.shuffle()
+	for i in range(n):
+		var pos: Vector2
+		if i < near.size():
+			pos = near[i].position + Vector2(randf_range(-8.0, 8.0), randf_range(-6.0, 6.0))
+		else:
+			pos = player.position + Vector2(randf_range(-140.0, 140.0), randf_range(-110.0, 110.0))
+		var f: Field = _new_field("meteor", m, pos)
+		f.t = -float(i) * 0.09
+		f.fall = 0.5
+		f.r = _f(m, "radius")
+
+
+func _turret(m: Dictionary) -> void:
+	var a: float = player.aim + PI + randf_range(-0.6, 0.6)
+	var f: Field = _new_field("turret", m, player.position + Vector2(cos(a) * 26.0, sin(a) * 20.0))
+	f.life = _f(m, "dur", 6.0)
+	f.shot_t = 0.3
+	_trim_fields("turret", maxi(1, int(_f(m, "count", 1.0))))
+	_ring(player.position, 4.0, 30.0, _col(m), 0.3)
+
+
+func _dash(m: Dictionary) -> void:
+	var d: Vector2 = Vector2.from_angle(player.aim)
+	var start: Vector2 = player.position
+	var ln: float = _f(m, "radius")
+	var w: float = _f(m, "width", 34.0)
+	var dest: Vector2 = start + d * ln
+	for s in range(0, int(ln) + 1, 22):
+		var f := Fx.new()
+		f.kind = "burst"
+		f.color = _col(m)
+		f.position = start + d * float(s)
+		f.r1 = 10.0
+		f.life = 0.22
+		fx.add_child(f)
+	var sl := Fx.new()
+	sl.kind = "arc"
+	sl.color = _col(m)
+	sl.position = dest
+	sl.ang = player.aim
+	sl.arc = 2.2
+	sl.r1 = 34.0
+	sl.life = 0.18
+	fx.add_child(sl)
+	player.position = dest
+	player.invuln = maxf(player.invuln, _f(m, "iframes", 0.3))
+	for e in enemies:
+		if e.dead:
+			continue
+		var cp: Vector2 = Geometry2D.get_closest_point_to_segment(e.position, start, dest)
+		var rr: float = w * 0.5 + e.radius
+		if cp.distance_squared_to(e.position) <= rr * rr:
+			_hit_move(e, _f(m, "dmg") * _atk(), d, m)
+	shake = maxf(shake, 3.0)
+
+
+func _trail_patch(m: Dictionary) -> void:
+	var rad: float = _f(m, "radius")
+	# Parado no deja uno nuevo encima del anterior.
+	if player.last_patch != null and is_instance_valid(player.last_patch):
+		var last: Field = player.last_patch
+		if last.position.distance_squared_to(player.position) < pow(rad * 0.9, 2.0) and last.t < 1.0:
+			return
+	var f: Field = _new_field("patch", m, player.position)
+	f.life = _f(m, "dur", 3.0)
+	f.r = rad
+	f.tick = 0.0
+	player.last_patch = f
+	_trim_fields("patch", 18)
+
+
+func _orbit(m: Dictionary, delta: float) -> void:
+	var want: int = maxi(1, int(_f(m, "count", 1.0)))
+	var mid: String = String(m["id"])
+	var mine: Array = []
+	for ob in bullets:
+		if ob.orb and ob.mid == mid:
+			mine.append(ob)
+	var relayout: bool = mine.size() != want
+	var base_a: float = run_time * _f(m, "speed")
+	if mine.size() > 0:
+		base_a = mine[0].oa
+	while mine.size() > want:
+		var ex = mine.pop_back()
+		ex.queue_free()
+		bullets.erase(ex)
+	for i in range(mine.size(), want):
+		var nb := Bullet.new()
+		nb.orb = true
+		nb.mid = mid
+		nb.oa = float(i) / float(want) * TAU
+		nb.life = 1.0e9
+		nb.pierce = 999999
+		nb.position = player.position
+		fx.add_child(nb)
+		bullets.append(nb)
+		mine.append(nb)
+	for i in range(mine.size()):
+		var ob = mine[i]
+		ob.dmg = _f(m, "dmg") * _atk()
+		ob.orad = _f(m, "radius")
+		ob.ospeed = _f(m, "speed")
+		ob.r = _f(m, "size", 8.0)
+		ob.color = _col(m)
+		ob.rehit = maxf(0.12, _f(m, "cd"))
+		ob.knock = _f(m, "knock")
+		ob.burn = int(_f(m, "burn"))
+		ob.poison = int(_f(m, "poison"))
+		ob.slow = _f(m, "slow")
+		ob.mtype = String(m["type"])
+		if relayout:
+			ob.oa = base_a + float(i) / float(mine.size()) * TAU
+	player.orb_cast_t -= delta
+	if player.orb_cast_t <= 0.0:
+		player.orb_cast_t = 1.6
+		player.play_attack("Shoot", 1.6)
+
+
+# Tabla de tipos suavizada (types.js): x1.6 / x0.6 / x0.3, tope [0.3, 2.4].
+func _types_mult(atk: String, defs: Array) -> float:
+	if not TD.CHART.has(atk):
+		return 1.0
+	var row: Dictionary = TD.CHART[atk]
+	var m: float = 1.0
+	for t in defs:
+		if row.has(t):
+			var v: float = float(row[t])
+			if v > 1.0:
+				m *= 1.6
+			elif v > 0.0:
+				m *= 0.6
+			else:
+				m *= 0.3
+	return clampf(m, 0.3, 2.4)
+
+
+func _eff_label(k: float) -> String:
+	if k > 1.05:
+		return "super"
+	if k < 0.95:
+		return "weak"
+	return ""
+
+
+func _type_mult(mtype: String, e) -> float:
+	return _types_mult(mtype, e.types) * _weather_mult(mtype)
+
+
+func _hit_move(e, dmg: float, dir: Vector2, m: Dictionary) -> void:
+	_hit_enemy(e, dmg, _col(m), dir, _f(m, "knock"), String(m["type"]),
+		int(_f(m, "burn")), int(_f(m, "poison")), _f(m, "slow"))
+
+
+func _hit_enemy(e, dmg: float, col: Color, dir: Vector2, knock: float, mtype: String, burn: int, poison: int, slow: float) -> void:
+	var eff: String = _eff_label(_types_mult(mtype, e.types))
+	var d_final: float = dmg * _type_mult(mtype, e)
+	if _has_item("shellbell"):
+		bell_heal = minf(4.0, bell_heal + d_final * 0.04)
+	_damage_enemy(e, d_final, col, dir, knock, eff)
+	if e.dead:
+		return
+	if burn > 0:
+		e.apply_burn(burn)
+	if poison > 0:
+		e.apply_poison(poison)
+	if slow > 0.0:
+		e.apply_slow(slow)
+
+
+func _ring(pos: Vector2, r0: float, r1: float, color: Color, life: float) -> void:
+	var f := Fx.new()
+	f.kind = "ring"
+	f.color = color
+	f.position = pos
+	f.r0 = r0
+	f.r1 = r1
+	f.life = life
+	fx.add_child(f)
+
+
+# ---------------------------------------------------------------
+# Campos persistentes: minas, meteoros, torretas, charcos
+# ---------------------------------------------------------------
+func _blast(f: Field, r: float, k: float) -> void:
+	var m: Dictionary = f.move
+	for e in enemies:
+		if e.dead:
+			continue
+		if e.position.distance_to(f.position) <= r + e.radius * 0.5:
+			_hit_move(e, f.dmg * k, e.position - f.position, m)
+
+
+func _update_fields(delta: float) -> void:
+	for i in range(fields.size() - 1, -1, -1):
+		var f: Field = fields[i]
+		f.t += delta
+		if f.gone or (f.life > 0.0 and f.t >= f.life and f.kind != "mine"):
+			f.queue_free()
+			fields.remove_at(i)
+			continue
+		var m: Dictionary = f.move
+		if f.kind == "mine":
+			var trig: bool = false
+			if f.t >= f.arm:
+				for e in enemies:
+					if not e.dead and e.position.distance_to(f.position) <= 14.0 + e.radius * 0.5:
+						trig = true
+						break
+			if trig or f.t >= f.life:
+				_ring(f.position, 4.0, f.r, f.color, 0.3)
+				shake = maxf(shake, 2.0)
+				_blast(f, f.r, 1.0 if trig else 0.5)
+				f.queue_free()
+				fields.remove_at(i)
+		elif f.kind == "meteor":
+			if f.t >= f.fall:
+				_ring(f.position, 4.0, f.r, f.color, 0.35)
+				shake = maxf(shake, 4.0)
+				_blast(f, f.r, 1.0)
+				f.queue_free()
+				fields.remove_at(i)
+		elif f.kind == "turret":
+			f.shot_t -= delta
+			if f.shot_t <= 0.0:
+				var tg: Node2D = _nearest_enemy(f.position, _f(m, "range", 300.0))
+				f.shot_t = 0.15
+				if tg != null:
+					f.shot_t = _f(m, "rate", 0.6)
+					var d: Vector2 = (tg.position - f.position).normalized()
+					var b: Bullet = _make_bullet(m, f.position, d * _f(m, "speed", 300.0), 1.4, int(_f(m, "pierce")))
+					b.dmg = f.dmg
+					b.r = _f(m, "size", 6.0)
+					f.kick = 0.12
+			if f.kick > 0.0:
+				f.kick -= delta
+		elif f.kind == "patch":
+			f.tick -= delta
+			if f.tick <= 0.0:
+				f.tick = 0.5
+				_blast(f, f.r, 1.0)
+
+
+# ---------------------------------------------------------------
+# Enemigos
+# ---------------------------------------------------------------
+func _update_spawner(delta: float) -> void:
+	# Enemigos por segundo (spawner.js): sube con el tiempo de la run.
+	var rate: float = (1.6 + run_time * 0.028 + pow(run_time / 60.0, 1.6) * 0.5) * 0.24
+	spawn_acc += rate * delta
+	while spawn_acc >= 1.0:
+		spawn_acc -= 1.0
+		if enemies.size() < ENEMY_CAP:
+			_spawn_enemy()
+
+
+func _spawn_enemy(near: bool = false) -> void:
+	var dex_e: int = ENEMY_DEXES[randi() % ENEMY_DEXES.size()]
+	var st: Dictionary = DEX[dex_e]
+	# Plantilla del primer tramo (enemies.js): 17 PV, velocidad 56, dano 6.
+	var base_hp: float = (float(st["hp"]) - 70.0) / 0.45
+	var base_spd2: float = (float(st["spd"]) - 78.0) / 0.42
+	var hp_k: float = clampf(base_hp / 65.0, 0.7, 1.6)
+	var spd_k: float = clampf(0.75 + base_spd2 / 260.0, 0.75, 1.3)
+	var xp_val: float = XP_ENEMY
+	var hp: float = roundf(17.0 * hp_k) * (1.0 + run_time / 95.0) * (3.3 + minf(1.7, run_time / 210.0))
+	var dmg: float = 6.0 * (1.0 + run_time / 420.0) * 2.4
+	var spd: float = roundf(56.0 * spd_k) * (1.0 + minf(0.35, run_time / 1400.0))
+	if enemies.size() >= int(ENEMY_CAP * 0.85):
+		hp *= 1.6
+		dmg *= 1.25
+		xp_val = XP_ENEMY * 1.5
+	var e := Enemy.new()
+	e.setup(dex_e, META[dex_e], flash_shader)
+	e.enemy_name = String(st["name"])
+	e.types = st["types"]
+	e.atk_type = String(st["types"][0])
+	e.max_hp = hp
+	e.hp = hp
+	e.dmg = dmg
+	e.spd = spd
+	e.xp_val = xp_val
+	var ang: float = randf() * TAU
+	var dist: float = get_viewport_rect().size.length() * 0.5 + randf_range(10.0, 70.0)
+	if near:
+		dist = randf_range(380.0, 520.0)
+	e.position = player.position + Vector2(cos(ang) * dist, sin(ang) * dist * 0.9)
+	world.add_child(e)
+	enemies.append(e)
+
+
+func _update_enemies(delta: float) -> void:
+	var kn_decay: float = pow(0.0015, delta)
+	for e in enemies:
+		if e.dead:
+			continue
+		e.touch_cd = maxf(0.0, e.touch_cd - delta)
+		# Estados alterados (enemy.js).
+		if e.slow_t > 0.0:
+			e.slow_t -= delta
+			if e.slow_t <= 0.0:
+				e.slow = 0.0
+		if e.burn > 0:
+			e.burn_t -= delta
+			e.burn_tick -= delta
+			if e.burn_tick <= 0.0:
+				e.burn_tick = 0.5
+				_damage_enemy(e, 1.6 * float(e.burn) * (1.0 + float(player.level) * 0.06), Color("#ff9a4d"))
+			if e.burn_t <= 0.0:
+				e.burn = 0
+		if e.dead:
+			continue
+		if e.poison > 0:
+			e.poison_t -= delta
+			e.poison_tick -= delta
+			if e.poison_tick <= 0.0:
+				e.poison_tick = 0.6
+				_damage_enemy(e, e.max_hp * 0.012 * float(e.poison) + 1.0, Color("#d47cf0"))
+			if e.poison_t <= 0.0:
+				e.poison = 0
+		if e.dead:
+			continue
+		var tint := Color.WHITE
+		if e.burn > 0:
+			tint = Color(1.0, 0.75, 0.55)
+		elif e.poison > 0:
+			tint = Color(0.85, 0.65, 1.0)
+		elif e.slow > 0.0:
+			tint = Color(0.7, 0.85, 1.0)
+		e.sprite.modulate = tint
+
+		var to: Vector2 = player.position - e.position
+		var d: float = to.length()
+		var dirv: Vector2 = Vector2.ZERO
+		if d > 0.001:
+			dirv = to / d
+		var sp: float = e.spd * (1.0 - e.slow) * _weather_speed(e.types)
+		e.position += (dirv * sp + e.knock) * delta
+		e.knock *= kn_decay
+		if d > 0.001:
+			e.face_angle(dirv.angle())
+		e.loop_anim("Walk", clampf(sp / 60.0, 0.7, 1.4))
+		# Contacto con el jugador (combat.js): cada 0,55 s por enemigo.
+		var rr: float = e.radius + player.radius
+		if d <= rr and e.touch_cd <= 0.0:
+			e.touch_cd = 0.55
+			_hurt_player(e.dmg, e.atk_type)
+			e.knock = -dirv * 150.0
+			if _has_item("rockyhelmet"):
+				_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
+	# Separacion suave para que no se apilen en un solo punto.
+	var n: int = enemies.size()
+	for i in range(n):
+		var a = enemies[i]
+		if a.dead:
+			continue
+		for j in range(i + 1, n):
+			var b = enemies[j]
+			if b.dead:
+				continue
+			var diff: Vector2 = b.position - a.position
+			var min_d: float = (a.radius + b.radius) * 0.7
+			var dd: float = diff.length()
+			if dd < min_d and dd > 0.001:
+				var push: Vector2 = diff / dd * (min_d - dd) * 0.5
+				a.position -= push
+				b.position += push
+
+
+func _nearest_enemy(from: Vector2, reach: float) -> Node2D:
+	var best: Node2D = null
+	var best_d2: float = reach * reach
+	for e in enemies:
+		if e.dead:
+			continue
+		var d2: float = from.distance_squared_to(e.position)
+		if d2 <= best_d2:
+			best_d2 = d2
+			best = e
+	return best
+
+
+func _damage_enemy(e, amount: float, col: Color = Color.WHITE, dir: Vector2 = Vector2.ZERO, knock: float = 0.0, eff: String = "") -> void:
+	if e.dead:
+		return
+	var d: float = maxf(1.0, roundf(amount))
+	var tc: Color = col.lerp(Color.WHITE, 0.55)
+	var ts: int = 18
+	if eff == "super":
+		tc = Color("#ffe14d")
+		ts = 26
+	elif eff == "weak":
+		tc = Color("#a3abb8")
+	add_text(e.position + Vector2(0.0, -e.body_h - 4.0), str(roundi(d)), tc, ts)
+	if knock > 0.0 and dir != Vector2.ZERO:
+		e.knock += dir.normalized() * knock
+	if e.hurt_by(d):
+		kills += 1
+		_drop(e)
+
+
+func _cleanup_enemies() -> void:
+	for i in range(enemies.size() - 1, -1, -1):
+		if enemies[i].dead:
+			enemies.remove_at(i)
+
+
+# ---------------------------------------------------------------
+# Proyectiles y orbes giratorios
+# ---------------------------------------------------------------
+func _bullet_hit(b, e) -> void:
+	var dir: Vector2 = b.vel
+	if dir == Vector2.ZERO:
+		dir = e.position - player.position
+	_hit_enemy(e, b.dmg, b.color, dir, b.knock, b.mtype, b.burn, b.poison, b.slow)
+
+
+func _update_bullets(delta: float) -> void:
+	for i in range(bullets.size() - 1, -1, -1):
+		var b = bullets[i]
+		b.age += delta
+		if b.orb:
+			b.oa += b.ospeed * delta
+			b.position = player.position + Vector2(cos(b.oa) * b.orad, sin(b.oa) * b.orad * 0.7)
+			for e in enemies:
+				if e.dead:
+					continue
+				var rr: float = e.radius + b.r
+				if e.position.distance_squared_to(b.position) > rr * rr:
+					continue
+				var key: int = e.get_instance_id()
+				var last: float = float(b.hit_log.get(key, -99.0))
+				if run_time - last < b.rehit:
+					continue
+				b.hit_log[key] = run_time
+				_bullet_hit(b, e)
+			if b.hit_log.size() > 300:
+				b.hit_log.clear()
+			continue
+		var remove: bool = b.age >= b.life
+		if not remove and b.boom > 0.0:
+			if not b.back and b.age >= b.boom:
+				b.back = true
+				b.hits.clear()
+			if b.back:
+				var to: Vector2 = player.position - b.position
+				var dd: float = to.length()
+				b.vel = b.vel.lerp(to / maxf(dd, 0.001) * b.bsp, 1.0 - exp(-7.0 * delta))
+				if dd < player.radius + 8.0:
+					remove = true
+		if not remove and b.homing > 0.0:
+			var tg: Node2D = _nearest_enemy(b.position, 340.0)
+			if tg != null:
+				var sp: float = b.vel.length()
+				var want: Vector2 = (tg.position + Vector2(0.0, -tg.body_h * 0.5) - b.position).normalized() * sp
+				b.vel = b.vel.lerp(want, 1.0 - exp(-b.homing * delta))
+		if not remove:
+			b.ppos = b.position
+			b.position += b.vel * delta
+			if b.position.distance_squared_to(player.position) > 2000.0 * 2000.0:
+				remove = true
+		if not remove:
+			for e in enemies:
+				if e.dead or b.hits.has(e):
+					continue
+				var rr2: float = e.radius + b.r
+				var cp: Vector2 = Geometry2D.get_closest_point_to_segment(e.position, b.ppos, b.position)
+				if cp.distance_squared_to(e.position) > rr2 * rr2:
+					continue
+				b.hits.append(e)
+				_bullet_hit(b, e)
+				if b.pierce > 0:
+					b.pierce -= 1
+				else:
+					remove = true
+					break
+		if remove:
+			b.queue_free()
+			bullets.remove_at(i)
+
+
+# ---------------------------------------------------------------
+# Experiencia, orbes y cartas de nivel
+# ---------------------------------------------------------------
+func _xp_for(level: int) -> int:
+	var l: float = float(level)
+	return int(floor((8.0 + l * 6.0 + pow(l, 1.75) * 1.6) * 4.0))
+
+
+func _gain_xp(amount: float) -> void:
+	player.xp += amount * _xp_mul()
+	while player.xp >= player.xp_next:
+		player.xp -= player.xp_next
+		player.level += 1
+		player.xp_next = float(_xp_for(player.level))
+		pending_levels += 1
+
+
+func _spawn_orb(pos: Vector2, kind: String, value: float) -> void:
+	var o := Orb.new()
+	o.kind = kind
+	o.value = value
+	o.position = pos
+	o.vel = Vector2.from_angle(randf() * TAU) * randf_range(10.0, 46.0)
+	fx.add_child(o)
+	orbs.append(o)
+	if orbs.size() > ORB_CAP:
+		# Demasiados: el orbe de XP mas viejo se cobra al instante.
+		for i in range(orbs.size()):
+			var old = orbs[i]
+			if old.kind == "xp" or old.kind == "xpBig":
+				_gain_xp(old.value)
+				old.queue_free()
+				orbs.remove_at(i)
+				break
+
+
+func _drop(e) -> void:
+	var kind := "xp"
+	if e.xp_val > XP_ENEMY:
+		kind = "xpBig"
+	_spawn_orb(e.position, kind, e.xp_val)
+	var r: float = randf()
+	var off: Vector2 = Vector2.from_angle(randf() * TAU) * 14.0
+	if r < 0.012:
+		_spawn_orb(e.position + off, "heal", 0.0)
+	elif r < 0.020:
+		_spawn_orb(e.position + off, "magnet", 0.0)
+	elif r < 0.026:
+		_spawn_orb(e.position + off, "bomb", 0.0)
+	elif r < 0.041:
+		# Provisional: los objetos saldran de cofres y jefes (etapas 7 y 8).
+		_spawn_orb(e.position + off, "item", 0.0)
+
+
+func _update_orbs(delta: float) -> void:
+	var mag_r: float = _magnet()
+	var pr: Vector2 = player.position
+	for i in range(orbs.size() - 1, -1, -1):
+		var o = orbs[i]
+		var to: Vector2 = pr - o.position
+		var d: float = to.length()
+		if d < 15.0:
+			var kind: String = o.kind
+			var val: float = o.value
+			o.queue_free()
+			orbs.remove_at(i)
+			_collect(kind, val)
+			continue
+		if o.pulled or d < mag_r:
+			var pull: float = 240.0 + 1400.0 / maxf(d, 1.0)
+			var tv: Vector2 = to / maxf(d, 0.001) * pull
+			o.vel = o.vel.lerp(tv, 1.0 - exp(-7.0 * delta))
+		else:
+			o.vel *= pow(0.02, delta)
+		o.position += o.vel * delta
+
+
+func _collect(kind: String, value: float) -> void:
+	if kind == "xp" or kind == "xpBig":
+		_gain_xp(value)
+	elif kind == "heal":
+		player.hp = minf(player.max_hp, player.hp + player.max_hp * 0.3)
+		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), "+PS", Color("#5fe08a"))
+	elif kind == "magnet":
+		for o in orbs:
+			if o.kind == "xp" or o.kind == "xpBig":
+				o.pulled = true
+		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), "IMAN!", Color("#7fe0ff"))
+	elif kind == "item":
+		_offer_item()
+	elif kind == "bomb":
+		shake = 12.0
+		for e in enemies.duplicate():
+			if not e.dead and e.position.distance_to(player.position) < 520.0:
+				_damage_enemy(e, 80.0, Color("#ff7b3d"))
+		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), "BOOM!", Color("#ff7b3d"))
+
+
+# Construye las cartas candidatas (levelup.js) y devuelve tres.
+func _offer() -> Array:
+	var pool: Array = []
+	var waiting := {}
+
+	# --- movimientos nuevos ---
+	if player.moves.size() < MAX_MOVES:
+		var owned := {}
+		var buffs := 0
+		for m in player.moves:
+			owned[String(m["id"])] = true
+			if String(m["kind"]) == "buff":
+				buffs += 1
+		var cand: Array = []
+		for id in MD.ORDER:
+			var d: Dictionary = MD.MOVES[id]
+			var ty: String = String(d["type"])
+			if ty != "normal" and not player.types.has(ty):
+				continue
+			if owned.has(id):
+				continue
+			if buffs >= 2 and String(d["kind"]) == "buff":
+				continue
+			cand.append(id)
+		cand.shuffle()
+		for i in range(mini(6, cand.size())):
+			var nid: String = String(cand[i])
+			var nd: Dictionary = MD.MOVES[nid]
+			pool.append({"cat": "new", "id": nid, "key": "new:" + nid, "w": 10.0, "title": String(nd["name"]),
+				"desc": String(nd["desc"]), "tag": String(MD.TYPE_NAME[String(nd["type"])]),
+				"color": Color.html(String(MD.TYPE_COLOR[String(nd["type"])]))})
+
+	# --- evoluciones: movimiento al maximo + su condicion cumplida ---
+	for m in player.moves:
+		var ev: Dictionary = _evo_info(m)
+		if ev.is_empty():
+			continue
+		if not bool(ev["ready"]):
+			waiting[String(ev["needs"])] = m
+			continue
+		pool.append({"cat": "evo", "id": String(m["id"]), "key": "evo:" + String(m["id"]), "w": 40.0,
+			"title": "%s > %s" % [String(m["name"]), String(ev["name"])], "desc": String(ev["text"]),
+			"tag": "EVOLUCIÓN", "color": Color("#ffd23f")})
+
+	# --- mejoras de movimientos que ya tienes ---
+	for m in player.moves:
+		if int(m["lvl"]) >= _max_lvl(m):
+			continue
+		var ladder: Array = MD.LADDERS[String(m["kind"])]
+		pool.append({"cat": "up", "id": String(m["id"]), "key": "up:" + String(m["id"]), "w": 8.0,
+			"title": String(m["name"]), "desc": String(ladder[int(m["lvl"]) - 1]["t"]),
+			"tag": "Nv.%d > %d" % [int(m["lvl"]), int(m["lvl"]) + 1], "color": _col(m)})
+
+	# --- estadisticas (las que desbloquean una evolucion salen siempre) ---
+	var cand_s: Array = []
+	for sid in STAT_IDS:
+		if waiting.has(sid):
+			continue
+		if _lv(sid) >= int(STATS[sid]["max"]):
+			continue
+		cand_s.append(sid)
+	cand_s.shuffle()
+	var picks_s: Array = cand_s.slice(0, 5)
+	for sid in waiting:
+		picks_s.append(sid)
+	for sid in picks_s:
+		var sd: Dictionary = STATS[sid]
+		var evo_for: bool = waiting.has(sid)
+		var w: float = 7.0
+		if evo_for:
+			w = 14.0
+		elif player.moves.size() < MAX_MOVES:
+			w = 4.0
+		var tag := "Mejora"
+		var colr := Color("#8fa3c4")
+		if evo_for:
+			tag = "Evoluciona " + String(waiting[sid]["name"])
+			colr = Color("#ffd23f")
+		pool.append({"cat": "stat", "id": String(sid), "key": "stat:" + String(sid), "w": w,
+			"title": String(sd["title"]), "desc": String(sd["desc"]), "tag": tag, "color": colr})
+
+	# --- elegir tres ---
+	var picked: Array = []
+	for i in range(pool.size()):
+		if String(pool[i]["cat"]) == "evo":
+			picked.append(pool[i])
+			pool.remove_at(i)
+			break
+	while picked.size() < 3 and not pool.is_empty():
+		var total := 0.0
+		for c in pool:
+			total += float(c["w"])
+		var roll: float = randf() * total
+		var idx := pool.size() - 1
+		for k in range(pool.size()):
+			roll -= float(pool[k]["w"])
+			if roll <= 0.0:
+				idx = k
+				break
+		picked.append(pool[idx])
+		pool.remove_at(idx)
+	return picked
+
+
+func _open_cards() -> void:
+	var picks: Array = _offer()
+	if picks.is_empty():
+		pending_levels = 0
+		return
+	choosing = true
+	cards.show_cards(picks, "Nivel %d - elige una mejora" % player.level)
+
+
+func _on_card_chosen(idx: int) -> void:
+	var opts: Array = cards.items
+	if idx < 0 or idx >= opts.size():
+		return
+	var c: Dictionary = opts[idx]
+	var id: String = String(c["id"])
+	var cat: String = String(c["cat"])
+	if cat == "itemtake" or cat == "itemkeep":
+		if cat == "itemtake":
+			item = id
+			add_text(player.position + Vector2(0.0, -player.body_h - 8.0), _item_name(), Color("#ff8ad8"), 22)
+		cards.hide_cards()
+		choosing = false
+		return
+	if cat == "new":
+		player.moves.append(_new_move(id, 1))
+		_set_active(player.moves.size() - 1)
+	elif cat == "evo" or cat == "up":
+		for m in player.moves:
+			if String(m["id"]) == id:
+				if cat == "evo":
+					_evolve(m)
+				else:
+					_level_up_move(m)
+				break
+	else:
+		stat_lv[id] = _lv(id) + 1
+		if id == "hp":
+			player.max_hp += 20.0
+			player.hp = minf(player.max_hp, player.hp + 20.0)
+		elif id == "heal":
+			player.hp = minf(player.max_hp, player.hp + player.max_hp * 0.45)
+	pending_levels = maxi(0, pending_levels - 1)
+	cards.hide_cards()
+	choosing = false
+
+
+# ---------------------------------------------------------------
+# Objetos (items.js): uno por run
+# ---------------------------------------------------------------
+func _offer_item() -> void:
+	var pool: Array = []
+	for it in TD.ITEMS:
+		if String(it["id"]) != item:
+			pool.append(it)
+	var nw: Dictionary = pool[randi() % pool.size()]
+	var picks: Array = []
+	picks.append({"cat": "itemtake", "id": String(nw["id"]), "key": "it:" + String(nw["id"]), "w": 1.0,
+		"title": String(nw["name"]), "desc": String(nw["desc"]), "tag": "Objeto nuevo", "color": Color("#ff8ad8")})
+	if item != "":
+		var cur_desc: String = ""
+		for it in TD.ITEMS:
+			if String(it["id"]) == item:
+				cur_desc = String(it["desc"])
+		picks.append({"cat": "itemkeep", "id": item, "key": "keep", "w": 1.0,
+			"title": _item_name(), "desc": cur_desc, "tag": "Quedarte con el tuyo", "color": Color("#8fa3c4")})
+	choosing = true
+	cards.show_cards(picks, "Solo puedes llevar uno: elige con cuál quedarte", "Has encontrado un objeto")
+
+
+# ---------------------------------------------------------------
+# Clima (weather.js): evento raro, cambia el dano segun el tipo
+# ---------------------------------------------------------------
+func _wx_level() -> float:
+	if wx_kind == "":
+		return 0.0
+	return clampf(minf(wx_t / 3.0, (wx_dur - wx_t) / 3.0), 0.0, 1.0)
+
+
+func _weather_mult(type: String) -> float:
+	if wx_kind == "":
+		return 1.0
+	var d: Dictionary = TD.WEATHER[wx_kind]
+	var mm: Dictionary = d["mult"]
+	if mm.has(type):
+		return 1.0 + (float(mm[type]) - 1.0) * _wx_level()
+	return 1.0
+
+
+func _weather_hurts(types: Array) -> bool:
+	if wx_kind == "":
+		return false
+	var safe: Array = TD.WEATHER[wx_kind]["safe"]
+	if safe.is_empty():
+		return false
+	for t in types:
+		if safe.has(t):
+			return false
+	return true
+
+
+func _weather_speed(types: Array) -> float:
+	if wx_kind != "" and bool(TD.WEATHER[wx_kind]["slow"]) and not types.has("ice"):
+		return 1.0 - 0.1 * _wx_level()
+	return 1.0
+
+
+func _weather_text() -> String:
+	if wx_kind == "" or _wx_level() <= 0.0:
+		return ""
+	return "%s  %ds" % [String(TD.WEATHER[wx_kind]["name"]), ceili(wx_dur - wx_t)]
+
+
+func _weather_banner() -> String:
+	if wx_kind == "" or wx_banner <= 0.0:
+		return ""
+	var d: Dictionary = TD.WEATHER[wx_kind]
+	return "%s: %s" % [String(d["name"]), String(d["hint"])]
+
+
+func _start_weather(kind: String, dur: float) -> void:
+	wx_kind = kind
+	wx_t = 0.0
+	wx_dur = dur
+	wx_banner = 3.4
+	wx.setup(TD.WEATHER[kind])
+
+
+func _update_weather(delta: float) -> void:
+	wx_banner = maxf(0.0, wx_banner - delta)
+	if wx_kind != "":
+		wx_t += delta
+		if wx_t >= wx_dur:
+			wx_kind = ""
+			wx.clear()
+	elif run_time > 120.0:
+		wx_check -= delta
+		if wx_check <= 0.0:
+			wx_check = 60.0
+			if randf() < 0.18:
+				var w: Dictionary = TD.BIOME_W[0]
+				var total: float = 0.0
+				for k in w:
+					total += float(w[k])
+				var roll: float = randf() * total
+				var pick: String = "rain"
+				for k in w:
+					roll -= float(w[k])
+					if roll <= 0.0:
+						pick = String(k)
+						break
+				_start_weather(pick, roundf(randf_range(55.0, 75.0)))
+	# Arena y nieve: te van quitando un poco de vida (nunca te dejan KO).
+	wx_chip -= delta
+	if wx_chip <= 0.0:
+		wx_chip = 2.0
+		if wx_kind != "" and _wx_level() > 0.5:
+			var wc := Color.html(String(TD.WEATHER[wx_kind]["color"]))
+			if _weather_hurts(player.types):
+				var d: float = maxf(1.0, player.max_hp * 0.012)
+				if player.hp > d + 1.0:
+					player.hp -= d
+					add_text(player.position + Vector2(0.0, -player.body_h - 4.0), "-" + str(roundi(d)), wc)
+			for e in enemies:
+				if e.dead or not _weather_hurts(e.types):
+					continue
+				if e.hurt_by(e.max_hp * 0.02 + 1.0):
+					kills += 1
+					_drop(e)
+
+
+func add_text(pos: Vector2, text: String, color: Color, size: int = 18) -> void:
+	var f := Floater.new()
+	f.text = text
+	f.size = size
+	f.color = color
+	f.position = pos
+	fx.add_child(f)
+
+
+# ---------------------------------------------------------------
+# Actor: sprite + animacion + sombra + destello (jugador y enemigos)
+# ---------------------------------------------------------------
+class Actor extends Node2D:
+	const PX := 2.0               # unidades de mundo por pixel de arte
+
+	var dex := 0
+	var meta: Dictionary = {}
+	var sprite := Sprite2D.new()
+	var mat := ShaderMaterial.new()
+	var textures := {}
+	var anim := "Idle"
+	var base := "Idle"
+	var once := false
+	var frame := 0
+	var t := 0.0
+	var anim_speed := 1.0
+	var dir := 0                  # fila: 0 Down,1 DownRight,2 Right,3 UpRight,4 Up,5 UpLeft,6 Left,7 DownLeft
+	var radius := 12.0
+	var body_h := 40.0
+	var shadow_rx := 16.0
+	var flash := 0.0
+	var fade := -1.0
+	var active := true
+
+	func setup(d: int, m: Dictionary, shader: Shader) -> void:
+		dex = d
+		meta = m
+		mat.shader = shader
+		sprite.material = mat
+		sprite.centered = false
+		sprite.region_enabled = true
+		sprite.scale = Vector2(PX, PX)
+		add_child(sprite)
+		var idle: Dictionary = meta["Idle"]
+		radius = clampf(float(idle["w"]) * 0.22, 5.0, 26.0) * PX
+		body_h = float(idle["ay"]) * PX
+		var sizes := [5.0, 8.0, 12.0]
+		shadow_rx = float(sizes[clampi(int(meta.get("shadow", 1)), 0, 2)]) * PX
+		_apply()
+		queue_redraw()
+
+	func _tex(a: String) -> Texture2D:
+		if not textures.has(a):
+			textures[a] = load("res://assets/pokemon/%d/%s.png" % [dex, a])
+		return textures[a]
+
+	func face_angle(a: float) -> void:
+		dir = posmod(int(floor((PI / 2.0 - a) / (PI / 4.0) + 0.5)), 8)
+
+	func _start(a: String) -> void:
+		anim = a
+		frame = 0
+		t = 0.0
+
+	func loop_anim(a: String, spd: float) -> void:
+		base = a
+		if not once and anim != a:
+			_start(a)
+		if not once:
+			anim_speed = spd
+
+	func progress() -> float:
+		var am: Dictionary = meta[anim]
+		var total := 0.0
+		var before := 0.0
+		var i := 0
+		for dd in am["d"]:
+			if i < frame:
+				before += float(dd)
+			total += float(dd)
+			i += 1
+		if total <= 0.0:
+			return 1.0
+		return (before + t) / total
+
+	func play_attack(a: String, cd: float) -> void:
+		if not meta.has(a):
+			return
+		# No reinicies una animacion que va por la mitad (se veria a tirones).
+		if once and progress() < 0.65:
+			return
+		var am: Dictionary = meta[a]
+		var total := 0.0
+		for dd in am["d"]:
+			total += float(dd)
+		var dur: float = total / 60.0
+		_start(a)
+		once = true
+		anim_speed = maxf(1.0, dur / (maxf(0.12, cd) * 0.9))
+
+	func tick_anim(delta: float) -> void:
+		var am: Dictionary = meta[anim]
+		t += delta * 60.0 * anim_speed
+		while t >= float(am["d"][frame]):
+			t -= float(am["d"][frame])
+			frame += 1
+			if frame >= int(am["n"]):
+				if once:
+					once = false
+					anim = base
+					frame = 0
+					t = 0.0
+					anim_speed = 1.0
+					am = meta[anim]
+				else:
+					frame = 0
+		_apply()
+
+	func _apply() -> void:
+		var am: Dictionary = meta[anim]
+		sprite.texture = _tex(anim)
+		sprite.offset = Vector2(-float(am["ax"]), -float(am["ay"]))
+		sprite.region_rect = Rect2(frame * float(am["w"]), dir * float(am["h"]), float(am["w"]), float(am["h"]))
+
+	func _process(delta: float) -> void:
+		if fade >= 0.0:
+			fade -= delta
+			modulate.a = clampf(fade / 0.35, 0.0, 1.0)
+			if fade <= 0.0:
+				queue_free()
+			return
+		if flash > 0.0:
+			flash = maxf(0.0, flash - delta * 8.0)
+			mat.set_shader_parameter("flash", flash)
+		if active and not meta.is_empty():
+			tick_anim(delta)
+
+	func _draw() -> void:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+		draw_circle(Vector2.ZERO, shadow_rx, Color(0, 0, 0, 0.34))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+class Player extends Actor:
+	var hp := 1.0
+	var max_hp := 1.0
+	var spd := 100.0
+	var atk := 1.0
+	var types: Array = []
+	var invuln := 0.0
+	var dead := false
+	var aim := PI / 2.0
+	var attack_face := 0.0
+	var level := 1
+	var xp := 0.0
+	var xp_next := 62.0
+	var moves: Array = []
+	var slot := 0
+	var orb_cast_t := 0.0
+	var last_patch = null
+	var buffs := {
+		"atk": {"n": 0, "amount": 0.0, "t": 0.0},
+		"spd": {"n": 0, "amount": 0.0, "t": 0.0},
+		"def": {"n": 0, "amount": 0.0, "t": 0.0},
+		"regen": {"n": 0, "amount": 0.0, "t": 0.0},
+	}
+
+
+class Enemy extends Actor:
+	var hp := 10.0
+	var max_hp := 10.0
+	var spd := 50.0
+	var dmg := 5.0
+	var touch_cd := 0.0
+	var dead := false
+	var knock := Vector2.ZERO
+	var enemy_name := ""
+	var xp_val := 20.0
+	var types: Array = ["normal"]
+	var atk_type := "normal"
+	var burn := 0
+	var burn_t := 0.0
+	var burn_tick := 0.0
+	var poison := 0
+	var poison_t := 0.0
+	var poison_tick := 0.0
+	var slow := 0.0
+	var slow_t := 0.0
+
+	func apply_burn(n: int) -> void:
+		burn = mini(8, burn + n)
+		burn_t = 3.0
+
+	func apply_poison(n: int) -> void:
+		poison = mini(8, poison + n)
+		poison_t = 4.0
+
+	func apply_slow(f: float, dur: float = 1.2) -> void:
+		slow = maxf(slow, f)
+		slow_t = maxf(slow_t, dur)
+
+	# Devuelve true si este golpe lo derrota.
+	func hurt_by(amount: float) -> bool:
+		hp -= amount
+		flash = 1.0
+		queue_redraw()
+		if hp <= 0.0:
+			hp = 0.0
+			dead = true
+			fade = 0.35
+			return true
+		return false
+
+	func _draw() -> void:
+		super._draw()
+		if hp < max_hp and not dead:
+			var w := 30.0
+			var y := -body_h - 12.0
+			draw_rect(Rect2(-w * 0.5, y, w, 4.0), Color(0, 0, 0, 0.6))
+			draw_rect(Rect2(-w * 0.5, y, w * clampf(hp / max_hp, 0.0, 1.0), 4.0), Color("#ff6b7a"))
+
+
+# ---------------------------------------------------------------
+# Proyectil / orbe giratorio / bumeran: vuela en el plano del suelo y se
+# dibuja elevado con sombra
+# ---------------------------------------------------------------
+class Bullet extends Node2D:
+	const LIFT := 18.0
+	var vel := Vector2.ZERO
+	var ppos := Vector2.ZERO
+	var dmg := 10.0
+	var r := 6.0
+	var life := 1.4
+	var age := 0.0
+	var pierce := 0
+	var color := Color.WHITE
+	var hits: Array = []
+	var homing := 0.0
+	var burn := 0
+	var poison := 0
+	var slow := 0.0
+	var knock := 0.0
+	var mtype := "normal"
+	var boom := 0.0
+	var bsp := 0.0
+	var back := false
+	var orb := false
+	var mid := ""
+	var oa := 0.0
+	var orad := 60.0
+	var ospeed := 2.0
+	var rehit := 0.3
+	var hit_log := {}
+
+	func _draw() -> void:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+		draw_circle(Vector2.ZERO, r * 0.9, Color(0, 0, 0, 0.3))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_circle(Vector2(0.0, -LIFT), r * 1.4, Color(color.r, color.g, color.b, 0.35))
+		draw_circle(Vector2(0.0, -LIFT), r, color)
+		draw_circle(Vector2(0.0, -LIFT), r * 0.5, Color(1, 1, 1, 0.9))
+
+
+# ---------------------------------------------------------------
+# Efectos breves: anillos, arcos de golpe, rayos, lineas, destellos
+# ---------------------------------------------------------------
+class Fx extends Node2D:
+	var kind := "ring"
+	var color := Color.WHITE
+	var age := 0.0
+	var life := 0.25
+	var r0 := 0.0
+	var r1 := 40.0
+	var ang := 0.0
+	var arc := 1.0
+	var length := 0.0
+	var width := 10.0
+	var p2 := Vector2.ZERO
+
+	func _process(delta: float) -> void:
+		age += delta
+		if age >= life:
+			queue_free()
+		else:
+			queue_redraw()
+
+	func _draw() -> void:
+		var k: float = clampf(age / life, 0.0, 1.0)
+		var a: float = 1.0 - k
+		var c := Color(color.r, color.g, color.b, a * 0.85)
+		var up := Vector2(0.0, -LIFT * 0.5)
+		if kind == "ring":
+			draw_set_transform(up, 0.0, Vector2(1.0, 0.7))
+			draw_arc(Vector2.ZERO, lerpf(r0, r1, k), 0.0, TAU, 40, c, 3.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		elif kind == "arc":
+			var pts := PackedVector2Array()
+			pts.append(up)
+			var n := 14
+			for i in range(n + 1):
+				var t: float = float(i) / float(n)
+				var aa: float = ang + (t - 0.5) * arc
+				pts.append(up + Vector2.from_angle(aa) * r1 * (0.55 + 0.45 * minf(1.0, k * 3.0 + 0.3)))
+			if arc >= TAU - 0.05:
+				draw_circle(up, r1 * (0.55 + 0.45 * minf(1.0, k * 3.0 + 0.3)), Color(color.r, color.g, color.b, a * 0.45))
+				draw_arc(up, r1, 0.0, TAU, 36, c, 4.0)
+			else:
+				draw_colored_polygon(pts, Color(color.r, color.g, color.b, a * 0.45))
+				draw_arc(up, r1, ang - arc * 0.5, ang + arc * 0.5, 18, c, 4.0)
+		elif kind == "beam":
+			var d: Vector2 = Vector2.from_angle(ang)
+			var start: Vector2 = Vector2(0.0, -LIFT)
+			draw_line(start, start + d * length, Color(color.r, color.g, color.b, a * 0.5), width * (1.0 - k * 0.5))
+			draw_line(start, start + d * length, Color(1, 1, 1, a * 0.9), width * 0.35 * (1.0 - k * 0.5))
+		elif kind == "line":
+			draw_line(Vector2.ZERO, p2, Color(color.r, color.g, color.b, a * 0.8), width)
+			draw_line(Vector2.ZERO, p2, Color(1, 1, 1, a), width * 0.4)
+		elif kind == "burst":
+			draw_circle(up, r1 * (1.0 - k * 0.6), Color(color.r, color.g, color.b, a * 0.5))
+
+
+# ---------------------------------------------------------------
+# Campos persistentes: minas, meteoros, torretas, charcos
+# ---------------------------------------------------------------
+class Field extends Node2D:
+	var kind := "mine"
+	var color := Color.WHITE
+	var move: Dictionary = {}
+	var t := 0.0
+	var life := 3.0
+	var arm := 0.35
+	var fall := 0.5
+	var r := 40.0
+	var dmg := 0.0
+	var shot_t := 0.3
+	var tick := 0.0
+	var kick := 0.0
+	var gone := false
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var now: float = Time.get_ticks_msec() / 1000.0
+		if kind == "patch":
+			var a: float = clampf(minf((life - t) * 2.0, t * 6.0), 0.0, 1.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.62))
+			draw_circle(Vector2.ZERO, r, Color(color.r, color.g, color.b, 0.32 * a))
+			draw_arc(Vector2.ZERO, r * 0.8, 0.0, TAU, 28, Color(color.r, color.g, color.b, 0.5 * a), 1.5)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		elif kind == "mine":
+			var armed: bool = t >= arm
+			var blink: bool = armed and sin(now * 8.0 + position.x) > 0.3
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.62))
+			draw_circle(Vector2.ZERO, r * 0.45, Color(color.r, color.g, color.b, 0.18))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var al: float = 1.0 if blink else 0.7
+			draw_circle(Vector2(0.0, -4.0), 6.0, Color(color.r, color.g, color.b, al))
+			draw_circle(Vector2(0.0, -4.0), 2.5, Color(1, 1, 1, al))
+		elif kind == "meteor":
+			var k: float = clampf(t / fall, 0.0, 1.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.6))
+			draw_circle(Vector2.ZERO, r * (0.3 + k * 0.7), Color(0, 0, 0, 0.2 + k * 0.3))
+			draw_arc(Vector2.ZERO, r, 0.0, TAU, 28, Color(color.r, color.g, color.b, 0.6), 1.5)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			if t > 0.0:
+				var o := Vector2((1.0 - k) * 40.0, -(1.0 - k) * 170.0 - 6.0)
+				draw_circle(o, 14.0, Color(color.r, color.g, color.b, 0.4))
+				draw_circle(o, 9.0, color)
+				draw_circle(o, 4.0, Color(1, 1, 1, 0.9))
+		elif kind == "turret":
+			var fade: float = clampf(minf((life - t) * 2.0, t * 5.0), 0.0, 1.0)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+			draw_circle(Vector2.ZERO, 11.0, Color(0, 0, 0, 0.3))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var bob: float = sin(now * 4.0 + position.x) * 2.0
+			if kick > 0.0:
+				bob -= 2.0
+			draw_circle(Vector2(0.0, -16.0 + bob), 12.0, Color(color.r, color.g, color.b, 0.35 * fade))
+			draw_circle(Vector2(0.0, -16.0 + bob), 8.0, Color(color.r, color.g, color.b, fade))
+			draw_circle(Vector2(0.0, -16.0 + bob), 3.5, Color(1, 1, 1, fade))
+
+
+# ---------------------------------------------------------------
+# Barra de movimientos (abajo a la derecha): tocalos para cambiar
+# ---------------------------------------------------------------
+class Slots extends Node2D:
+	signal picked(idx: int)
+	const SZ := 76.0
+	var info: Array = []
+	var active := 0
+	var enabled := true
+
+	func _rects() -> Array:
+		var vp: Vector2 = get_viewport_rect().size
+		var n: int = info.size()
+		var total: float = SZ * float(n) + 8.0 * float(maxi(0, n - 1))
+		var x0: float = vp.x - total - 16.0
+		var y0: float = vp.y - SZ - 14.0
+		var out: Array = []
+		for i in range(n):
+			out.append(Rect2(x0 + float(i) * (SZ + 8.0), y0, SZ, SZ))
+		return out
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _input(event: InputEvent) -> void:
+		if not enabled:
+			return
+		if event is InputEventScreenTouch and event.pressed:
+			var rs: Array = _rects()
+			for i in range(rs.size()):
+				if rs[i].has_point(event.position):
+					get_viewport().set_input_as_handled()
+					picked.emit(i)
+					return
+
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		var rs: Array = _rects()
+		for i in range(rs.size()):
+			var r: Rect2 = rs[i]
+			var it: Dictionary = info[i]
+			var col: Color = it["color"]
+			var is_act: bool = i == active
+			var border: Color = Color("#ffd33d") if is_act else Color(col.r, col.g, col.b, 0.6)
+			draw_rect(r.grow(3.0 if is_act else 1.0), border)
+			draw_rect(r, Color(0.08, 0.12, 0.2, 0.9))
+			draw_circle(r.position + Vector2(SZ * 0.5, 26.0), 14.0, Color(col.r, col.g, col.b, 0.4))
+			draw_circle(r.position + Vector2(SZ * 0.5, 26.0), 9.0, col)
+			if bool(it["evo"]):
+				draw_circle(r.position + Vector2(SZ * 0.5, 26.0), 4.0, Color("#ffd23f"))
+			draw_string(font, r.position + Vector2(5.0, 15.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color("#8fa8cc"))
+			draw_string(font, r.position + Vector2(2.0, 55.0), String(it["name"]), HORIZONTAL_ALIGNMENT_CENTER, SZ - 4.0, 11, Color.WHITE)
+			var mx: int = int(it["max"])
+			var lv: int = int(it["lvl"])
+			var pw: float = (SZ - 12.0) / float(maxi(1, mx))
+			for p in range(mx):
+				var pc := Color(1, 1, 1, 0.2)
+				if p < lv:
+					pc = Color("#ffd33d")
+				draw_rect(Rect2(r.position.x + 6.0 + float(p) * pw, r.position.y + 60.0, pw - 1.5, 4.0), pc)
+			draw_rect(Rect2(r.position.x, r.position.y + SZ - 6.0, SZ * float(it["frac"]), 6.0), Color(col.r, col.g, col.b, 0.8))
+
+
+# ---------------------------------------------------------------
+# Orbe de experiencia / objeto que suelta un enemigo
+# ---------------------------------------------------------------
+class Orb extends Node2D:
+	var kind := "xp"
+	var value := 20.0
+	var vel := Vector2.ZERO
+	var pulled := false
+
+	func _draw() -> void:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+		draw_circle(Vector2.ZERO, 6.0, Color(0, 0, 0, 0.3))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var c := Vector2(0.0, -9.0)
+		if kind == "xp":
+			draw_circle(c, 8.0, Color(0.16, 0.56, 0.82, 0.35))
+			draw_circle(c, 4.5, Color("#7fe0ff"))
+			draw_circle(c + Vector2(-1.2, -1.4), 1.6, Color(1, 1, 1, 0.9))
+		elif kind == "xpBig":
+			draw_circle(c, 12.0, Color(0.75, 0.54, 0.06, 0.35))
+			draw_circle(c, 7.0, Color("#ffd95e"))
+			draw_circle(c + Vector2(-2.0, -2.2), 2.4, Color(1, 1, 1, 0.9))
+		else:
+			var col := Color("#5fe08a")
+			var sym := "+"
+			if kind == "magnet":
+				col = Color("#7fe0ff")
+				sym = "M"
+			elif kind == "bomb":
+				col = Color("#ff7b3d")
+				sym = "B"
+			elif kind == "item":
+				col = Color("#ff8ad8")
+				sym = "?"
+			draw_circle(c, 13.0, Color(col.r, col.g, col.b, 0.35))
+			draw_circle(c, 9.0, col)
+			draw_string(ThemeDB.fallback_font, c + Vector2(-9.0, 6.0), sym, HORIZONTAL_ALIGNMENT_CENTER, 18.0, 16, Color(0, 0, 0, 0.85))
+
+
+
+# ---------------------------------------------------------------
+# Cartas de subida de nivel (tactil, mando y teclado)
+# ---------------------------------------------------------------
+class Cards extends Node2D:
+	signal chosen(idx: int)
+	var items: Array = []
+	var sel := 0
+	var open := false
+	var age := 0.0
+	var title := ""
+	var headline := "¡Subes de nivel!"
+	var _axis_free := true
+
+	func show_cards(list: Array, heading: String, head: String = "¡Subes de nivel!") -> void:
+		items = list
+		title = heading
+		headline = head
+		sel = 0
+		open = true
+		age = 0.0
+		_axis_free = false
+		queue_redraw()
+
+	func hide_cards() -> void:
+		open = false
+		queue_redraw()
+
+	func _rects() -> Array:
+		var vp: Vector2 = get_viewport_rect().size
+		var n: int = items.size()
+		var gap := 20.0
+		var w: float = minf(300.0, (vp.x - 80.0 - gap * float(n - 1)) / float(maxi(n, 1)))
+		var h := 270.0
+		var total: float = w * float(n) + gap * float(n - 1)
+		var x0: float = (vp.x - total) * 0.5
+		var y0: float = vp.y * 0.5 - h * 0.5 + 16.0
+		var out: Array = []
+		for i in range(n):
+			out.append(Rect2(x0 + float(i) * (w + gap), y0, w, h))
+		return out
+
+	func _process(delta: float) -> void:
+		if open:
+			age += delta
+			queue_redraw()
+
+	func _move(step: int) -> void:
+		if items.is_empty():
+			return
+		sel = posmod(sel + step, items.size())
+		queue_redraw()
+
+	func _pick(i: int) -> void:
+		if i >= 0 and i < items.size():
+			sel = i
+			chosen.emit(i)
+
+	func _input(event: InputEvent) -> void:
+		if not open:
+			return
+		if event is InputEventJoypadMotion and event.axis == JOY_AXIS_LEFT_X:
+			if absf(event.axis_value) < 0.3:
+				_axis_free = true
+			elif absf(event.axis_value) > 0.6 and _axis_free and age > 0.3:
+				_axis_free = false
+				_move(1 if event.axis_value > 0.0 else -1)
+			return
+		var pressed := false
+		if event is InputEventScreenTouch:
+			pressed = event.pressed
+		elif event is InputEventJoypadButton:
+			pressed = event.pressed
+		elif event is InputEventKey:
+			pressed = event.pressed and not event.echo
+		if not pressed:
+			return
+		# Tragamos las pulsaciones (no las sueltas) mientras hay cartas.
+		get_viewport().set_input_as_handled()
+		if age < 0.4:
+			return
+		if event is InputEventScreenTouch:
+			var rs: Array = _rects()
+			for i in range(rs.size()):
+				if rs[i].has_point(event.position):
+					_pick(i)
+					return
+		elif event is InputEventKey:
+			match event.keycode:
+				KEY_1:
+					_pick(0)
+				KEY_2:
+					_pick(1)
+				KEY_3:
+					_pick(2)
+				KEY_LEFT, KEY_A:
+					_move(-1)
+				KEY_RIGHT, KEY_D:
+					_move(1)
+				KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_E:
+					_pick(sel)
+		elif event is InputEventJoypadButton:
+			match event.button_index:
+				JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_LEFT_SHOULDER:
+					_move(-1)
+				JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_RIGHT_SHOULDER:
+					_move(1)
+				JOY_BUTTON_A:
+					_pick(sel)
+
+	func _draw() -> void:
+		if not open:
+			return
+		var font := ThemeDB.fallback_font
+		var vp: Vector2 = get_viewport_rect().size
+		draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
+		draw_string(font, Vector2(0.0, vp.y * 0.5 - 150.0), headline, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color("#ffd33d"))
+		draw_string(font, Vector2(0.0, vp.y * 0.5 - 118.0), title, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color.WHITE)
+		var rs: Array = _rects()
+		for i in range(rs.size()):
+			var r: Rect2 = rs[i]
+			var it: Dictionary = items[i]
+			var tag_col: Color = it["color"]
+			var chosen_now: bool = i == sel
+			var border: Color = tag_col
+			if chosen_now:
+				border = Color("#ffd33d")
+			draw_rect(r.grow(4.0 if chosen_now else 1.5), border)
+			draw_rect(r, Color("#1b2a44"))
+			draw_rect(Rect2(r.position, Vector2(r.size.x, 32.0)), Color(tag_col.r, tag_col.g, tag_col.b, 0.35))
+			draw_string(font, r.position + Vector2(10.0, 22.0), String(it["tag"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 40.0, 16, Color.WHITE)
+			draw_string(font, r.position + Vector2(r.size.x - 24.0, 22.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#8fa8cc"))
+			draw_multiline_string(font, r.position + Vector2(12.0, 80.0), String(it["title"]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 24.0, 26, 2, Color.WHITE)
+			draw_multiline_string(font, r.position + Vector2(16.0, 160.0), String(it["desc"]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 32.0, 19, 5, Color("#c8d6ee"))
+		draw_string(font, Vector2(0.0, vp.y - 24.0), "Toca una carta  |  Mando: izq/der + A  |  Teclado: 1 2 3", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, Color("#8fa8cc"))
+
+
+# ---------------------------------------------------------------
+# Numero de dano flotante
+# ---------------------------------------------------------------
+class Floater extends Node2D:
+	var text := ""
+	var color := Color.WHITE
+	var life := 0.7
+	var age := 0.0
+	var size := 18
+
+	func _process(delta: float) -> void:
+		age += delta
+		position.y -= 38.0 * delta
+		if age >= life:
+			queue_free()
+		queue_redraw()
+
+	func _draw() -> void:
+		var k: float = clampf(age / life, 0.0, 1.0)
+		var a: float = clampf(1.0 - k * k, 0.0, 1.0)
+		var font := ThemeDB.fallback_font
+		draw_string_outline(font, Vector2(-30.0, 0.0), text, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, 4, Color(0, 0, 0, a))
+		draw_string(font, Vector2(-30.0, 0.0), text, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, Color(color.r, color.g, color.b, a))
+
+
+
+# ---------------------------------------------------------------
+# Suelo: cuadricula que sigue a la camara (provisional, hasta tener mapa)
+# ---------------------------------------------------------------
+class Ground extends Node2D:
+	const TILE := 64.0
+	var center := Vector2.ZERO
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var half: Vector2 = get_viewport_rect().size * 0.5 + Vector2(TILE, TILE)
+		var x0: int = int(floor((center.x - half.x) / TILE))
+		var x1: int = int(ceil((center.x + half.x) / TILE))
+		var y0: int = int(floor((center.y - half.y) / TILE))
+		var y1: int = int(ceil((center.y + half.y) / TILE))
+		for ix in range(x0, x1 + 1):
+			for iy in range(y0, y1 + 1):
+				var c := Color("#1f3d2e")
+				if posmod(ix + iy, 2) == 1:
+					c = Color("#244632")
+				draw_rect(Rect2(ix * TILE, iy * TILE, TILE, TILE), c)
+
+
+
+# ---------------------------------------------------------------
+# HUD: vida, tiempo, derrotados, pantalla de derrota
+# ---------------------------------------------------------------
+class Hud extends Node2D:
+	var hp := 1.0
+	var max_hp := 1.0
+	var run_time := 0.0
+	var kills := 0
+	var dead := false
+	var show_end := false
+	var poke_name := ""
+	var level := 1
+	var xp := 0.0
+	var xp_next := 1.0
+	var buff_text := ""
+	var item_name := ""
+	var weather_text := ""
+	var banner := ""
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		var vp: Vector2 = get_viewport_rect().size
+		var frac: float = clampf(hp / max_hp, 0.0, 1.0)
+		var col := Color("#5fe08a")
+		if frac <= 0.25:
+			col = Color("#ff6b7a")
+		elif frac <= 0.5:
+			col = Color("#ffd33d")
+		draw_rect(Rect2(0.0, 0.0, vp.x, 8.0), Color(0, 0, 0, 0.55))
+		draw_rect(Rect2(0.0, 0.0, vp.x * clampf(xp / xp_next, 0.0, 1.0), 8.0), Color("#7fe0ff"))
+		draw_rect(Rect2(16.0, 16.0, 240.0, 18.0), Color(0, 0, 0, 0.55))
+		draw_rect(Rect2(18.0, 18.0, 236.0 * frac, 14.0), col)
+		draw_string(font, Vector2(16.0, 54.0), "%s  PS %d/%d" % [poke_name, ceili(hp), ceili(max_hp)], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
+		draw_string(font, Vector2(16.0, 76.0), "Nv. %d" % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#7fe0ff"))
+		if buff_text != "":
+			draw_string(font, Vector2(16.0, 98.0), buff_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, Color("#ffd33d"))
+		if item_name != "":
+			draw_string(font, Vector2(16.0, 120.0), "Objeto: " + item_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, Color("#ff8ad8"))
+		if weather_text != "":
+			draw_string(font, Vector2(0.0, 62.0), weather_text, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, Color("#cfe2ff"))
+		if banner != "":
+			draw_string(font, Vector2(0.0, 92.0), banner, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffffff"))
+		var clock: String = "%02d:%02d" % [floori(run_time / 60.0), int(run_time) % 60]
+		draw_string(font, Vector2(0.0, 36.0), clock, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
+		draw_string(font, Vector2(vp.x - 236.0, 36.0), "Derrotados: %d" % kills, HORIZONTAL_ALIGNMENT_RIGHT, 220.0, 20, Color.WHITE)
+		if dead:
+			draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.5))
+			draw_string(font, Vector2(0.0, vp.y * 0.45), "Has caído...", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 48, Color.WHITE)
+			draw_string(font, Vector2(0.0, vp.y * 0.45 + 40.0), "Aguantaste %s y derrotaste %d" % [clock, kills], HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color.WHITE)
+			if show_end:
+				draw_string(font, Vector2(0.0, vp.y * 0.45 + 84.0), "Pulsa una tecla, un botón o toca la pantalla para reintentar", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffd33d"))
+
+
+# ---------------------------------------------------------------
+# Clima: tinte suave y pocas particulas (weather.js)
+# ---------------------------------------------------------------
+class WeatherFx extends Node2D:
+	var kind := ""
+	var level := 0.0
+	var def: Dictionary = {}
+	var parts: Array = []
+
+	func setup(d: Dictionary) -> void:
+		def = d
+		parts.clear()
+
+	func clear() -> void:
+		def = {}
+		parts.clear()
+		queue_redraw()
+
+	func _new_part(vp: Vector2, anywhere: bool) -> Dictionary:
+		var y: float = randf() * vp.y if anywhere else -10.0
+		if kind == "rain":
+			return {"x": randf() * (vp.x + 200.0), "y": y, "vx": -120.0, "vy": 720.0, "t": 0.0, "life": 9.0}
+		if kind == "snow":
+			return {"x": randf() * vp.x, "y": y, "vx": randf_range(-20.0, 20.0), "vy": randf_range(40.0, 80.0), "t": 0.0, "life": 20.0}
+		if kind == "sand":
+			return {"x": randf() * vp.x if anywhere else vp.x + 20.0, "y": randf() * vp.y, "vx": randf_range(-520.0, -380.0), "vy": randf_range(20.0, 60.0), "t": 0.0, "life": 9.0}
+		return {"x": randf() * vp.x, "y": randf() * vp.y if anywhere else vp.y + 5.0, "vx": randf_range(-8.0, 8.0), "vy": -randf_range(15.0, 30.0), "t": 0.0, "life": 12.0}
+
+	func _process(delta: float) -> void:
+		if kind == "" or level <= 0.0 or def.is_empty():
+			if not parts.is_empty():
+				parts.clear()
+				queue_redraw()
+			return
+		var vp: Vector2 = get_viewport_rect().size
+		var want: int = int(float(def["parts"]) * level * (vp.x / 1280.0))
+		while parts.size() < want:
+			parts.append(_new_part(vp, true))
+		if parts.size() > want + 4:
+			parts.resize(want)
+		for i in range(parts.size()):
+			var p: Dictionary = parts[i]
+			p["x"] = float(p["x"]) + float(p["vx"]) * delta
+			p["y"] = float(p["y"]) + float(p["vy"]) * delta
+			p["t"] = float(p["t"]) + delta
+			if float(p["y"]) > vp.y + 20.0 or float(p["x"]) < -40.0 or float(p["x"]) > vp.x + 40.0 or float(p["y"]) < -40.0 or float(p["t"]) > float(p["life"]):
+				parts[i] = _new_part(vp, false)
+		queue_redraw()
+
+	func _draw() -> void:
+		if kind == "" or level <= 0.0 or def.is_empty():
+			return
+		var vp: Vector2 = get_viewport_rect().size
+		var t: Array = def["tint"]
+		draw_rect(Rect2(Vector2.ZERO, vp), Color(float(t[0]), float(t[1]), float(t[2]), float(t[3]) * level))
+		var s: float = maxf(2.0, roundf(vp.x / 640.0))
+		for p in parts:
+			var pos := Vector2(float(p["x"]), float(p["y"]))
+			if kind == "rain":
+				draw_line(pos, pos + Vector2(-s * 1.2, -s * 5.0), Color(0.81, 0.89, 1.0, 0.5 * level), s * 0.5)
+			elif kind == "snow":
+				draw_rect(Rect2(pos, Vector2(s, s)), Color(1, 1, 1, 0.7 * level))
+			elif kind == "sand":
+				draw_rect(Rect2(pos, Vector2(s * 3.0, s * 0.5)), Color(0.91, 0.81, 0.56, 0.4 * level))
+			else:
+				draw_rect(Rect2(pos, Vector2(s, s)), Color(1.0, 0.95, 0.69, 0.45 * level))
+
+
+# ---------------------------------------------------------------
+# Joystick tactil flotante: aparece donde pones el dedo
+# ---------------------------------------------------------------
+class Stick extends Node2D:
+	const RADIUS := 90.0
+	var axis := Vector2.ZERO
+	var _id := -1
+	var _origin := Vector2.ZERO
+	var _pos := Vector2.ZERO
+
+	func _input(event: InputEvent) -> void:
+		if event is InputEventScreenTouch:
+			if event.pressed and _id == -1:
+				_id = event.index
+				_origin = event.position
+				_pos = event.position
+			elif not event.pressed and event.index == _id:
+				_id = -1
+				axis = Vector2.ZERO
+			queue_redraw()
+		elif event is InputEventScreenDrag and event.index == _id:
+			var v: Vector2 = event.position - _origin
+			if v.length() > RADIUS:
+				v = v.normalized() * RADIUS
+			_pos = _origin + v
+			axis = v / RADIUS
+			queue_redraw()
+
+	func _draw() -> void:
+		if _id == -1:
+			return
+		draw_arc(_origin, RADIUS, 0.0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)
+		draw_circle(_pos, 28.0, Color(1, 1, 1, 0.45))
+

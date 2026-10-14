@@ -1,0 +1,47 @@
+# types_data.gd - tabla de tipos, climas y objetos (de types.js, weather.js, items.js). No editar a mano.
+extends RefCounted
+
+const CHART := {
+	"normal": {"rock": 0.5, "ghost": 0, "steel": 0.5},
+	"fire": {"fire": 0.5, "water": 0.5, "grass": 2, "ice": 2, "bug": 2, "rock": 0.5, "dragon": 0.5, "steel": 2},
+	"water": {"fire": 2, "water": 0.5, "grass": 0.5, "ground": 2, "rock": 2, "dragon": 0.5},
+	"electric": {"water": 2, "electric": 0.5, "grass": 0.5, "ground": 0, "flying": 2, "dragon": 0.5},
+	"grass": {"fire": 0.5, "water": 2, "grass": 0.5, "poison": 0.5, "ground": 2, "flying": 0.5, "bug": 0.5, "rock": 2, "dragon": 0.5, "steel": 0.5},
+	"ice": {"fire": 0.5, "water": 0.5, "grass": 2, "ice": 0.5, "ground": 2, "flying": 2, "dragon": 2, "steel": 0.5},
+	"fighting": {"normal": 2, "ice": 2, "poison": 0.5, "flying": 0.5, "psychic": 0.5, "bug": 0.5, "rock": 2, "ghost": 0, "dark": 2, "steel": 2, "fairy": 0.5},
+	"poison": {"grass": 2, "poison": 0.5, "ground": 0.5, "rock": 0.5, "ghost": 0.5, "steel": 0, "fairy": 2},
+	"ground": {"fire": 2, "electric": 2, "grass": 0.5, "poison": 2, "flying": 0, "bug": 0.5, "rock": 2, "steel": 2},
+	"flying": {"electric": 0.5, "grass": 2, "fighting": 2, "bug": 2, "rock": 0.5, "steel": 0.5},
+	"psychic": {"fighting": 2, "poison": 2, "psychic": 0.5, "dark": 0, "steel": 0.5},
+	"bug": {"fire": 0.5, "grass": 2, "fighting": 0.5, "poison": 0.5, "flying": 0.5, "psychic": 2, "ghost": 0.5, "dark": 2, "steel": 0.5, "fairy": 0.5},
+	"rock": {"fire": 2, "ice": 2, "fighting": 0.5, "ground": 0.5, "flying": 2, "bug": 2, "steel": 0.5},
+	"ghost": {"normal": 0, "psychic": 2, "ghost": 2, "dark": 0.5},
+	"dragon": {"dragon": 2, "steel": 0.5, "fairy": 0},
+	"dark": {"fighting": 0.5, "psychic": 2, "ghost": 2, "dark": 0.5, "fairy": 0.5},
+	"steel": {"fire": 0.5, "water": 0.5, "electric": 0.5, "ice": 2, "rock": 2, "steel": 0.5, "fairy": 2},
+	"fairy": {"fire": 0.5, "fighting": 2, "poison": 0.5, "dragon": 2, "dark": 2, "steel": 0.5},
+}
+
+const WEATHER := {
+	"sun": {"name": "Sol abrasador", "color": "#ffcb3d", "tint": [1.0, 0.745, 0.353, 0.07], "mult": {"fire": 1.5, "water": 0.5}, "safe": [], "slow": false, "hint": "el Fuego se potencia y el Agua se debilita", "parts": 14},
+	"rain": {"name": "Lluvia", "color": "#7fb8ff", "tint": [0.196, 0.353, 0.667, 0.09], "mult": {"water": 1.5, "electric": 1.2, "fire": 0.5}, "safe": [], "slow": false, "hint": "el Agua se potencia y el Fuego se debilita", "parts": 70},
+	"sand": {"name": "Tormenta de arena", "color": "#e0bf73", "tint": [0.784, 0.627, 0.353, 0.09], "mult": {"rock": 1.3, "ground": 1.3, "steel": 1.3}, "safe": ["rock", "ground", "steel"], "slow": false, "hint": "Roca, Tierra y Acero se potencian; el resto sufre", "parts": 40},
+	"snow": {"name": "Nevada", "color": "#d8f1ff", "tint": [0.824, 0.902, 1.0, 0.08], "mult": {"ice": 1.5}, "safe": ["ice"], "slow": true, "hint": "el Hielo se potencia; el resto sufre y va más lento", "parts": 45},
+	"fog": {"name": "Niebla", "color": "#c9cfdc", "tint": [0.745, 0.765, 0.824, 0.12], "mult": {"ghost": 1.3, "fairy": 1.3, "psychic": 1.3}, "safe": [], "slow": false, "hint": "Fantasma, Hada y Psíquico se potencian", "parts": 0},
+}
+
+const BIOME_W := [{"rain": 3, "fog": 2, "sun": 1.5, "snow": 0.5, "sand": 0.5}, {"fog": 3, "snow": 2.5, "rain": 1, "sand": 1}, {"sun": 3, "sand": 3, "fog": 1}]
+
+const ITEMS := [
+	{"id": "leftovers", "name": "Restos", "desc": "Recuperas un 1,5% de tu vida por segundo."},
+	{"id": "choiceband", "name": "Cinta Elección", "desc": "+40% de daño, pero no puedes cambiar de movimiento."},
+	{"id": "quickclaw", "name": "Garra Rápida", "desc": "-20% de recarga en todos tus movimientos."},
+	{"id": "focussash", "name": "Banda Focus", "desc": "Un golpe que te dejaría KO te deja con 1 de vida (cada 60 s)."},
+	{"id": "shellbell", "name": "Cascabel Concha", "desc": "Recuperas vida con el daño que haces."},
+	{"id": "amuletcoin", "name": "Moneda Amuleto", "desc": "+50% de Pokémonedas al acabar la run."},
+	{"id": "luckyegg", "name": "Huevo Suerte", "desc": "+30% de experiencia."},
+	{"id": "lifeorb", "name": "Vidasfera", "desc": "+30% de daño, pero cada ataque te quita un poco de vida."},
+	{"id": "choicescarf", "name": "Pañuelo Elección", "desc": "+35% de velocidad."},
+	{"id": "rockyhelmet", "name": "Casco Dentado", "desc": "Los que te golpean cuerpo a cuerpo reciben daño."},
+	{"id": "assaultvest", "name": "Chaleco Asalto", "desc": "+20% de reducción de daño recibido."},
+]

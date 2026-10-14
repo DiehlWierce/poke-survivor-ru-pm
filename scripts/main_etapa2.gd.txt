@@ -1,0 +1,213 @@
+extends Node2D
+# main.gd - Etapa 2: mostrar un Pokemon con animaciones y moverlo.
+# Teclado (WASD / flechas), mando (stick izquierdo / cruceta) o joystick tactil.
+# Teclas 1 y 2 (o LB y RB del mando) cambian de Pokemon.
+
+# Datos copiados de sprites-meta.js (solo Idle y Walk, por ahora).
+# w,h = tamano de fotograma, n = fotogramas, d = duracion de cada uno (1/60 s),
+# ax,ay = ancla en los pies dentro del fotograma.
+const META := {
+	25: {
+		"shadow": 1,
+		"Idle": {"w": 40, "h": 56, "n": 6, "d": [40, 2, 3, 3, 3, 2], "ax": 19.5, "ay": 31.5},
+		"Walk": {"w": 32, "h": 40, "n": 4, "d": [8, 10, 8, 10], "ax": 15.5, "ay": 23.5},
+	},
+	4: {
+		"shadow": 1,
+		"Idle": {"w": 32, "h": 40, "n": 4, "d": [12, 8, 8, 8], "ax": 15.5, "ay": 23.5},
+		"Walk": {"w": 32, "h": 32, "n": 4, "d": [6, 8, 6, 8], "ax": 15.5, "ay": 19.5},
+	},
+}
+
+var walker: Walker
+var stick: Stick
+
+
+func _ready() -> void:
+	RenderingServer.set_default_clear_color(Color("#16233a"))
+	_add_key_actions()
+	walker = Walker.new()
+	add_child(walker)
+	walker.position = get_viewport_rect().size / 2.0
+	walker.set_pokemon(25, META[25])
+	var ui := CanvasLayer.new()
+	add_child(ui)
+	stick = Stick.new()
+	ui.add_child(stick)
+
+
+func _add_key_actions() -> void:
+	var keys := {
+		"move_left": [KEY_A, KEY_LEFT],
+		"move_right": [KEY_D, KEY_RIGHT],
+		"move_up": [KEY_W, KEY_UP],
+		"move_down": [KEY_S, KEY_DOWN],
+	}
+	var dpad := {
+		"move_left": JOY_BUTTON_DPAD_LEFT,
+		"move_right": JOY_BUTTON_DPAD_RIGHT,
+		"move_up": JOY_BUTTON_DPAD_UP,
+		"move_down": JOY_BUTTON_DPAD_DOWN,
+	}
+	var sticks := {
+		"move_left": [JOY_AXIS_LEFT_X, -1.0],
+		"move_right": [JOY_AXIS_LEFT_X, 1.0],
+		"move_up": [JOY_AXIS_LEFT_Y, -1.0],
+		"move_down": [JOY_AXIS_LEFT_Y, 1.0],
+	}
+	for action in keys:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action, 0.2)
+		for k in keys[action]:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = k
+			InputMap.action_add_event(action, ev)
+		var b := InputEventJoypadButton.new()
+		b.button_index = dpad[action]
+		InputMap.action_add_event(action, b)
+		var m := InputEventJoypadMotion.new()
+		m.axis = sticks[action][0]
+		m.axis_value = sticks[action][1]
+		InputMap.action_add_event(action, m)
+
+
+func _process(_delta: float) -> void:
+	var v := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if v == Vector2.ZERO and stick.axis.length() > 0.15:
+		v = stick.axis
+	walker.move_dir = v.normalized() if v.length() > 0.0 else Vector2.ZERO
+	var sz := get_viewport_rect().size
+	walker.position = walker.position.clamp(Vector2(40, 40), sz - Vector2(40, 40))
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var pick := 0
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_1:
+			pick = 25
+		elif event.keycode == KEY_2:
+			pick = 4
+	elif event is InputEventJoypadButton and event.pressed:
+		if event.button_index == JOY_BUTTON_LEFT_SHOULDER:
+			pick = 25
+		elif event.button_index == JOY_BUTTON_RIGHT_SHOULDER:
+			pick = 4
+	if pick != 0:
+		walker.set_pokemon(pick, META[pick])
+
+
+# ---------------------------------------------------------------
+# El Pokemon: sprite + animacion + movimiento
+# ---------------------------------------------------------------
+class Walker extends Node2D:
+	const PX := 2.0               # unidades de mundo por pixel de arte
+	var speed := 200.0            # provisional; luego sale de los datos del Pokemon
+	var move_dir := Vector2.ZERO
+
+	var dex := 25
+	var info: Dictionary = {}
+	var sprite := Sprite2D.new()
+	var textures := {}
+	var anim := "Idle"
+	var frame := 0
+	var t := 0.0
+	var anim_speed := 1.0
+	var dir := 0                  # fila: 0 Down,1 DownRight,2 Right,3 UpRight,4 Up,5 UpLeft,6 Left,7 DownLeft
+
+	func _ready() -> void:
+		sprite.centered = false
+		sprite.region_enabled = true
+		sprite.scale = Vector2(PX, PX)
+		add_child(sprite)
+
+	func set_pokemon(d: int, i: Dictionary) -> void:
+		dex = d
+		info = i
+		textures.clear()
+		anim = "Idle"
+		frame = 0
+		t = 0.0
+		_apply()
+		queue_redraw()
+
+	func _tex(a: String) -> Texture2D:
+		if not textures.has(a):
+			textures[a] = load("res://assets/pokemon/%d/%s.png" % [dex, a])
+		return textures[a]
+
+	func _set_anim(a: String, spd: float) -> void:
+		if anim != a:
+			anim = a
+			frame = 0
+			t = 0.0
+		anim_speed = spd
+
+	func _dir_from_angle(a: float) -> int:
+		var r := int(floor((PI / 2.0 - a) / (PI / 4.0) + 0.5))
+		return posmod(r, 8)
+
+	func _process(delta: float) -> void:
+		if info.is_empty():
+			return
+		var walking := move_dir.length() > 0.0
+		position += move_dir * speed * delta
+		if walking:
+			dir = _dir_from_angle(move_dir.angle())
+			_set_anim("Walk", speed / 110.0)
+		else:
+			_set_anim("Idle", 1.0)
+		var am: Dictionary = info[anim]
+		t += delta * 60.0 * anim_speed
+		while t >= am["d"][frame]:
+			t -= am["d"][frame]
+			frame += 1
+			if frame >= am["n"]:
+				frame = 0
+		_apply()
+
+	func _apply() -> void:
+		var am: Dictionary = info[anim]
+		sprite.texture = _tex(anim)
+		sprite.offset = Vector2(-am["ax"], -am["ay"])
+		sprite.region_rect = Rect2(frame * am["w"], dir * am["h"], am["w"], am["h"])
+
+	func _draw() -> void:
+		var sizes := [5.0, 8.0, 12.0]
+		var rx: float = sizes[clampi(int(info.get("shadow", 1)), 0, 2)] * PX
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+		draw_circle(Vector2.ZERO, rx, Color(0, 0, 0, 0.34))
+
+
+# ---------------------------------------------------------------
+# Joystick tactil flotante: aparece donde pones el dedo
+# ---------------------------------------------------------------
+class Stick extends Node2D:
+	const RADIUS := 90.0
+	var axis := Vector2.ZERO
+	var _id := -1
+	var _origin := Vector2.ZERO
+	var _pos := Vector2.ZERO
+
+	func _input(event: InputEvent) -> void:
+		if event is InputEventScreenTouch:
+			if event.pressed and _id == -1:
+				_id = event.index
+				_origin = event.position
+				_pos = event.position
+			elif not event.pressed and event.index == _id:
+				_id = -1
+				axis = Vector2.ZERO
+			queue_redraw()
+		elif event is InputEventScreenDrag and event.index == _id:
+			var v: Vector2 = event.position - _origin
+			if v.length() > RADIUS:
+				v = v.normalized() * RADIUS
+			_pos = _origin + v
+			axis = v / RADIUS
+			queue_redraw()
+
+	func _draw() -> void:
+		if _id == -1:
+			return
+		draw_arc(_origin, RADIUS, 0.0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)
+		draw_circle(_pos, 28.0, Color(1, 1, 1, 0.45))
