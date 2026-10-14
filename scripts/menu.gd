@@ -27,8 +27,10 @@ var cur := ""
 var coin_lbl: Label
 var coin_pill: PanelContainer
 var tix_pill: PanelContainer
-var name_pill: PanelContainer
-var name_lbl: Label
+var name_pill: Button
+var name_lbl: Button
+var tab_sel: Button
+var tab_row: Control
 var mute_top: Button
 var set_top: Button
 var ticket_lbl: Label
@@ -41,6 +43,7 @@ var ach_box: HBoxContainer
 var ach_t := 0.0
 var toast_t := 0.0
 var back_btn: Button
+var credit_lbl: Label
 var pad_hint: Label
 var shade: ColorRect
 var focus_first: Control = null
@@ -188,6 +191,10 @@ class Mon extends Node2D:
 	var fx0 := 0.0
 	var fx1 := 1.0
 	var ysort := false
+	var fixed := false      # quieto en su sitio, de frente, y embiste cada cierto tiempo (como en Mundo Misterioso)
+	var home := Vector2.ZERO
+	var lunge := 22.0
+	var fdir := 0
 
 	func setup(d: int, kk: float, shn: bool, b: Rect2, wd: bool = true) -> void:
 		dex = d
@@ -218,6 +225,10 @@ class Mon extends Node2D:
 		frame = 0
 		t = 0.0
 		_apply()
+
+	func _lunge_vec() -> Vector2:
+		var a: float = float(fdir) * PI / 4.0
+		return Vector2(sin(a), cos(a))
 
 	func _face(v: Vector2) -> void:
 		var a: float = v.angle()
@@ -280,10 +291,25 @@ class Mon extends Node2D:
 				frame = 0
 				if state == "attack":
 					state = "idle"
-					wait = randf_range(0.5, 1.4)
+					wait = randf_range(1.4, 2.6) if fixed else randf_range(0.5, 1.4)
 					_set_anim("Idle")
 					am = meta[anim]
-		if state == "idle":
+		if fixed:
+			dir = fdir
+			if state == "idle":
+				wait -= delta
+				position = home
+				if wait <= 0.0:
+					if meta.has("Attack"):
+						state = "attack"
+						_set_anim("Attack")
+					else:
+						wait = 1.5
+			elif state == "attack":
+				var ai: Dictionary = meta[anim]
+				var prog: float = clampf((float(frame) + t / maxf(1.0, float(ai["d"][frame]))) / float(maxi(1, int(ai["n"]))), 0.0, 1.0)
+				position = home + _lunge_vec() * sin(prog * PI) * lunge
+		elif state == "idle":
 			wait -= delta
 			if wait <= 0.0 and wander:
 				_next()
@@ -297,7 +323,7 @@ class Mon extends Node2D:
 				_set_anim("Idle")
 			else:
 				position += v.normalized() * step
-		if not ysort:
+		if not ysort and not fixed:
 			z_index = int(position.y)
 		_apply()
 		queue_redraw()
@@ -551,7 +577,11 @@ class Banner extends Control:
 		m.fx0 = f0
 		m.fx1 = f1
 		add_child(m)
-		m.setup(d, kk, false, Rect2(f0 * 700.0, 250.0, (f1 - f0) * 700.0, 60.0), true)
+		m.setup(d, kk, false, Rect2(f0 * 700.0, 250.0, (f1 - f0) * 700.0, 60.0), false)
+		m.fixed = true
+		m.fdir = 1   # diagonal abajo-derecha
+		m.dir = 1
+		m.wait = 0.5 + 0.9 * float(mons.size())
 		mons.append(m)
 		_layout()
 
@@ -561,11 +591,9 @@ class Banner extends Control:
 
 	func _layout() -> void:
 		for m in mons:
-			var b := Rect2(m.fx0 * size.x + 40.0, size.y * 0.66, (m.fx1 - m.fx0) * size.x - 80.0, size.y * 0.24)
-			if b.size.x < 20.0:
-				b.size.x = 20.0
-			m.bounds = b
-			m.position = Vector2(clampf(m.position.x, b.position.x, b.end.x), clampf(m.position.y, b.position.y, b.end.y))
+			# fila fija: centrada en su tercio, todos a la misma altura
+			m.home = Vector2((m.fx0 + m.fx1) * 0.5 * size.x, size.y * 0.80)
+			m.position = m.home
 
 	func _draw() -> void:
 		var w: float = size.x
@@ -592,7 +620,9 @@ class Portrait extends Control:
 			mon.queue_free()
 		mon = Mon.new()
 		add_child(mon)
-		mon.setup(d, 3.0, false, Rect2(60.0, 120.0, 80.0, 24.0), true)
+		mon.setup(d, 3.0, false, Rect2(60.0, 120.0, 80.0, 24.0), false)
+		mon.dir = 0
+		mon.ysort = true   # sin z_index propio: nunca queda por encima de menus y resultados
 		_layout()
 
 	func _notification(what: int) -> void:
@@ -601,8 +631,8 @@ class Portrait extends Control:
 
 	func _layout() -> void:
 		if mon != null:
-			mon.bounds = Rect2(size.x * 0.5 - 40.0, size.y * 0.72, 80.0, size.y * 0.16)
-			mon.position = Vector2(clampf(mon.position.x, mon.bounds.position.x, mon.bounds.end.x), clampf(mon.position.y, mon.bounds.position.y, mon.bounds.end.y))
+			# Quieto, centrado y mirando al frente; solo se anima en el sitio.
+			mon.position = Vector2(size.x * 0.5, size.y * 0.82)
 
 	func _draw() -> void:
 		var w: float = size.x
@@ -630,6 +660,15 @@ class Pips extends Control:
 # ---------------------------------------------------------------
 # Construccion
 # ---------------------------------------------------------------
+# Foco de mando: borde negro con halo blanco (se ve sobre dorado, gris y azul).
+func _sb_focus(col: Color) -> StyleBoxFlat:
+	var s := _sb(col, Color.BLACK, 4, 12)
+	s.shadow_color = Color.WHITE
+	s.shadow_size = 4
+	s.shadow_offset = Vector2.ZERO
+	return s
+
+
 func _sb(col: Color, border: Color = Color.TRANSPARENT, bw: int = 0, radius: int = 8) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = col
@@ -677,6 +716,7 @@ func _ready() -> void:
 	# fondo: un trozo del mapa que se desplaza solo, con Pokemon caminando
 	if not is_overlay:
 		var world := MenuWorld.new()
+		world.z_index = -4000   # el fondo siempre queda detras de toda la interfaz
 		add_child(world)
 		world.start()
 	shade = ColorRect.new()
@@ -694,6 +734,15 @@ func _ready() -> void:
 	add_child(top)
 	back_btn = _btn("◀ Volver", func(): _leave(), Vector2(150, 44))
 	top.add_child(back_btn)
+	credit_lbl = Label.new()
+	credit_lbl.text = L.t("Un port hecho por JayElDragon")
+	credit_lbl.add_theme_font_size_override("font_size", 20)
+	credit_lbl.add_theme_color_override("font_color", Color("#ffe9a8"))
+	credit_lbl.add_theme_color_override("font_outline_color", Color.BLACK)
+	credit_lbl.add_theme_constant_override("outline_size", 6)
+	credit_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	credit_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(credit_lbl)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(sp)
@@ -703,18 +752,12 @@ func _ready() -> void:
 	tix_pill = _pill()
 	ticket_lbl = _pill_item(tix_pill, "ticket", C_GOLD)
 	ticket10_lbl = _pill_item(tix_pill, "ticket10", Color("#c47bff"))
-	name_pill = _pill()
-	var crown := IC.rect("crown", 26)
-	name_pill.get_child(0).add_child(crown)
-	name_lbl = Label.new()
-	name_lbl.add_theme_color_override("font_color", Color.WHITE)
-	name_lbl.add_theme_font_size_override("font_size", 22)
-	name_pill.get_child(0).add_child(name_lbl)
-	var dot := ColorRect.new()
-	dot.color = Color("#3ddc84")
-	dot.custom_minimum_size = Vector2(12, 12)
-	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	name_pill.get_child(0).add_child(dot)
+	name_pill = _icon_btn("crown", func(): goals_tab = "p"; _show("goals"))
+	name_pill.custom_minimum_size = Vector2(0, 44)
+	name_pill.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_pill.add_theme_font_size_override("font_size", 22)
+	name_pill.add_theme_constant_override("h_separation", 10)
+	name_lbl = name_pill
 	top.add_child(coin_pill)
 	top.add_child(_gap(8))
 	top.add_child(tix_pill)
@@ -880,7 +923,11 @@ func _cost_btn(title: String, cost: String, icon: String, cost_icon: String, cb:
 	var tcol: Color = Color.WHITE
 	if gold:
 		_gold_btn(b, enabled)
-		tcol = Color("#2b1d05") if enabled else Color("#3b3220")
+		tcol = Color.WHITE if enabled else Color.BLACK
+		if not enabled:
+			for st0 in ["normal", "hover", "pressed", "disabled"]:
+				b.add_theme_stylebox_override(st0, _sb(Color("#a89c82"), Color("#6b6250"), 3, 12))
+			b.add_theme_stylebox_override("focus", _sb_focus(Color("#b8ad94")))
 	var hb := HBoxContainer.new()
 	hb.set_anchors_preset(Control.PRESET_FULL_RECT)
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -901,7 +948,8 @@ func _cost_btn(title: String, cost: String, icon: String, cost_icon: String, cb:
 		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if gold:
-			tl.add_theme_constant_override("outline_size", 0)
+			tl.add_theme_constant_override("outline_size", 5 if enabled else 0)
+			tl.add_theme_color_override("font_outline_color", Color("#3a2606"))
 		holder.add_child(tl)
 	var cr := HBoxContainer.new()
 	cr.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -912,7 +960,8 @@ func _cost_btn(title: String, cost: String, icon: String, cost_icon: String, cb:
 	cl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	cl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if gold:
-		cl.add_theme_constant_override("outline_size", 0)
+		cl.add_theme_constant_override("outline_size", 5 if enabled else 0)
+		cl.add_theme_color_override("font_outline_color", Color("#3a2606"))
 	cr.add_child(cl)
 	holder.add_child(cr)
 	hb.add_child(holder)
@@ -926,7 +975,7 @@ func _gold_btn(b: Button, on: bool) -> void:
 	var edge := Color("#fff4d0") if on else Color("#5b5240")
 	for st in ["normal", "hover", "pressed", "disabled"]:
 		b.add_theme_stylebox_override(st, _sb(c, edge, 3, 12))
-	b.add_theme_stylebox_override("focus", _sb(c.lightened(0.15), Color.WHITE, 5, 12))
+	b.add_theme_stylebox_override("focus", _sb_focus(c.lightened(0.15)))
 
 
 func _card_sb() -> StyleBoxFlat:
@@ -956,6 +1005,45 @@ func _btn(text: String, cb: Callable, min_size: Vector2 = Vector2(0, 52)) -> But
 	b.pressed.connect(func(): Aud.sfx("click"))
 	b.focus_entered.connect(func(): Aud.sfx("hover"))
 	return b
+
+
+# Con mando: el ScrollContainer sigue al control enfocado.
+# Si no hay nada enfocable mas abajo (o arriba) pero el menu sigue, el D-pad desplaza la lista.
+func _scroll_fallback(down: bool) -> bool:
+	var f: Control = get_viewport().gui_get_focus_owner()
+	if f == null or not screens.has(cur):
+		return false
+	var p: Node = f.get_parent()
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	if p == null:
+		return false
+	var sc := p as ScrollContainer
+	var nb: Control = f.find_valid_focus_neighbor(SIDE_BOTTOM if down else SIDE_TOP)
+	if nb != null and sc.is_ancestor_of(nb):
+		return false
+	var mx: float = maxf(0.0, (sc.get_v_scroll_bar().max_value - sc.size.y))
+	var cur_v: float = float(sc.scroll_vertical)
+	if down and cur_v >= mx - 1.0:
+		return false
+	if not down and cur_v <= 0.0:
+		return false
+	sc.scroll_vertical = int(cur_v + (140.0 if down else -140.0))
+	return true
+
+
+func _follow_focus() -> void:
+	var f: Control = get_viewport().gui_get_focus_owner()
+	if f != null and is_visible_in_tree():
+		_follow(f)
+
+
+func _follow(c: Control) -> void:
+	var p: Node = c.get_parent()
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	if p != null:
+		(p as ScrollContainer).call_deferred("ensure_control_visible", c)
 
 
 func _panel(parent: Node) -> VBoxContainer:
@@ -1003,6 +1091,7 @@ func _show(name: String) -> void:
 	for k in screens:
 		screens[k].visible = k == name
 	back_btn.visible = name != "main" and name != "test"
+	credit_lbl.visible = name == "main"
 	shade.color.a = 0.30 if name == "main" else 0.62
 	for pn in [coin_pill, tix_pill, name_pill, mute_top, set_top]:
 		pn.visible = name != "test"
@@ -1152,6 +1241,19 @@ func _input(event: InputEvent) -> void:
 			_refresh_gacha()
 			get_viewport().set_input_as_handled()
 			return
+	if event.is_action_pressed("ui_left") and cur in ["settings", "goals", "gacha"] and tab_sel != null and is_instance_valid(tab_sel) and tab_row != null:
+		var f0: Control = get_viewport().gui_get_focus_owner()
+		if f0 != null and not tab_row.is_ancestor_of(f0) and screens.has(cur) and screens[cur].is_ancestor_of(f0):
+			var nb: Control = f0.find_valid_focus_neighbor(SIDE_LEFT)
+			if nb == null or not screens[cur].is_ancestor_of(nb):
+				tab_sel.grab_focus()
+				get_viewport().set_input_as_handled()
+				return
+	if (event.is_action_pressed("ui_down") or event.is_action_pressed("ui_up")) and _scroll_fallback(event.is_action_pressed("ui_down")):
+		get_viewport().set_input_as_handled()
+		return
+	if _nav_event(event):
+		call_deferred("_follow_focus")
 	if _nav_event(event) and get_viewport().gui_get_focus_owner() == null:
 		# Al reconstruir una pantalla se pierde el foco: con mando/teclado lo recuperamos.
 		var fc: Control = _first_focusable()
@@ -1161,6 +1263,10 @@ func _input(event: InputEvent) -> void:
 			return
 	if PAD.is_cancel(event) or event.is_action_pressed("ui_cancel"):
 		if _popup_open():
+			return
+		if cur == "up" and back_btn != null and back_btn.visible and get_viewport().gui_get_focus_owner() != back_btn:
+			back_btn.grab_focus()
+			get_viewport().set_input_as_handled()
 			return
 		_go_back()
 		get_viewport().set_input_as_handled()
@@ -1751,6 +1857,52 @@ func _build_up() -> void:
 const UP_ICON := {"hp": "heart", "atk": "fist", "spd": "boot", "cd": "clock", "def": "shield", "regen": "sprout", "magnet": "magnet", "xp": "book", "coins": "coin", "moves": "cards", "crit": "star", "reroll": "bond", "ban": "ban"}
 
 
+# Reconstruye la pantalla de mejoras sin perder la seleccion del mando ni el scroll.
+func _refresh_up_keep(key: String) -> void:
+	var sc: ScrollContainer = null
+	var p: Node = up_box.get_parent()
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	if p != null:
+		sc = p as ScrollContainer
+	var sv: int = sc.scroll_vertical if sc != null else 0
+	_refresh_up()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(up_box) or cur != "up":
+		return
+	if sc != null:
+		sc.scroll_vertical = sv
+	var cand: Array = []
+	for b in up_box.find_children("*", "Control", true, false):
+		if b is BaseButton or b is OptionButton:
+			cand.append(b)
+	var target: Control = null
+	var idx_key := -1
+	for i in range(cand.size()):
+		if String(cand[i].get_meta("fk", "")) == key:
+			idx_key = i
+			if not cand[i].disabled:
+				target = cand[i]
+			break
+	if target == null and idx_key >= 0:
+		# el boton quedo desactivado (maximo / sin monedas): el siguiente activo, o el anterior
+		for i in range(idx_key + 1, cand.size()):
+			if not cand[i].disabled:
+				target = cand[i]
+				break
+		if target == null:
+			for i in range(idx_key - 1, -1, -1):
+				if not cand[i].disabled:
+					target = cand[i]
+					break
+	if target != null:
+		target.grab_focus()
+		if sc != null:
+			sc.scroll_vertical = sv
+			sc.ensure_control_visible(target)
+
+
 func _refresh_up() -> void:
 	_clear(up_box)
 	if not SV.owns(up_dex):
@@ -1806,6 +1958,8 @@ func _refresh_up() -> void:
 	grid.add_theme_constant_override("v_separation", 12)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	up_box.add_child(grid)
+	var up_anchors: Array = []
+	var up_extra: Array = []
 	for u in SV.UPGRADES:
 		var id: String = String(u["id"])
 		var lv: int = SV.up_level(id, up_dex)
@@ -1837,21 +1991,45 @@ func _refresh_up() -> void:
 		else:
 			var cost: int = SV.up_cost(id, lv)
 			btn = _cost_btn("", str(cost), "", "coin", func(): _buy(id), Vector2(120, 52), int(SV.d["coins"]) >= cost, false, true)
+			btn.set_meta("fk", "u:" + id)
 			if first == null and not btn.disabled:
 				first = btn
 		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		up_anchors.append(btn if not btn.disabled else null)
+		up_extra.append(null)
 		if id == "ban" and lv > 0:
 			var bcol := VBoxContainer.new()
 			bcol.add_theme_constant_override("separation", 6)
 			bcol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			var nb: int = mini(SV.ban_list(up_dex).size(), lv)
-			var eb := _btn(L.t("Elegir (%d/%d)") % [nb, lv], func(): ban_open = not ban_open; _refresh_up(), Vector2(120, 44))
+			var eb := _btn(L.t("Elegir (%d/%d)") % [nb, lv], func(): ban_open = not ban_open; _refresh_up_keep("elegir"), Vector2(120, 44))
+			eb.set_meta("fk", "elegir")
+			up_extra[up_extra.size() - 1] = eb
 			bcol.add_child(eb)
 			bcol.add_child(btn)
 			row.add_child(bcol)
 		else:
 			row.add_child(btn)
 	focus_first = first
+	# Izquierda/derecha: cicla dentro de la fila de tarjetas (con vuelta al otro extremo).
+	var ncol: int = grid.columns
+	var ri := 0
+	while ri < up_anchors.size():
+		var rowb: Array = []
+		var rowx: Array = []
+		for ci in range(ncol):
+			if ri + ci < up_anchors.size() and up_anchors[ri + ci] != null:
+				rowb.append(up_anchors[ri + ci])
+				rowx.append(up_extra[ri + ci])
+		for k in range(rowb.size()):
+			var nxt: Control = rowb[(k + 1) % rowb.size()]
+			var prv: Control = rowb[posmod(k - 1, rowb.size())]
+			for bb in [rowb[k], rowx[k]]:
+				if bb == null:
+					continue
+				bb.focus_neighbor_right = bb.get_path_to(nxt)
+				bb.focus_neighbor_left = bb.get_path_to(prv)
+		ri += ncol
 	var ban_lv: int = SV.up_level("ban", up_dex)
 	if ban_lv > 0 and ban_open:
 		up_box.add_child(_ban_panel(ban_lv))
@@ -1883,7 +2061,8 @@ func _ban_panel(max_n: int) -> Control:
 			else:
 				Aud.sfx("error")
 				toast(L.t("Ya tienes %d vetados: quita uno primero") % max_n)
-			_refresh_up(), Vector2(0, 40))
+			_refresh_up_keep("b:" + String(id)), Vector2(0, 40))
+		b.set_meta("fk", "b:" + String(id))
 		if on:
 			b.add_theme_stylebox_override("normal", _sb(Color("#7a2438"), Color("#ff6b7a"), 3, 10))
 		fl.add_child(b)
@@ -1927,7 +2106,8 @@ func _bind_panel() -> Control:
 			var pick: String = "" if idx == 0 else String(ids[idx - 1])
 			SV.bind_set(up_dex, slot, pick)
 			Aud.sfx("select")
-			_refresh_up())
+			_refresh_up_keep("bind%d" % slot))
+		ob.set_meta("fk", "bind%d" % slot)
 		row.add_child(ob)
 	return pc
 
@@ -1939,7 +2119,7 @@ func _buy(id: String) -> void:
 	else:
 		Aud.sfx("error")
 	_update_top()
-	_refresh_up()
+	_refresh_up_keep("u:" + id)
 
 
 # ---------------------------------------------------------------
@@ -1995,14 +2175,16 @@ func _refresh_gacha() -> void:
 	tabs.add_theme_constant_override("h_separation", 8)
 	tabs.add_theme_constant_override("v_separation", 8)
 	gacha_box.add_child(tabs)
+	tab_row = tabs
 	for i in range(1, 10):
 		var r: int = i
-		var tb := _btn(L.t(SV.REGIONS[r - 1]) + "\n" + L.t("Gen %d") % r, func(): gacha_region = r; _refresh_gacha(), Vector2(112, 62))
+		var tb := _btn(L.t(SV.REGIONS[r - 1]) + "\n" + L.t("Gen %d") % r, func(): gacha_region = r; _refresh_gacha(); _gf(tab_sel), Vector2(112, 62))
 		tb.add_theme_font_size_override("font_size", 20)
 		if r == gacha_region:
 			tb.add_theme_stylebox_override("normal", _sb(Color("#2a4aa8"), C_GOLD, 3, 12))
 			tb.add_theme_color_override("font_color", C_GOLD)
 			first = tb
+			tab_sel = tb
 		tabs.add_child(tb)
 	# --- escenario + probabilidades
 	var main := HBoxContainer.new()
@@ -2200,7 +2382,7 @@ func _build_goals() -> void:
 	v.add_child(goals_tabs)
 	for t in [["m", "Misiones"], ["a", "Logros"], ["p", "Perfil"], ["r", "Récords"]]:
 		var k: String = String(t[0])
-		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(), Vector2(200, 46))
+		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(); _gf(tab_sel), Vector2(200, 46))
 		if k == "a":
 			tb.icon = IC.btn_tex("medal1", 28)
 			tb.expand_icon = false
@@ -2246,6 +2428,9 @@ func _refresh_goals() -> void:
 	for i in range(tbs.size()):
 		var key: String = ["m", "a", "p", "r"][i]
 		_gold_btn(tbs[i], key == goals_tab)
+		if key == goals_tab:
+			tab_sel = tbs[i]
+	tab_row = goals_tabs
 	if goals_tab == "m":
 		first = _goals_missions()
 	elif goals_tab == "a":
@@ -2935,12 +3120,14 @@ func _refresh_settings() -> void:
 	_clear(set_tabs_row)
 	var first_tab: Button = null
 	for i in range(SET_TABS.size()):
-		var tb := _btn(L.t(SET_TABS[i]), func(): set_tab = i; last_act = ""; _refresh_settings(), Vector2(0, 46))
+		var tb := _btn(L.t(SET_TABS[i]), func(): set_tab = i; last_act = ""; _refresh_settings(); _gf(tab_sel), Vector2(0, 46))
 		if i == set_tab:
 			for st in ["normal", "hover", "pressed"]:
 				tb.add_theme_stylebox_override(st, _sb(Color("#3b5aa8"), C_GOLD, 3, 14))
 			first_tab = tb
+			tab_sel = tb
 		set_tabs_row.add_child(tb)
+	tab_row = set_tabs_row
 	_clear(settings_box)
 	focus_first = first_tab
 	match set_tab:

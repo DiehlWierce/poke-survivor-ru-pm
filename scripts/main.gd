@@ -135,6 +135,8 @@ var kills := 0
 var spawn_acc := 0.0
 var shake := 0.0
 var death_t := 0.0
+const DEATH_SLOW := 0.3      # camara lenta al desmayarse
+const DEATH_SLOW_T := 0.6    # segundos de juego en camara lenta (0,6 / 0,3 = 2 s reales)
 var choosing := false
 var pending_levels := 0
 var stat_lv := {}
@@ -171,7 +173,7 @@ var coins := 0
 var paused := false
 var pause_ui: CanvasLayer
 var mini: Node2D
-var cam_zoom := 1.4  # campo de vision: ajustable en la pausa (100-200 %), se guarda en Ajustes
+var cam_zoom := 1.65  # campo de vision: ajustable en la pausa (100-200 %), se guarda en Ajustes
 var settings_open := false
 var run_saved := false
 var run_bosses := 0
@@ -427,7 +429,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		go = true
 		tpos = event.position
 	if player.dead:
-		if (go or confirm or cancel or toggle_pause or slot >= 0) and death_t > 1.0:
+		if (go or confirm or cancel or toggle_pause or slot >= 0) and death_t > 1.3:
 			_go_menu()
 	elif paused:
 		if toggle_pause or cancel:
@@ -447,7 +449,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and player != null:
 		if player.dead:
-			if death_t > 1.0:
+			if death_t > 1.3:
 				_go_menu()
 		elif paused:
 			paused = false
@@ -473,6 +475,7 @@ func _open_settings() -> void:
 
 
 func _go_menu() -> void:
+	Engine.time_scale = 1.0
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
@@ -578,6 +581,8 @@ func _process(delta: float) -> void:
 				over -= 1
 	if player.dead:
 		death_t += delta
+		if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
+			Engine.time_scale = 1.0
 		if not run_saved:
 			_finish_run()
 			Aud.music("")
@@ -620,7 +625,8 @@ func _process(delta: float) -> void:
 	hud.run_time = run_time
 	hud.kills = kills
 	hud.dead = player.dead
-	hud.show_end = player.dead and death_t > 1.0
+	hud.death_t = death_t
+	hud.show_end = player.dead and death_t > 1.3
 	hud.level = player.level
 	hud.xp = player.xp
 	hud.xp_next = player.xp_next
@@ -880,6 +886,11 @@ func _update_player(delta: float) -> void:
 		player.loop_anim("Idle", 1.0)
 
 	for m in _active_group():
+		if moving and String(m["id"]) == "flame-wheel":
+			# Rastro de fuego de Rueda Fuego: llamas y chispas tras el jugador mientras corre.
+			for k in range(2):
+				pfx.trail("flame", "fire", player.position + Vector2(randf_range(-6.0, 6.0), -8.0), v)
+			pfx.trail("ember", "fire", player.position + Vector2(0.0, -14.0), v)
 		_tick_move(m, delta)
 
 
@@ -888,7 +899,7 @@ func _hurt_player(amount: float, atk_type: String = "", pure: bool = false) -> v
 		return
 	var eff: String = ""
 	if atk_type != "":
-		var tk: float = _types_mult(atk_type, player.types)
+		var tk: float = _types_mult(atk_type, player.types, true)
 		amount *= tk * _weather_mult(atk_type)
 		eff = _eff_label(tk)
 	var close: float = 1.0
@@ -927,7 +938,9 @@ func _hurt_player(amount: float, atk_type: String = "", pure: bool = false) -> v
 	if player.hp <= 0.0:
 		player.hp = 0.0
 		player.dead = true
-		player.sprite.modulate = Color(1, 1, 1, 0.5)
+		player.play("Faint", 1.0, true)   # desmayo en camara lenta antes de la pantalla final
+		player.flash = 0.0
+		Engine.time_scale = DEATH_SLOW
 		player.active = false
 		_clear_orbit_orbs()
 		for e in enemies:
@@ -1362,8 +1375,8 @@ func _orbit(m: Dictionary, delta: float) -> void:
 		player.play_attack("Shoot", 1.6)
 
 
-# Tabla de tipos suavizada (types.js): x1.6 / x0.6 / x0.3, tope [0.3, 2.4].
-func _types_mult(atk: String, defs: Array) -> float:
+# Tabla de tipos suavizada (types.js): x1.6 / x0.6 / x0.3, tope [0.3, 2.4]. Al jugador: debilidad x1.3 (tope 1.6).
+func _types_mult(atk: String, defs: Array, for_player: bool = false) -> float:
 	if not TD.CHART.has(atk):
 		return 1.0
 	var row: Dictionary = TD.CHART[atk]
@@ -1372,12 +1385,12 @@ func _types_mult(atk: String, defs: Array) -> float:
 		if row.has(t):
 			var v: float = float(row[t])
 			if v > 1.0:
-				m *= 1.6
+				m *= 1.3 if for_player else 1.6   # el jugador no es castigado por su tipo favorito
 			elif v > 0.0:
 				m *= 0.6
 			else:
 				m *= 0.3
-	return clampf(m, 0.3, 2.4)
+	return clampf(m, 0.3, 1.6 if for_player else 2.4)
 
 
 func _eff_label(k: float) -> String:
@@ -1794,7 +1807,7 @@ func _make_enemy(def: Dictionary, pos: Vector2, sc: Dictionary, boss: bool = fal
 
 
 func _apply_fov() -> void:
-	var pct: int = clampi(int(SV.d["settings"].get("fov", 140)), 100, 200)
+	var pct: int = clampi(int(SV.d["settings"].get("fov", 165)), 100, 200)
 	cam_zoom = float(pct) / 100.0
 	if cam != null:
 		cam.zoom = Vector2(cam_zoom, cam_zoom)
@@ -2576,8 +2589,9 @@ func _update_ebullets(delta: float) -> void:
 	for i in range(ebullets.size() - 1, -1, -1):
 		var b: EBullet = ebullets[i]
 		b.age += delta
+		var eprev: Vector2 = b.position
 		b.position += b.vel * delta
-		var remove: bool = b.age >= 2.4
+		var remove: bool = b.age >= 2.4 or _wall_hit(eprev, b.position)
 		if not remove:
 			var rr: float = 7.0 + player.radius
 			if b.position.distance_squared_to(player.position) < rr * rr:
@@ -2828,6 +2842,16 @@ func _collide(pos: Vector2, rad: float) -> Vector2:
 						dd = 1.0
 					pos = p.position + d.normalized() * md
 	return pos
+
+
+# Las paredes (tierra/roca del mapa y de las arenas) detienen los proyectiles.
+func _wall_hit(a: Vector2, b: Vector2) -> bool:
+	for t in [0.0, 0.5, 1.0]:
+		var p: Vector2 = a.lerp(b, t)
+		var q: Vector2 = arena.collide(p, 2.0) if arena != null else ground.collide(p, 2.0)
+		if q.distance_squared_to(p) > 0.01:
+			return true
+	return false
 
 
 func _liquid_at(pos: Vector2) -> String:
@@ -3106,6 +3130,13 @@ func _update_bullets(delta: float) -> void:
 			b.position += b.vel * delta
 			if b.position.distance_squared_to(player.position) > 2000.0 * 2000.0:
 				remove = true
+			elif _wall_hit(b.ppos, b.position):
+				if b.boom > 0.0 and not b.back:
+					b.back = true
+					b.hits.clear()
+					b.position = b.ppos
+				else:
+					remove = true
 		if not remove:
 			for e in enemies:
 				if e.dead or b.hits.has(e):
@@ -3759,7 +3790,7 @@ func _open_rift(force_dex: int = -1) -> void:
 	ar.start_bake()
 	rift_info = {"dex": dex, "type": ty, "shiny": bool(_sm(dex).get("sh", 0)) and randf() < 1.0 / 512.0, "arena": ar}
 	Aud.sfx("rift")
-	_say(L.t("¡Se abrió una grieta!"), 3.0)
+	hud.rift_notice = 0.0   # cartel grande como en el original (4,5 s)
 
 
 func _rift_drop_arena() -> void:
@@ -3770,6 +3801,7 @@ func _rift_drop_arena() -> void:
 
 
 func _exit_tree() -> void:
+	Engine.time_scale = 1.0
 	_rift_drop_arena()
 
 
@@ -3788,7 +3820,9 @@ func _update_rift_hud() -> void:
 		var vp: Vector2 = get_viewport_rect().size
 		hud.rift_ttl = rift.ttl
 		hud.rift_dir = to.normalized()
-		hud.rift_off = absf(to.x) > vp.x * 0.5 / cam_zoom - 30.0 or absf(to.y) > vp.y * 0.5 / cam_zoom - 30.0
+		hud.rift_scr = get_viewport().get_canvas_transform() * (rift.position + Vector2(0.0, -40.0))
+		hud.rift_m = roundi(to.length() / ground.TS)
+		hud.rift_off = hud.rift_scr.x < 0.0 or hud.rift_scr.x > vp.x or hud.rift_scr.y < 0.0 or hud.rift_scr.y > vp.y
 
 
 func _free_list(arr: Array) -> void:
@@ -4057,6 +4091,7 @@ func add_text(pos: Vector2, text: String, color: Color, size: int = 18) -> void:
 # Actor: sprite + animacion + sombra + destello (jugador y enemigos)
 # ---------------------------------------------------------------
 class Actor extends Node2D:
+	const SPR_K := 1.12   # jugador y Pokemon salvajes un 12 % mas grandes (solo el dibujo; el area de choque no cambia)
 	const PX := 2.0               # unidades de mundo por pixel de arte
 
 	var dex := 0
@@ -4098,13 +4133,13 @@ class Actor extends Node2D:
 		sprite.material = mat
 		sprite.centered = false
 		sprite.region_enabled = true
-		sprite.scale = Vector2(PX * scl, PX * scl)
+		sprite.scale = Vector2(PX * scl * SPR_K, PX * scl * SPR_K)
 		add_child(sprite)
 		var idle: Dictionary = meta["Idle"] if meta.has("Idle") else meta["Walk"]
 		radius = clampf(float(idle["w"]) * 0.22, 5.0, 26.0) * PX * scl
-		body_h = float(idle["ay"]) * PX * scl
+		body_h = float(idle["ay"]) * PX * scl * SPR_K
 		var sizes := [5.0, 8.0, 12.0]
-		shadow_rx = float(sizes[clampi(int(sm.get("s", 1)), 0, 2)]) * PX * scl
+		shadow_rx = float(sizes[clampi(int(sm.get("s", 1)), 0, 2)]) * PX * scl * SPR_K
 		if not meta.has("Idle"):
 			anim = "Walk"
 			base = "Walk"
@@ -4486,7 +4521,7 @@ class EBullet extends Node2D:
 
 # --- dibujo ---
 class WTex:
-	const SC := 3.0
+	const SC := 2.4   # objetos del mundo (cofres, altares, fuentes...) un 20 % mas pequenos
 	static var cache := {}
 
 	static func get_t(n: String) -> Texture2D:
@@ -4614,8 +4649,8 @@ class Prop extends Node2D:
 			var key: String = ("tree%d" % mini(2, int(v * 3.0))) if kind == "tree" else ("rock%d" % (1 if v > 0.8 else 0))
 			var tx: Texture2D = tw.prop_tex(key) if tw != null else null
 			if tx != null:
-				var sz := Vector2(tx.get_width(), tx.get_height()) * 3.0
-				draw_texture_rect(tx, Rect2(Vector2(-sz.x * 0.5, -sz.y + 6.0), sz), false)
+				var sz := Vector2(tx.get_width(), tx.get_height()) * 2.4
+				draw_texture_rect(tx, Rect2(Vector2(-sz.x * 0.5, -sz.y + 5.0), sz), false)
 				return
 		elif kind == "chest":
 			if _spr("chest_open" if used else "chest_closed"):
@@ -4623,6 +4658,20 @@ class Prop extends Node2D:
 					draw_circle(Vector2(0.0, -58.0 - 3.0 * sin(t * 3.0)), 3.0, Color(1.0, 0.9, 0.4, 0.8))
 				return
 		elif kind == "altar":
+			if used:
+				# Estatua gastada: la misma estatua, apagada y derretida (oscura, achatada, con charco).
+				var mt: Texture2D = WTex.get_t("altar_" + power)
+				if mt != null:
+					draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+					draw_circle(Vector2(0.0, 2.0), r * 1.9, Color(0.05, 0.04, 0.05, 0.55))
+					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+					var msz := Vector2(mt.get_width(), mt.get_height()) * WTex.SC
+					var mrect := Rect2(Vector2(-msz.x * 0.58, -msz.y * 0.74 + WTex.SC), Vector2(msz.x * 1.16, msz.y * 0.74))
+					draw_texture_rect(mt, mrect, false, Color(0.30, 0.28, 0.30, 1.0))
+					# gotas fundidas
+					draw_circle(Vector2(-msz.x * 0.22, -msz.y * 0.30), 3.0, Color(0.12, 0.10, 0.12, 0.9))
+					draw_circle(Vector2(msz.x * 0.18, -msz.y * 0.18), 2.5, Color(0.12, 0.10, 0.12, 0.9))
+					return
 			var nm: String = "used" if used else power
 			if _spr("altar_" + nm):
 				if not used:
@@ -4637,10 +4686,50 @@ class Prop extends Node2D:
 						draw_circle(Vector2(float(i - 1) * 12.0, yy), 2.4, Color(0.8, 1.0, 0.9, 0.75))
 				return
 		elif kind == "trap":
-			var tn: String = "trap_%s%s" % [sub, "" if cd <= 0.0 else "_off"]
-			if _spr(tn, "center", 0.0):
-				return
+			_draw_trap_tile()
+			return
 		_old_draw()
+
+	# Trampa como una baldosa plana pegada al suelo; cada tipo con su color y dibujo.
+	func _draw_trap_tile() -> void:
+		var u := 4.6   # 1 "pixel" de arte; la baldosa son 8x8 pixeles (~37 px)
+		var off: bool = cd > 0.0
+		var base: Color
+		var edge: Color
+		var hi: Color
+		match sub:
+			"poison":
+				base = Color("#3b2152")
+				edge = Color("#241033")
+				hi = Color("#b06bff")
+			"ice":
+				base = Color("#86cfe8")
+				edge = Color("#4f9cc0")
+				hi = Color("#f2fcff")
+			_:
+				base = Color("#5c1f0d")
+				edge = Color("#2a0c05")
+				hi = Color("#ff9a2e")
+		if off:
+			base = base.lerp(Color(0.25, 0.25, 0.25), 0.7)
+			edge = edge.lerp(Color(0.2, 0.2, 0.2), 0.7)
+			hi = hi.lerp(Color(0.45, 0.45, 0.45), 0.8)
+		var o := Vector2(-4.0 * u, -4.0 * u)
+		draw_rect(Rect2(o, Vector2(8.0 * u, 8.0 * u)), edge)
+		draw_rect(Rect2(o + Vector2(u, u), Vector2(6.0 * u, 6.0 * u)), base)
+		var cells: Array
+		match sub:
+			"poison":   # burbujas
+				cells = [Vector2(2, 2), Vector2(5, 3), Vector2(3, 5), Vector2(5, 6), Vector2(2, 4)]
+			"ice":      # cristal en cruz diagonal
+				cells = [Vector2(2, 2), Vector2(3, 3), Vector2(4, 4), Vector2(5, 5), Vector2(5, 2), Vector2(4, 3), Vector2(3, 4), Vector2(2, 5)]
+			_:          # grietas de lava
+				cells = [Vector2(2, 3), Vector2(3, 3), Vector2(3, 4), Vector2(4, 4), Vector2(4, 5), Vector2(5, 5), Vector2(5, 2), Vector2(4, 2)]
+		for c in cells:
+			var sz: float = u * (0.9 if sub == "poison" else 1.0)
+			draw_rect(Rect2(o + (c as Vector2) * u, Vector2(sz, sz)), hi)
+		if sub == "fire" and not off:
+			draw_rect(Rect2(o + Vector2(3.0 * u, 3.0 * u), Vector2(2.0 * u, 2.0 * u)), Color("#ffe27a"))
 
 	func _old_draw() -> void:
 		if kind == "tree":
@@ -4936,7 +5025,7 @@ class Orb extends Node2D:
 			draw_circle(c + Vector2(0.0, -4.0), 15.0, Color(1.0, 0.82, 0.25, 0.22))
 			var ctx: Texture2D = WTex.get_t("xp_big")
 			if ctx != null:
-				var csz := Vector2(ctx.get_width(), ctx.get_height()) * 3.0
+				var csz := Vector2(ctx.get_width(), ctx.get_height()) * 2.4
 				draw_texture_rect(ctx, Rect2(c + Vector2(-csz.x * 0.5, -csz.y * 0.5 - 4.0), csz), false)
 			else:
 				draw_circle(c, 7.0, Color("#ffd95e"))
@@ -4962,7 +5051,7 @@ class Orb extends Node2D:
 				icn = "berry"
 				glow = Color("#5fe08a")
 			draw_circle(c + Vector2(0.0, -4.0), 15.0, Color(glow.r, glow.g, glow.b, 0.22))
-			IC.draw_in(self, icn, c + Vector2(0.0, -4.0), 24.0)
+			IC.draw_in(self, icn, c + Vector2(0.0, -4.0), 20.0)
 
 
 
@@ -5516,6 +5605,13 @@ class Minimap extends Node2D:
 			draw_circle(q, 6.0, Color.WHITE)
 			draw_circle(q, 4.8, Color("#9b4dff"))
 			draw_arc(q, 3.0, 0.0, TAU * 0.75, 12, Color.WHITE, 1.4)
+			# brujula: si queda fuera del radio, una puntita apunta hacia ella
+			var rq: Vector2 = _pt(m.rift.position)
+			if rq.distance_to(CT) > RAD - 12.0:
+				var ad: Vector2 = (rq - CT).normalized()
+				var base: Vector2 = CT + ad * (RAD - 2.0)
+				var perp := Vector2(-ad.y, ad.x)
+				draw_colored_polygon(PackedVector2Array([base + ad * 7.0, base - ad * 2.0 + perp * 6.0, base - ad * 2.0 - perp * 6.0]), Color(0.9, 0.82, 1.0, 0.8 + 0.2 * pul))
 		# jugador
 		draw_circle(c, 9.0, Color(1, 1, 1, 0.35))
 		draw_arc(c, 9.0, 0.0, TAU, 20, Color("#ffd23f"), 1.5)
@@ -5548,6 +5644,8 @@ class Hud extends Node2D:
 	var rift_dir := Vector2.ZERO
 	var rift_ttl := -1.0
 	var rift_off := false
+	var rift_scr := Vector2.ZERO
+	var rift_m := 0
 	var arena_left := -1.0
 	var legend_name := ""
 	var legend_frac := -1.0
@@ -5557,7 +5655,14 @@ class Hud extends Node2D:
 
 	var _acc := 0.0
 
+	var rift_notice := -1.0
+	var death_t := 0.0
+
 	func _process(delta: float) -> void:
+		if rift_notice >= 0.0:
+			rift_notice += delta
+			if rift_notice >= 4.5:
+				rift_notice = -1.0
 		_acc += delta
 		if _acc >= 0.033:   # el HUD se redibuja 30 veces por segundo (texto y barras)
 			_acc = 0.0
@@ -5590,19 +5695,62 @@ class Hud extends Node2D:
 		if item_name != "":
 			_chip(font, vp, y, L.t(item_name), Color("#ff8ad8"), null, item_id)
 
+	func draw_rift_notice(font: Font, vp: Vector2) -> void:
+		if rift_notice < 0.0:
+			return
+		var a: float = minf(1.0, minf(rift_notice * 4.0, (4.5 - rift_notice) * 2.0))
+		var pop: float = 1.0 + maxf(0.0, 0.25 - rift_notice) * 1.6
+		var t1: String = L.t("¡SE HA ABIERTO UNA GRIETA!")
+		var t2: String = L.t("Sigue la flecha morada: dentro te espera un legendario")
+		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 26).x
+		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16).x
+		var bw: float = minf(vp.x - 24.0, maxf(w1, w2) + 48.0)
+		draw_set_transform(Vector2(vp.x * 0.5, vp.y * 0.2), 0.0, Vector2(pop, pop))
+		var r := Rect2(-bw * 0.5, -34.0, bw, 68.0)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.102, 0.043, 0.2, 0.88 * a)
+		sb.border_color = Color(0.706, 0.541, 1.0, a)
+		sb.set_border_width_all(2)
+		sb.set_corner_radius_all(10)
+		draw_style_box(sb, r)
+		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, 26, Color(0.886, 0.816, 1.0, a))
+		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, 16, Color(0.788, 0.69, 1.0, a))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 	func draw_rift(font: Font, vp: Vector2) -> void:
-		if rift_ttl >= 0.0 and rift_off:
-			var c: Vector2 = vp * 0.5
-			var edge: Vector2 = c + Vector2(rift_dir.x * (c.x - 46.0), rift_dir.y * (c.y - 46.0))
-			var k: float = minf((c.x - 46.0) / maxf(absf(rift_dir.x), 0.001), (c.y - 46.0) / maxf(absf(rift_dir.y), 0.001))
-			edge = c + rift_dir * k
-			var pul: float = 0.65 + 0.35 * sin(Time.get_ticks_msec() * 0.008)
-			var a: float = rift_dir.angle()
-			var tip: Vector2 = edge + Vector2.from_angle(a) * 16.0
-			var l: Vector2 = edge + Vector2.from_angle(a + 2.5) * 16.0
-			var r: Vector2 = edge + Vector2.from_angle(a - 2.5) * 16.0
-			draw_colored_polygon(PackedVector2Array([tip, l, r]), Color(0.7, 0.5, 1.0, pul))
-			draw_string(font, edge - Vector2(30.0, 22.0), "%s %ds" % [L.t("Grieta"), ceili(rift_ttl)], HORIZONTAL_ALIGNMENT_CENTER, 60.0, 15, Color("#d9c2ff"))
+		if rift_ttl >= 0.0:
+			var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * 7.0)
+			var tcol: Color = Color("#e2d0ff")
+			var fcol: Color = Color("#e2d0ff") if beat > 0.5 else Color("#a06bff")
+			if rift_off:
+				# Borde de pantalla: halo que late + flecha grande + "GRIETA · N m · S s"
+				var M := 52.0
+				var e := Vector2(clampf(rift_scr.x, M, vp.x - M), clampf(rift_scr.y, M + 70.0, vp.y - M - 80.0))
+				if e.x > vp.x - 150.0 and e.y < 150.0:
+					e.y = 150.0   # no tapar el boton de pausa
+				var a: float = (rift_scr - e).angle()
+				draw_circle(e, 30.0 + beat * 8.0, Color(0.706, 0.541, 1.0, 0.18 + beat * 0.22))
+				var big := PackedVector2Array([e + Vector2.from_angle(a) * 45.0, e + Vector2.from_angle(a + 2.45) * 22.0, e + Vector2.from_angle(a - 2.45) * 22.0])
+				draw_colored_polygon(big, Color("#1a0b33"))
+				draw_colored_polygon(PackedVector2Array([e + Vector2.from_angle(a) * 40.0, e + Vector2.from_angle(a + 2.45) * 20.0, e + Vector2.from_angle(a - 2.45) * 20.0]), fcol)
+				var label: String = "%s %d m · %d s" % [L.t("GRIETA ·"), rift_m, ceili(rift_ttl)]
+				var ca: float = cos(a)
+				var ha := HORIZONTAL_ALIGNMENT_RIGHT if ca > 0.3 else (HORIZONTAL_ALIGNMENT_LEFT if ca < -0.3 else HORIZONTAL_ALIGNMENT_CENTER)
+				var lp: Vector2 = e + Vector2(-ca * 34.0, -sin(a) * 30.0 + 4.0)
+				var lw: float = 240.0
+				var lx: float = lp.x - (lw if ha == HORIZONTAL_ALIGNMENT_RIGHT else (0.0 if ha == HORIZONTAL_ALIGNMENT_LEFT else lw * 0.5))
+				draw_string_outline(font, Vector2(lx, lp.y), label, ha, lw, 16, 5, Color(0, 0, 0, 0.85))
+				draw_string(font, Vector2(lx, lp.y), label, ha, lw, 16, tcol)
+			else:
+				# Encima de la grieta: flecha que bota con la cuenta atras
+				var by: float = rift_scr.y - 46.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0
+				var p := Vector2(rift_scr.x, by)
+				var tri := PackedVector2Array([p + Vector2(-17.0, -14.0), p + Vector2(17.0, -14.0), p + Vector2(0.0, 11.0)])
+				draw_colored_polygon(tri, Color("#1a0b33"))
+				draw_colored_polygon(PackedVector2Array([p + Vector2(-14.0, -12.0), p + Vector2(14.0, -12.0), p + Vector2(0.0, 8.0)]), fcol)
+				var l2: String = "%s %d s" % [L.t("GRIETA ·"), ceili(rift_ttl)]
+				draw_string_outline(font, p + Vector2(-100.0, -22.0), l2, HORIZONTAL_ALIGNMENT_CENTER, 200.0, 15, 5, Color(0, 0, 0, 0.85))
+				draw_string(font, p + Vector2(-100.0, -22.0), l2, HORIZONTAL_ALIGNMENT_CENTER, 200.0, 15, tcol)
 		if legend_frac >= 0.0:
 			var w: float = minf(440.0, vp.x - 360.0)
 			var x0: float = vp.x * 0.5 - w * 0.5
@@ -5672,6 +5820,7 @@ class Hud extends Node2D:
 		if banner != "":
 			draw_string(font, Vector2(0.0, 92.0), L.t(banner), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffffff"))
 		draw_rift(font, vp)
+		draw_rift_notice(font, vp)
 		var tw: float = font.get_string_size(str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
 		var t10w: float = font.get_string_size(str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
 		var rx: float = vp.x - 16.0 - ins.z
@@ -5693,13 +5842,18 @@ class Hud extends Node2D:
 		draw_string(font, Vector2(0.0, 36.0), L.t(clock), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
 		draw_string(font, Vector2(vp.x - 236.0 - ins.z, 36.0), L.t("Derrotados: %d") % kills, HORIZONTAL_ALIGNMENT_RIGHT, 220.0, 20, Color.WHITE)
 		if dead:
-			draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.5))
-			draw_string(font, Vector2(0.0, vp.y * 0.45), L.t("Has caído..."), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 48, Color.WHITE)
-			draw_string(font, Vector2(0.0, vp.y * 0.45 + 40.0), L.t("Aguantaste %s y derrotaste %d") % [clock, kills], HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color.WHITE)
-			pass
+			# Camara lenta: primero se ve caer al Pokemon; despues oscurece y aparece GAME OVER.
+			var fade: float = clampf((death_t - 0.3) / 0.35, 0.0, 1.0)
+			draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.55 * fade))
+			if fade > 0.0:
+				var ga: float = fade
+				draw_string_outline(font, Vector2(0.0, vp.y * 0.36), "GAME OVER", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, 10, Color(0, 0, 0, ga))
+				draw_string(font, Vector2(0.0, vp.y * 0.36), "GAME OVER", HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, Color(1.0, 0.36, 0.42, ga))
+				draw_string(font, Vector2(0.0, vp.y * 0.45 + 10.0), L.t("Has caído..."), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
+				draw_string(font, Vector2(0.0, vp.y * 0.45 + 50.0), L.t("Aguantaste %s y derrotaste %d") % [clock, kills], HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
 		if dead:
 			if show_end:
-				draw_string(font, Vector2(0.0, vp.y * 0.45 + 84.0), L.t("Pulsa una tecla, un botón o toca la pantalla para volver al menú"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffd33d"))
+				draw_string(font, Vector2(0.0, vp.y * 0.45 + 96.0), L.t("Pulsa una tecla, un botón o toca la pantalla para volver al menú"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffd33d"))
 
 
 # ---------------------------------------------------------------

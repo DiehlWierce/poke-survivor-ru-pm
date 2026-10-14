@@ -81,6 +81,9 @@ func trail(kind: String, pal: String, pos: Vector2, vel: Vector2) -> void:
 	match kind:
 		"ember":
 			px(pos + j, c3 if randf() < 0.5 else c2, Vector2(cos(back) * 30.0, -40.0), 0.35)
+		"flame":
+			var fc: Color = c3 if randf() < 0.5 else (c2 if randf() < 0.6 else VFX.pc(pal, 4))
+			px(pos + j * 2.0, fc, Vector2(cos(back) * 18.0 + rnd(-12.0, 12.0), rnd(-70.0, -40.0)), 0.5, 2.0 if randf() < 0.5 else 1.0)
 		"drip":
 			px(pos + j, c3, Vector2(cos(back) * 20.0, 10.0), 0.35, 1.0, 260.0)
 		"spark":

@@ -188,7 +188,7 @@ func _fov_row() -> HBoxContainer:
 	sl.min_value = 100
 	sl.max_value = 200
 	sl.step = 5
-	sl.value = float(clampi(int(SV.d["settings"].get("fov", 140)), 100, 200))
+	sl.value = float(clampi(int(SV.d["settings"].get("fov", 165)), 100, 200))
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sl.custom_minimum_size = Vector2(300, 40)
 	sl.focus_mode = Control.FOCUS_ALL

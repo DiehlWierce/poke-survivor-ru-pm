@@ -70,10 +70,10 @@ const GOALS := [
 
 static func default_data() -> Dictionary:
 	return {
-		"v": 1, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 0, "tickets10": 0, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
+		"v": 1, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
 		"upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
-		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 140, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false},
+		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false},
 	}
 
 
@@ -111,6 +111,11 @@ static func ensure() -> void:
 	if parsed is Dictionary:
 		d = _merge(d, parsed)
 	_migrate_upgrades()
+	# v1.0.1: sprites al tamano del original (vision 165 %); el valor por defecto antiguo era 140.
+	if not bool(d["settings"].get("fov_v2", false)):
+		d["settings"]["fov_v2"] = true
+		if int(d["settings"].get("fov", 165)) == 140:
+			d["settings"]["fov"] = 165
 
 
 static func _read_json(path: String):
