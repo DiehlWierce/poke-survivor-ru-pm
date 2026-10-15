@@ -13,6 +13,13 @@ static var dex_by: Dictionary = {}
 static var smeta: Dictionary = {}
 static var starter_by: Dictionary = {}
 static var run_dex := 25
+static var run_mode := "normal"    # normal | daily | rush | party | type | team
+static var run_mods: Array = []
+static var run_seed := 0
+static var party_dex := 25
+static var run_type := "fire"      # modo Supervivencia por tipo
+static var team_dex: Array = []    # modo Equipo (2-3 Pokemon)
+const MOD_IDS := ["fast", "horde", "tank", "hard", "frail", "nohealing"]
 static var last_run: Dictionary = {}
 static var reopen := ""
 
@@ -37,8 +44,12 @@ const UPGRADES := [
 	{"id": "coins", "name": "Fortuna", "unit": "+8% Pokémonedas", "max": 8, "base": 120.0, "grow": 1.45},
 	{"id": "moves", "name": "Repertorio", "unit": "Empiezas con 2 movimientos", "max": 1, "base": 1500.0, "grow": 1.0},
 	{"id": "crit", "name": "Golpe Crítico", "unit": "+3% de críticos (x1,5 de daño)", "max": 10, "base": 90.0, "grow": 1.4},
+	{"id": "size", "name": "Calibre", "unit": "+8% de tamaño de proyectiles, orbes y áreas", "max": 6, "base": 80.0, "grow": 1.4},
 	{"id": "reroll", "name": "Cambio de cartas", "unit": "+1 cambio de cartas por partida", "max": 5, "base": 150.0, "grow": 1.6},
+	{"id": "tm", "name": "MT", "unit": "Elige tu movimiento inicial (de tus tipos)", "max": 1, "base": 2000.0, "grow": 1.0},
 	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 3, "base": 300.0, "grow": 1.9},
+	{"id": "revive", "name": "Segunda oportunidad", "unit": "+1 corazón: al caer, revives con la vida completa", "max": 2, "base": 2500.0, "grow": 2.0},
+	{"id": "bag", "name": "Mochila", "unit": "Llevas 2 objetos a la vez por partida", "max": 1, "base": 7500.0, "grow": 1.0},
 ]
 
 # Misiones y logros: progreso = una estadistica acumulada
@@ -71,15 +82,15 @@ const GOALS := [
 static func default_data() -> Dictionary:
 	return {
 		"v": 1, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
-		"upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {},
+		"upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
-		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false},
+		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true},
 	}
 
 
 static func _merge(base: Dictionary, over: Dictionary) -> Dictionary:
 	for k in over:
-		if base.has(k) and base[k] is Dictionary and over[k] is Dictionary and k != "owned" and k != "upgrades" and k != "pup" and k != "claimed" and k != "pban" and k != "pbind":
+		if base.has(k) and base[k] is Dictionary and over[k] is Dictionary and k != "owned" and k != "upgrades" and k != "pup" and k != "claimed" and k != "pban" and k != "pbind" and k != "ptm" and k != "pz":
 			base[k] = _merge(base[k], over[k])
 		else:
 			base[k] = over[k]
@@ -175,6 +186,33 @@ static func owns(dex: int) -> bool:
 	return d["owned"].has(str(dex))
 
 
+# Equipo guardado (solo Pokemon que tienes); si falta, el seleccionado + los primeros que tengas.
+static func team_list() -> Array:
+	var out: Array = []
+	for x in Array(d.get("team", [])):
+		var k: int = int(x)
+		if owns(k) and not out.has(k) and out.size() < 3:
+			out.append(k)
+	if out.is_empty():
+		out.append(int(d["selected"]))
+	for key in d["owned"].keys():
+		if out.size() >= 3:
+			break
+		if not out.has(int(key)):
+			out.append(int(key))
+	return out
+
+
+# Reliquias de la Torre: una por cada piso multiplo de 5 superado alguna vez.
+static func tower_relics() -> int:
+	var n := 0
+	var cl: Dictionary = (d.get("tower", {}) as Dictionary).get("claimed", {})
+	for k in cl.keys():
+		if int(k) % 5 == 0:
+			n += 1
+	return n
+
+
 static func owned_count() -> int:
 	return d["owned"].size()
 
@@ -191,12 +229,65 @@ static func add_owned(dex: int, shiny: bool = false) -> void:
 		d["stats"]["shinies"] = int(d["stats"]["shinies"]) + 1
 
 
+# MT (mejora permanente): el movimiento inicial elegido para este Pokemon, si ya compraste la MT.
 static func start_move_of(dex: int) -> String:
+	if up_level("tm", dex) > 0:
+		var pick: String = String(d.get("ptm", {}).get(str(dex), ""))
+		if pick != "" and tm_pool(dex).has(pick):
+			return pick
+	return natural_start_of(dex)
+
+
+static func natural_start_of(dex: int) -> String:
 	if starter_by.has(dex):
 		return String(starter_by[dex]["start"])
 	var MDd = load("res://scripts/moves_data.gd")
 	var p: Dictionary = dex_by[dex]
 	return String(MDd.START[String(p["types"][0])])
+
+
+# Movimiento Z (scripts/zmove.gd): tipo desbloqueado para este Pokemon (el elegido, o el primero desbloqueado de sus tipos).
+static func zm_types(dex: int) -> Array:
+	var ZM = load("res://scripts/zmove.gd")
+	var out: Array = []
+	for t in dex_by[dex]["types"]:
+		if ZM.unlocked(String(t), d["stats"]):
+			out.append(String(t))
+	return out
+
+
+static func zm_type_for(dex: int) -> String:
+	var l: Array = zm_types(dex)
+	if l.is_empty():
+		return ""
+	var pick: String = String(d.get("pz", {}).get(str(dex), ""))
+	if pick != "" and l.has(pick):
+		return pick
+	return String(l[0])
+
+
+# Movimientos que se pueden elegir como inicial con la MT: los de sus tipos (Mew, todos), sin los de apoyo.
+static func tm_pool(dex: int) -> Array:
+	var MDd = load("res://scripts/moves_data.gd")
+	var types: Array = dex_by[dex]["types"]
+	var out: Array = []
+	for id in MDd.ORDER:
+		var m: Dictionary = MDd.MOVES[id]
+		if String(m["kind"]) == "buff":
+			continue
+		var ty: String = String(m["type"])
+		if dex == 151 or ty == "normal" or types.has(ty):
+			out.append(String(id))
+	return out
+
+
+static func tm_set(dex: int, id: String) -> void:
+	d["ptm"][str(dex)] = id
+	# El nuevo movimiento inicial no puede estar vetado ni atado a un hueco.
+	var l: Array = ban_list(dex).duplicate()
+	l.erase(id)
+	d["pban"][str(dex)] = l
+	save()
 
 
 # ---- veto y atajos de movimientos (por Pokemon, como en el original) ----
@@ -310,6 +401,7 @@ static func perks() -> Dictionary:
 		"coins": 1.0 + float(L.call("coins")) * 0.08,
 		"moves": 1 + L.call("moves"),
 		"crit": float(L.call("crit")) * 0.03,
+		"size": 1.0 + float(L.call("size")) * 0.08,
 		"rerolls": L.call("reroll"),
 		"bans": L.call("ban"),
 	}
@@ -384,7 +476,12 @@ static func _roll_rarity(minr: int = 1) -> int:
 
 
 # n tiradas: x1 (1 ticket), x10 (10 tickets o 1 ticket x10). Devuelve [] si no hay tickets.
+const Z_CRYSTAL_P := 0.03   # probabilidad de cristal Z por tirada de 10
+static var last_crystal := ""
+
+
 static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
+	last_crystal = ""
 	if not can_pull(n, use):
 		return []
 	if n == 10 and use == "t10":
@@ -441,14 +538,45 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 		add_owned(dex, shiny and not shiny_owned)
 		out.append({"dex": dex, "new": was_new, "shiny": shiny, "refund": refund, "rarity": rarity, "name": String(sp["name"])})
 	d["stats"]["pulls"] = int(d["stats"]["pulls"]) + n
+	# Premio extra: cristal Z de un tipo que aun no tengas (solo en tiradas de 10)
+	var ZM = load("res://scripts/zmove.gd")
+	if n >= 10 and randf() < Z_CRYSTAL_P:
+		var locked: Array = []
+		for zt in ZM.ORDER:
+			if not ZM.unlocked(String(zt), d["stats"]):
+				locked.append(String(zt))
+		if not locked.is_empty():
+			last_crystal = String(locked[randi() % locked.size()])
+			d["stats"]["zcr_" + last_crystal] = 1
 	return out
 
 
 # ---- fin de partida ----
+# ---- modos de juego ----
+static func daily_seed() -> int:
+	var t: Dictionary = Time.get_date_dict_from_system()
+	return int(t["year"]) * 10000 + int(t["month"]) * 100 + int(t["day"])
+
+
+static func daily_dex(sd: int) -> int:
+	var pool: Array = []
+	for p in dex_list:
+		if not bool(p.get("leg", false)) and smeta.has(str(int(p["dex"]))):
+			pool.append(int(p["dex"]))
+	if pool.is_empty():
+		return 25
+	return int(pool[(sd * 7919 + 13) % pool.size()])
+
+
+static func daily_mod(sd: int) -> String:
+	return String(MOD_IDS[(sd * 31 + 7) % MOD_IDS.size()])
+
+
 static func finish_run(r: Dictionary) -> Dictionary:
 	# r: time, kills, level, bosses, chests, coins, tickets
 	var pk: Dictionary = perks()
 	var coins: int = int(roundf(float(r["coins"]) * float(pk["coins"]))) + int(float(r["time"]) / 6.0) + int(float(r["kills"]) / 10.0)
+	coins = int(roundf(float(coins) * float(r.get("mul", 1.0))))
 	var tickets: int = int(r["tickets"])
 	var s: Dictionary = d["stats"]
 	var record: bool = int(r["time"]) > int(s["best_time"]) and int(s["runs"]) > 0
@@ -467,7 +595,7 @@ static func finish_run(r: Dictionary) -> Dictionary:
 	d["tickets10"] = int(d.get("tickets10", 0)) + tickets10
 	_add_top({"time": int(r["time"]), "kills": int(r["kills"]), "level": int(r["level"]), "dex": int(r.get("dex", 25)), "judge": int(r.get("judge", {}).get("time", 0)) if r.get("judge", {}) is Dictionary else 0, "date": Time.get_date_string_from_system()})
 	last_run = {"judge": r.get("judge", {}), "time": int(r["time"]), "kills": int(r["kills"]), "level": int(r["level"]), "coins": coins, "tickets": tickets, "tickets10": tickets10, "bosses": int(r["bosses"]), "dex": int(r.get("dex", 25)),
-		"dead": bool(r.get("dead", true)), "record": record, "moves": r.get("moves", []),
-		"breakdown": "Recogidas %d · Tiempo +%d · Derrotados +%d" % [picked, int(float(r["time"]) / 6.0), int(float(r["kills"]) / 10.0)]}
+		"dead": bool(r.get("dead", true)), "record": record, "moves": r.get("moves", []), "other_dmg": int(r.get("other_dmg", 0)), "other_kills": int(r.get("other_kills", 0)), "ally_dmg": int(r.get("ally_dmg", 0)), "ally_kills": int(r.get("ally_kills", 0)),
+		"breakdown": "Recogidas %d · Tiempo +%d · Derrotados +%d" % [picked, int(float(r["time"]) / 6.0), int(float(r["kills"]) / 10.0)] + String(r.get("extra", ""))}
 	save()
 	return last_run

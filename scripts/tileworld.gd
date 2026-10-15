@@ -45,6 +45,7 @@ var biome := 0
 var prev_biome := 0
 var center := Vector2.ZERO
 var terr := {}
+var raw_c := {}   # terreno crudo ya calculado (la orilla lo pide ~13 veces por casilla)
 var dirt := {}
 var chunks := {}
 var sets := {}
@@ -411,6 +412,15 @@ func _lake(tx: int, ty: int) -> bool:
 
 # Terreno "crudo": suelo, pared o liquido (sin cache; solo depende de las coordenadas).
 func _raw(tx: int, ty: int) -> int:
+	var rk := Vector2i(tx, ty)
+	if raw_c.has(rk):
+		return raw_c[rk]
+	var rv: int = _raw_calc(tx, ty)
+	raw_c[rk] = rv
+	return rv
+
+
+func _raw_calc(tx: int, ty: int) -> int:
 	var d: float = Vector2(float(tx) + 0.5, float(ty) + 0.5).length()
 	if d >= 9.0:
 		var ramp: float = clampf((d - 9.0) / 8.0, 0.0, 1.0)
@@ -513,7 +523,22 @@ func set_center(c: Vector2i) -> void:
 					var k := Vector2i(key.x * N + i, key.y * N + j)
 					terr.erase(k)
 					dirt.erase(k)
+					raw_c.erase(k)
 	queue.sort_custom(func(a, b): return absi(a.x - c.x) + absi(a.y - c.y) < absi(b.x - c.x) + absi(b.y - c.y))
+
+
+# Hornea ya los trozos pendientes (al empezar: el suelo aparece completo desde el primer fotograma)
+func flush_bake() -> void:
+	if bk_key != Vector2i(99999, 99999):
+		if chunks.has(bk_key) and bk_biome == biome:
+			_bake_rows(bk_key, bk_img, bk_liq, bk_row, N)
+			_bake_finish(bk_key, bk_img, bk_liq)
+		bk_key = Vector2i(99999, 99999)
+	while not queue.is_empty():
+		var key: Vector2i = queue.pop_front()
+		if chunks.has(key):
+			bake_chunk(key)
+	queue_redraw()
 
 
 func set_biome(b: int, instant: bool = false) -> void:
@@ -534,12 +559,61 @@ func set_biome(b: int, instant: bool = false) -> void:
 
 
 func bake_chunk(key: Vector2i) -> void:
-	var S: Dictionary = tset(biome)
 	var img := Image.create(N * T, N * T, false, Image.FORMAT_RGBA8)
+	var liq: Array = []
+	_bake_rows(key, img, liq, 0, N)
+	_bake_finish(key, img, liq)
+
+
+# Hornea un trozo por franjas de filas (una franja por fotograma en juego) para no hacer tirones.
+var bk_key := Vector2i(99999, 99999)
+var bk_img: Image
+var bk_liq: Array = []
+var bk_row := 0
+var bk_biome := -1
+const BK_ROWS := 4
+
+
+func _bake_step() -> bool:
+	if bk_key == Vector2i(99999, 99999):
+		while not queue.is_empty():
+			var k: Vector2i = queue.pop_front()
+			if chunks.has(k):
+				bk_key = k
+				bk_img = Image.create(N * T, N * T, false, Image.FORMAT_RGBA8)
+				bk_liq = []
+				bk_row = 0
+				bk_biome = biome
+				break
+		if bk_key == Vector2i(99999, 99999):
+			return false
+	if not chunks.has(bk_key) or bk_biome != biome:
+		# el trozo se descarto o cambio el bioma a medias: set_biome ya lo vuelve a encolar
+		if chunks.has(bk_key) and not queue.has(bk_key):
+			queue.push_front(bk_key)
+		bk_key = Vector2i(99999, 99999)
+		return true
+	_bake_rows(bk_key, bk_img, bk_liq, bk_row, mini(N, bk_row + BK_ROWS))
+	bk_row += BK_ROWS
+	if bk_row >= N:
+		_bake_finish(bk_key, bk_img, bk_liq)
+		bk_key = Vector2i(99999, 99999)
+	return true
+
+
+func _bake_finish(key: Vector2i, img: Image, liq: Array) -> void:
+	var ch: Dictionary = chunks[key]
+	ch["tex"] = ImageTexture.create_from_image(img)
+	ch["tb"] = biome
+	ch["liq"] = liq
+	ch.erase("liqd")
+
+
+func _bake_rows(key: Vector2i, img: Image, liq: Array, j0: int, j1: int) -> void:
+	var S: Dictionary = tset(biome)
 	var bx: int = key.x * N
 	var by: int = key.y * N
-	var liq: Array = []
-	for j in range(N):
+	for j in range(j0, j1):
 		for i in range(N):
 			var tx: int = bx + i
 			var ty: int = by + j
@@ -578,11 +652,6 @@ func bake_chunk(key: Vector2i) -> void:
 			img.blit_rect(tile, Rect2i(0, 0, T, T), Vector2i(i * T, j * T))
 			if k == FLOOR and terrain(tx, ty - 1) == WALL:
 				img.blend_rect(S["shadow"], Rect2i(0, 0, T, 2), Vector2i(i * T, j * T))
-	var ch: Dictionary = chunks[key]
-	ch["tex"] = ImageTexture.create_from_image(img)
-	ch["tb"] = biome
-	ch["liq"] = liq
-	ch.erase("liqd")
 
 
 func _floor_img(S: Dictionary, idx: int) -> Image:
@@ -606,11 +675,8 @@ func _process(delta: float) -> void:
 			for key in chunks:
 				if chunks[key]["tex"] != null:
 					chunks[key]["old"] = null
-	if not queue.is_empty():
-		var key: Vector2i = queue.pop_front()
-		if chunks.has(key):
-			bake_chunk(key)
-			dirty = true
+	if _bake_step():
+		dirty = true
 	# Las texturas del suelo no cambian: solo se redibuja para animar el liquido (20 veces por s).
 	_redraw_acc += delta
 	if dirty or _redraw_acc >= 0.05:

@@ -6,8 +6,8 @@ const SV = preload("res://scripts/save_data.gd")
 const MD = preload("res://scripts/moves_data.gd")
 const TD = preload("res://scripts/types_data.gd")
 
-const CATS := [["coleccion", "Colección"], ["supervivencia", "Supervivencia"], ["combate", "Combate"],
-	["grietas", "Grietas"], ["legendarios", "Legendarios"], ["otros", "Misiones y más"]]
+const CATS := [["coleccion", "Colección"], ["supervivencia", "Supervivencia"], ["combate", "Combate"], ["tipos", "Por tipo"],
+	["grietas", "Grietas"], ["legendarios", "Legendarios"], ["modos", "Modos de juego"], ["otros", "Misiones y más"]]
 
 static var toasts: Array = []
 static var _list: Array = []
@@ -69,13 +69,23 @@ static func list() -> Array:
 	L2.append(_a("kills100k", "combate", 3, "Leyenda viva", "Derrota a 100.000 Pokémon.", "totalKills", 100000, {"t10": 3}, "Leyenda viva"))
 	L2.append(_a("boss1", "combate", 1, "Matagigantes", "Derrota a un jefe.", "bossesTotal", 1, {"t1": 2}))
 	L2.append(_a("boss25", "combate", 2, "Cazajefes", "Derrota a 25 jefes.", "bossesTotal", 25, {"t10": 1}, "Cazajefes"))
+	L2.append(_a("boss10", "combate", 1, "Aprendiz de cazajefes", "Derrota a 10 jefes.", "bossesTotal", 10, {"t1": 3}))
 	L2.append(_a("boss100", "combate", 3, "Terror de los jefes", "Derrota a 100 jefes.", "bossesTotal", 100, {"t10": 2}))
+	L2.append(_a("boss250", "combate", 3, "Azote de jefes", "Derrota a 250 jefes.", "bossesTotal", 250, {"t10": 3}))
+	L2.append(_a("boss500", "combate", 3, "Verdugo de jefes", "Derrota a 500 jefes.", "bossesTotal", 500, {"t10": 5}, "Verdugo de jefes"))
+	L2.append(_a("boss1000", "combate", 3, "Rey de los jefes", "Derrota a 1.000 jefes.", "bossesTotal", 1000, {"t10": 10}, "Rey de los jefes"))
 	L2.append(_a("evo1", "combate", 1, "Evolución", "Evoluciona un movimiento.", "evolutions", 1, {"t1": 3}))
 	L2.append(_a("evo25", "combate", 2, "Evolucionista", "Evoluciona 25 movimientos.", "evolutions", 25, {"t10": 1}, "Evolucionista"))
 	var evo_total: int = MD.EVO.size()
 	L2.append(_a("evoAll", "combate", 3, "Maestro de movimientos", "Evoluciona los %d movimientos distintos.", "evoMoves", evo_total, {"t10": 3}, "Maestro de movimientos", evo_total))
 	L2.append(_a("items5", "combate", 1, "Bolsa llena", "Encuentra 5 objetos distintos.", "itemsFound", 5, {"t1": 3}))
-	L2.append(_a("itemsAll", "combate", 2, "Coleccionista de objetos", "Encuentra los 11 objetos.", "itemsFound", 11, {"t10": 1}, "Anticuario"))
+	L2.append(_a("itemsAll", "combate", 2, "Coleccionista de objetos", "Encuentra los %d objetos.", "itemsFound", TD.ITEMS.size(), {"t10": 1}, "Anticuario", TD.ITEMS.size()))
+	# por tipo: Pokemon derrotados de cada tipo (los de doble tipo cuentan para los dos)
+	for tk in MD.TYPE_NAME.keys():
+		var tn: String = String(MD.TYPE_NAME[tk])
+		L2.append(_a("tk250_" + String(tk), "tipos", 1, "Rastreador de tipo %s", "Derrota a 250 Pokémon de tipo %s.", "tk_" + String(tk), 250, {"coins": 300, "t1": 2}, "", tn))
+		L2.append(_a("tk1000_" + String(tk), "tipos", 2, "Cazador de tipo %s", "Derrota a 1.000 Pokémon de tipo %s.", "tk_" + String(tk), 1000, {"coins": 1000, "t1": 3, "t10": 1}, "", tn))
+		L2.append(_a("tk5000_" + String(tk), "tipos", 3, "Maestro de tipo %s", "Derrota a 5.000 Pokémon de tipo %s.", "tk_" + String(tk), 5000, {"coins": 3000, "t10": 3}, "", tn))
 	# grietas
 	L2.append(_a("rift1", "grietas", 1, "Al otro lado", "Gana tu primera pelea en una grieta.", "riftWins", 1, {"t1": 3}, "Valiente"))
 	L2.append(_a("rift10", "grietas", 2, "Saltagrietas", "Gana 10 peleas en grietas.", "riftWins", 10, {"t10": 1}))
@@ -94,6 +104,42 @@ static func list() -> Array:
 	L2.append(_a("mis200", "otros", 3, "Incansable", "Completa 200 misiones.", "missionsDone", 200, {"t10": 3}))
 	L2.append(_a("group1", "otros", 1, "En compañía", "Juega una partida en grupo.", "groupRuns", 1, {"t1": 2}))
 	L2.append(_a("group10", "otros", 2, "Compañero fiel", "Juega 10 partidas en grupo.", "groupRuns", 10, {"t10": 1}, "Compañero fiel"))
+	# modos de juego (premios segun dificultad)
+	L2.append(_a("daily1", "modos", 1, "Reto del día", "Juega un Desafío diario.", "dailyPlays", 1, {"coins": 150, "t1": 2}))
+	L2.append(_a("daily7", "modos", 2, "Rutina diaria", "Juega 7 Desafíos diarios.", "dailyPlays", 7, {"coins": 500, "t1": 5}))
+	L2.append(_a("daily30", "modos", 3, "Fiel al reto", "Juega 30 Desafíos diarios.", "dailyPlays", 30, {"coins": 2000, "t1": 3, "t10": 2}, "Fiel al reto"))
+	L2.append(_a("dailyMin10", "modos", 2, "Reto superado", "Aguanta 10 minutos en un Desafío diario.", "dailyBestMin", 10, {"coins": 1000, "t10": 1}))
+	L2.append(_a("dailyMin20", "modos", 3, "Campeón del día", "Aguanta 20 minutos en un Desafío diario.", "dailyBestMin", 20, {"coins": 2500, "t10": 2}, "Campeón del día"))
+	L2.append(_a("rush3", "modos", 1, "Calentamiento de jefes", "Derrota a 3 jefes en el Rush de Jefes.", "rushBest", 3, {"coins": 400, "t1": 3}))
+	L2.append(_a("rush6", "modos", 2, "Ráfaga de jefes", "Derrota a 6 jefes en el Rush de Jefes.", "rushBest", 6, {"coins": 1200, "t10": 1}))
+	L2.append(_a("rush10", "modos", 3, "Aplastajefes", "Derrota a 10 jefes en el Rush de Jefes.", "rushBest", 10, {"coins": 3000, "t1": 2, "t10": 2}))
+	L2.append(_a("rush15", "modos", 3, "Rey del Rush", "Derrota a 15 jefes en el Rush de Jefes.", "rushBest", 15, {"coins": 6000, "t1": 3, "t10": 4}, "Rey del Rush"))
+	L2.append(_a("rushRuns25", "modos", 2, "Cazador de récords", "Juega 25 Rush de Jefes.", "rushRuns", 25, {"coins": 1500, "t10": 1}))
+	L2.append(_a("mod1", "modos", 1, "Con un extra", "Aguanta 5 minutos con un modificador activo.", "mn1", 5, {"coins": 300, "t1": 3}))
+	L2.append(_a("mod3", "modos", 2, "Doble dificultad", "Aguanta 8 minutos con 3 modificadores.", "mn3", 8, {"coins": 1200, "t10": 1}))
+	L2.append(_a("mod4", "modos", 3, "Sin red", "Aguanta 10 minutos con 4 modificadores.", "mn4", 10, {"coins": 3000, "t1": 2, "t10": 2}, "Sin red"))
+	L2.append(_a("modAll", "modos", 3, "Masoquista", "Aguanta 5 minutos con los 6 modificadores.", "mn6", 5, {"coins": 6000, "t1": 3, "t10": 4}, "Masoquista"))
+	L2.append(_a("noheal10", "modos", 2, "Sin curas", "Aguanta 10 minutos con «Sin curación».", "mb_nohealing", 10, {"coins": 1500, "t10": 1}))
+	L2.append(_a("frail10", "modos", 2, "Cristal", "Aguanta 10 minutos con «Frágil».", "mb_frail", 10, {"coins": 1500, "t10": 1}))
+	L2.append(_a("horde10", "modos", 2, "Entre la multitud", "Aguanta 10 minutos con «Horda».", "mb_horde", 10, {"coins": 1500, "t10": 1}))
+	L2.append(_a("type1", "modos", 1, "Especialista", "Aguanta 5 minutos en Supervivencia por tipo.", "typeBestMin", 5, {"coins": 300, "t1": 3}))
+	L2.append(_a("type10", "modos", 2, "Experto en tipo", "Aguanta 10 minutos en Supervivencia por tipo.", "typeBestMin", 10, {"coins": 1200, "t10": 1}))
+	L2.append(_a("typeVar9", "modos", 3, "Todoterreno", "Aguanta 10 minutos en 9 tipos distintos de Supervivencia por tipo.", "typeVar", 9, {"coins": 3000, "t1": 3, "t10": 2}))
+	L2.append(_a("typeAll", "modos", 3, "Maestro de tipos", "Aguanta 10 minutos en los 18 tipos de Supervivencia por tipo.", "typeVar", 18, {"coins": 8000, "t1": 5, "t10": 5}, "Maestro de tipos"))
+	L2.append(_a("team1", "modos", 1, "Mejor en equipo", "Juega una partida en Modo Equipo.", "teamRuns", 1, {"coins": 150, "t1": 2}))
+	L2.append(_a("team10", "modos", 2, "Relevo perfecto", "Aguanta 10 minutos en Modo Equipo.", "teamBestMin", 10, {"coins": 1500, "t10": 1}))
+	L2.append(_a("team20", "modos", 3, "Líder de equipo", "Aguanta 20 minutos en Modo Equipo.", "teamBestMin", 20, {"coins": 3500, "t1": 2, "t10": 2}, "Líder de equipo"))
+	L2.append(_a("rifts3", "modos", 1, "Contrarreloj", "Gana 3 grietas en una Contrarreloj de grietas.", "riftsBest", 3, {"coins": 500, "t1": 3}))
+	L2.append(_a("rifts5", "modos", 2, "Pasillo de grietas", "Gana 5 grietas en una Contrarreloj de grietas.", "riftsBest", 5, {"coins": 1500, "t10": 1}))
+	L2.append(_a("rifts8", "modos", 3, "Cazador contrarreloj", "Gana 8 grietas en una Contrarreloj de grietas.", "riftsBest", 8, {"coins": 3500, "t1": 3, "t10": 2}, "Cazador contrarreloj"))
+	L2.append(_a("riftsRuns10", "modos", 2, "Siempre con prisa", "Juega 10 Contrarrelojes de grietas.", "riftsRuns", 10, {"coins": 1500, "t10": 1}))
+	L2.append(_a("tower5", "modos", 1, "Primeros pisos", "Supera el piso 5 de la Torre de pisos.", "towerBest", 5, {"coins": 800, "t1": 3, "t10": 1}))
+	L2.append(_a("tower10", "modos", 2, "Escalando", "Supera el piso 10 de la Torre de pisos.", "towerBest", 10, {"coins": 2000, "t1": 4, "t10": 2}))
+	L2.append(_a("tower15", "modos", 3, "Casi en la cima", "Supera el piso 15 de la Torre de pisos.", "towerBest", 15, {"coins": 4000, "t1": 5, "t10": 3}))
+	L2.append(_a("tower20", "modos", 3, "Escalador", "Supera el piso 20 de la Torre de pisos.", "towerBest", 20, {"coins": 7000, "t1": 6, "t10": 4}, "Escalador"))
+	L2.append(_a("tower30", "modos", 3, "Dueño de la Torre", "Llega al piso 30 de la Torre de pisos, donde espera Arceus.", "towerBest", 29, {"coins": 15000, "t1": 10, "t10": 8}, "Dueño de la Torre"))
+	L2.append(_a("towerArceus", "modos", 3, "Vencedor de Arceus", "Derrota a Arceus, el jefe final del piso 30 de la Torre de pisos.", "arceus", 1, {"coins": 30000, "t1": 15, "t10": 15}, "Vencedor de Arceus"))
+	L2.append(_a("towerRuns10", "modos", 2, "Aprendiz de la Torre", "Juega 10 veces la Torre de pisos.", "towerRuns", 10, {"coins": 1200, "t10": 1}))
 	# uno por legendario
 	for p in legs:
 		var a: Dictionary = _a("leg_%d" % int(p["dex"]), "legendarios", 2, "Vence a %s", "Derrota a %s en una grieta.", "leg", 1, {"t1": 1}, "", String(p["name"]))
@@ -106,7 +152,7 @@ static func list() -> Array:
 
 
 static func is_multi(a: Dictionary) -> bool:
-	return String(a["stat"]) == "groupRuns"
+	return false   # el Modo Cooperativo ya cuenta como partida en grupo
 
 
 static func stat(name: String) -> int:
@@ -136,6 +182,8 @@ static func stat(name: String) -> int:
 			return (SV.d.get("itemsFound", {}) as Dictionary).size()
 		"arenas":
 			return (SV.d.get("arenas", {}) as Dictionary).size()
+		"typeVar":
+			return (SV.d.get("type_done", {}) as Dictionary).size()
 		"legends":
 			return (SV.d.get("legends", {}) as Dictionary).size()
 	return int(s.get(name, 0))
@@ -157,8 +205,13 @@ static func grant(r: Dictionary) -> void:
 	SV.d["tickets10"] = int(SV.d.get("tickets10", 0)) + int(r.get("t10", 0))
 
 
+static var off := false   # Modo Fiesta: no cuenta para logros ni estadisticas
+
+
 static func check() -> Array:
 	var got: Array = []
+	if off:
+		return got
 	if not SV.d.has("ach"):
 		SV.d["ach"] = {}
 	var ach: Dictionary = SV.d["ach"]
@@ -171,9 +224,68 @@ static func check() -> Array:
 		grant(a["reward"])
 		got.append(a)
 		toasts.append({"title": "¡Logro: %s!", "arg": name_of(a), "sub": "Nuevo título: %s" if String(a["title"]) != "" else "", "subarg": L_t(String(a["title"])), "tier": int(a["tier"]), "dex": int(a["dex"])})
+	zcheck()
 	if not got.is_empty():
 		SV.save()
 	return got
+
+
+# ---------------- misiones de Cristales Z ----------------
+# Una mision por tipo: al completarla se desbloquea el movimiento Z de ese tipo (igual que el cristal del gacha).
+const ZMIS := [
+	["normal", "Derrota a 1.500 Pokémon en total.", "totalKills", 1500],
+	["fire", "Aguanta 8 minutos en una partida.", "bestMin", 8],
+	["water", "Juega 15 partidas.", "runs", 15],
+	["electric", "Llega al nivel 25 en una partida.", "bestLevel", 25],
+	["grass", "Abre 25 cofres.", "chests", 25],
+	["ice", "Haz 30 tiradas en el gacha.", "pulls", 30],
+	["fighting", "Derrota a 10 jefes.", "bossesTotal", 10],
+	["poison", "Evoluciona 10 movimientos.", "evolutions", 10],
+	["ground", "Consigue 30 Pokémon.", "own", 30],
+	["flying", "Juega 5 Desafíos diarios.", "dailyPlays", 5],
+	["psychic", "Encuentra 10 objetos distintos.", "itemsFound", 10],
+	["bug", "Derrota a 4 jefes en el Rush de Jefes.", "rushBest", 4],
+	["rock", "Supera el piso 8 de la Torre de pisos.", "towerBest", 8],
+	["ghost", "Gana 5 peleas en grietas.", "riftWins", 5],
+	["dragon", "Aguanta 12 minutos en una partida.", "bestMin", 12],
+	["dark", "Vence a 3 legendarios distintos.", "legends", 3],
+	["steel", "Aguanta 8 minutos en Supervivencia por tipo.", "typeBestMin", 8],
+	["fairy", "Aguanta 8 minutos en Modo Equipo.", "teamBestMin", 8],
+]
+const ZMIS_COINS := 500
+
+
+static func zlist() -> Array:
+	var out: Array = []
+	for z in ZMIS:
+		out.append({"id": "zc_" + String(z[0]), "type": String(z[0]), "desc": String(z[1]), "stat": String(z[2]), "goal": int(z[3])})
+	return out
+
+
+static func zdone(zm: Dictionary) -> bool:
+	return (SV.d.get("zmis", {}) as Dictionary).has(String(zm["id"])) or int((SV.d["stats"] as Dictionary).get("zcr_" + String(zm["type"]), 0)) >= 1
+
+
+static func zcheck() -> void:
+	if off:
+		return
+	if not SV.d.has("zmis"):
+		SV.d["zmis"] = {}
+	var ZM = load("res://scripts/zmove.gd")
+	var any := false
+	for zm in zlist():
+		if (SV.d["zmis"] as Dictionary).has(String(zm["id"])):
+			continue
+		if stat(String(zm["stat"])) < int(zm["goal"]):
+			continue
+		var t: String = String(zm["type"])
+		SV.d["zmis"][String(zm["id"])] = int(Time.get_unix_time_from_system())
+		SV.d["stats"]["zcr_" + t] = 1
+		SV.d["coins"] = int(SV.d["coins"]) + ZMIS_COINS
+		toasts.append({"title": "¡Cristal Z: %s!", "arg": String(ZM.DEF[t]["name"]), "sub": "", "subarg": "", "tier": 3, "dex": 0})
+		any = true
+	if any:
+		SV.save()
 
 
 static func titles() -> Array:
@@ -197,6 +309,13 @@ const DAILY := [
 	{"id": "playType", "ev": "runEnd", "param": "type", "mode": "max", "val": "min", "goals": [3], "reward": {"t1": 3, "coins": 200}},
 	{"id": "item", "ev": "item", "goals": [1], "reward": {"t1": 2, "coins": 150}},
 	{"id": "evolve", "ev": "evolve", "goals": [1], "reward": {"t1": 3, "coins": 250}},
+	{"id": "mDaily", "ev": "runEnd", "req": "daily", "goals": [1], "reward": {"t1": 3, "coins": 250}},
+	{"id": "mRush", "ev": "runEnd", "req": "rush", "mode": "max", "val": "bosses", "goals": [2, 4], "reward": {"t1": 3, "coins": 300}},
+	{"id": "mMods", "ev": "runEnd", "req": "mods1", "mode": "max", "val": "min", "goals": [4, 6], "reward": {"t1": 3, "coins": 300}},
+	{"id": "mType", "ev": "runEnd", "req": "type", "mode": "max", "val": "min", "goals": [4, 6], "reward": {"t1": 3, "coins": 300}},
+	{"id": "mTeam", "ev": "runEnd", "req": "team", "mode": "max", "val": "min", "goals": [5, 8], "reward": {"t1": 3, "coins": 300}},
+	{"id": "mTower", "ev": "runEnd", "req": "tower", "mode": "max", "val": "floor", "goals": [2, 3], "reward": {"t1": 3, "coins": 350}},
+	{"id": "mRifts", "ev": "runEnd", "req": "rifts", "mode": "max", "val": "rifts", "goals": [2, 3], "reward": {"t1": 3, "coins": 350}},
 ]
 const WEEKLY := [
 	{"id": "wkill", "ev": "kill", "goals": [4000, 6000], "reward": {"t10": 1, "coins": 800}},
@@ -205,6 +324,13 @@ const WEEKLY := [
 	{"id": "wsurvive", "ev": "runEnd", "mode": "max", "val": "min", "goals": [12, 15], "reward": {"t10": 1, "coins": 1000}},
 	{"id": "wevolve", "ev": "evolve", "goals": [3, 5], "reward": {"t10": 1, "coins": 900}},
 	{"id": "wdaily", "ev": "missionDone", "match": "daily", "goals": [8, 12], "reward": {"t10": 1, "coins": 800}},
+	{"id": "wDailyCh", "ev": "runEnd", "req": "daily", "goals": [3, 5], "reward": {"t1": 3, "t10": 1, "coins": 1000}},
+	{"id": "wRush", "ev": "runEnd", "req": "rush", "mode": "max", "val": "bosses", "goals": [6, 9], "reward": {"t1": 3, "t10": 1, "coins": 1100}},
+	{"id": "wType", "ev": "runEnd", "req": "type", "mode": "max", "val": "min", "goals": [8, 12], "reward": {"t1": 3, "t10": 1, "coins": 1100}},
+	{"id": "wTeam", "ev": "runEnd", "req": "team", "mode": "max", "val": "min", "goals": [10, 15], "reward": {"t1": 3, "t10": 1, "coins": 1200}},
+	{"id": "wTower", "ev": "runEnd", "req": "tower", "mode": "max", "val": "floor", "goals": [6, 9], "reward": {"t1": 4, "t10": 1, "coins": 1300}},
+	{"id": "wRifts", "ev": "runEnd", "req": "rifts", "mode": "max", "val": "rifts", "goals": [5, 7], "reward": {"t1": 4, "t10": 1, "coins": 1300}},
+	{"id": "wMods", "ev": "runEnd", "req": "mods3", "mode": "max", "val": "min", "goals": [6, 8], "reward": {"t1": 3, "t10": 1, "coins": 1200}},
 ]
 
 
@@ -251,6 +377,34 @@ static func mission_text(m: Dictionary) -> String:
 			return L_t("Evoluciona %s movimientos") % nn
 		"wdaily":
 			return L_t("Completa %s misiones diarias") % nn
+		"mDaily":
+			return L_t("Juega el Desafío diario")
+		"mRush":
+			return L_t("Derrota a %s jefes en el Rush de Jefes") % nn
+		"mMods":
+			return L_t("Aguanta %s minutos con algún modificador activo") % nn
+		"wDailyCh":
+			return L_t("Juega %s Desafíos diarios") % nn
+		"wRush":
+			return L_t("Derrota a %s jefes en una sola partida de Rush de Jefes") % nn
+		"mType":
+			return L_t("Aguanta %s minutos en Supervivencia por tipo") % nn
+		"mTeam":
+			return L_t("Aguanta %s minutos en Modo Equipo") % nn
+		"mTower":
+			return L_t("Supera %s pisos de la Torre de pisos") % nn
+		"wTower":
+			return L_t("Supera %s pisos de la Torre de pisos en una sola partida") % nn
+		"mRifts":
+			return L_t("Gana %s grietas en la Contrarreloj de grietas") % nn
+		"wType":
+			return L_t("Aguanta %s minutos en Supervivencia por tipo") % nn
+		"wTeam":
+			return L_t("Aguanta %s minutos en Modo Equipo") % nn
+		"wRifts":
+			return L_t("Gana %s grietas en una Contrarreloj de grietas") % nn
+		"wMods":
+			return L_t("Aguanta %s minutos con 3 o más modificadores") % nn
 	return String(m["id"])
 
 
@@ -378,6 +532,12 @@ static func _advance(lst: Array, kind: String, d: Dictionary) -> void:
 			continue
 		if mt == "daily" and not bool(d.get("daily", false)):
 			continue
+		var rq: String = String(def.get("req", ""))
+		if rq != "":
+			var md: String = String(d.get("mode", "normal"))
+			var nm: int = int(d.get("nmods", 0))
+			if (rq in ["daily", "rush", "type", "team", "rifts", "tower"] and md != rq) or (rq == "mods1" and nm < 1) or (rq == "mods3" and nm < 3):
+				continue
 		if String(def.get("param", "")) == "type":
 			var types: Array = d.get("types", [])
 			if not types.has(String(m["param"])):
@@ -390,6 +550,12 @@ static func _advance(lst: Array, kind: String, d: Dictionary) -> void:
 				v = int(d.get("level", 0))
 			"coins":
 				v = int(d.get("coins", 0))
+			"bosses":
+				v = int(d.get("bosses", 0))
+			"rifts":
+				v = int(d.get("rifts", 0))
+			"floor":
+				v = int(d.get("floor", 0))
 		if String(def.get("mode", "")) == "max":
 			m["prog"] = maxi(int(m["prog"]), v)
 		else:
@@ -442,6 +608,8 @@ static func pending() -> int:
 
 
 static func event(kind: String, d: Dictionary = {}) -> void:
+	if off:
+		return
 	ensure()
 	var s: Dictionary = SV.d["stats"]
 	match kind:
@@ -451,6 +619,10 @@ static func event(kind: String, d: Dictionary = {}) -> void:
 			if not em.has(String(d.get("move", ""))):
 				em[String(d.get("move", ""))] = int(Time.get_unix_time_from_system())
 			SV.d["evoMoves"] = em
+		"kill":
+			for tkt in d.get("types", []):
+				var tkk: String = "tk_" + String(tkt)
+				s[tkk] = int(s.get(tkk, 0)) + 1
 		"item":
 			var it: Dictionary = SV.d.get("itemsFound", {})
 			if not it.has(String(d.get("id", ""))):

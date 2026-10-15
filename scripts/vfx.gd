@@ -52,7 +52,7 @@ const MOVE := {
 	"giga-drain": {"aura": "heart", "inward": true},
 	"thunder-shock": {"proj": "bolt", "trail": "spark"},
 	"discharge": {"aura": "bolt"}, "thunderbolt": {"beam": "lightning"},
-	"confusion": {"proj": "ring"}, "psybeam": {"beam": "ring"}, "psychic": {"proj": "ring"},
+	"confusion": {"proj": "ring"}, "hypnosis": {"aura": "ring"}, "dream-eater": {"aura": "heart", "inward": true}, "psybeam": {"beam": "ring"}, "psychic": {"proj": "ring"},
 	"sludge": {"proj": "blob", "trail": "bubbles"}, "poison-sting": {"proj": "needle"},
 	"toxic": {"aura": "bubble", "rise": true}, "mud-shot": {"proj": "blob", "trail": "dirt"},
 	"bulldoze": {"aura": "rock", "rise": true},

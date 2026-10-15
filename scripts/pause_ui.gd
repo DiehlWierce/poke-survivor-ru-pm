@@ -2,6 +2,7 @@ extends CanvasLayer
 # Menu de pausa como el del juego original: titulo, ayuda de controles, volumen de
 # musica y efectos, silenciar y tres botones. Los controles son los del mando elegido.
 
+const NAVG = preload("res://scripts/navgrid.gd")
 const SV = preload("res://scripts/save_data.gd")
 const PAD = preload("res://scripts/pad.gd")
 const PADI = preload("res://scripts/padicons.gd")
@@ -301,6 +302,14 @@ func _refresh_hints() -> void:
 	hint_row.add_child(_txt("·"))
 	hint_row.add_child(PADI.rect(PAD.btn("pause"), 30.0))
 	hint_row.add_child(_txt("pausa"))
+
+
+# Mismo manejo del mando que el menu principal: filas, ciclo izquierda/derecha y columna recordada.
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if NAVG.move(get_viewport(), event, NAVG.focusables(self)):
+		get_viewport().set_input_as_handled()
 
 
 func open() -> void:

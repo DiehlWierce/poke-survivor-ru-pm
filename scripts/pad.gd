@@ -5,7 +5,7 @@ const SV = preload("res://scripts/save_data.gd")
 const TL = preload("res://scripts/lang.gd")
 const NAMES := ["Xbox", "PlayStation", "Nintendo"]
 # accion -> [texto (clave de traduccion)]
-const ACTIONS := ["prev", "next", "pause", "confirm", "cancel", "reroll", "ban"]
+const ACTIONS := ["prev", "next", "pause", "confirm", "cancel", "reroll", "ban", "swap", "zmove", "dynamax"]
 const LABELS := {
 	"prev": "Movimiento anterior",
 	"next": "Movimiento siguiente",
@@ -14,6 +14,9 @@ const LABELS := {
 	"cancel": "Atrás / cancelar",
 	"reroll": "Relanzar cartas",
 	"ban": "Vetar carta",
+	"swap": "Cambiar Pokémon (Modo Equipo)",
+	"zmove": "Movimiento Z",
+	"dynamax": "Dynamax",
 }
 const BTN_NAMES := {
 	0: ["A", "Cross", "B"], 1: ["B", "Circle", "A"], 2: ["X", "Square", "Y"], 3: ["Y", "Triangle", "X"],
@@ -36,7 +39,7 @@ static func defaults(lay: int = -1) -> Dictionary:
 	var ok := JOY_BUTTON_B if lay == 2 else JOY_BUTTON_A
 	var no := JOY_BUTTON_A if lay == 2 else JOY_BUTTON_B
 	return {"prev": JOY_BUTTON_LEFT_SHOULDER, "next": JOY_BUTTON_RIGHT_SHOULDER, "pause": JOY_BUTTON_START,
-		"confirm": ok, "cancel": no, "reroll": JOY_BUTTON_Y, "ban": JOY_BUTTON_X}
+		"confirm": ok, "cancel": no, "reroll": JOY_BUTTON_Y, "ban": JOY_BUTTON_X, "swap": JOY_BUTTON_RIGHT_STICK, "zmove": JOY_BUTTON_LEFT_STICK, "dynamax": JOY_BUTTON_BACK}
 
 
 static func btn(action: String) -> int:
