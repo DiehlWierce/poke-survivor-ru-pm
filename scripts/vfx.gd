@@ -443,9 +443,11 @@ static func sprite(shape: String, pal: String, frame: int) -> Texture2D:
 		shape = "ball"
 	var m: Array = META[shape]
 	var f: int = frame % int(m[2])
-	var k: String = "%s|%s|%d" % [shape, pal, f]
-	if cache.has(k):
-		return cache[k]
+	# clave en dos niveles (forma|paleta -> fotogramas): sin formatear una cadena por cada dibujo
+	var sp: Dictionary = cache.get(shape, {})
+	var fl: Array = sp.get(pal, [])
+	if fl.size() > f and fl[f] != null:
+		return fl[f]
 	var P := Grid.new(int(m[0]), int(m[1]))
 	_gen(shape, P, f)
 	var img := Image.create(P.w, P.h, false, Image.FORMAT_RGBA8)
@@ -463,7 +465,11 @@ static func sprite(shape: String, pal: String, frame: int) -> Texture2D:
 				c = Color.html(String(colors[int(IDX[ch])]))
 			img.set_pixel(x, y, c)
 	var tex := ImageTexture.create_from_image(img)
-	cache[k] = tex
+	if fl.size() < int(m[2]):
+		fl.resize(int(m[2]))
+	fl[f] = tex
+	sp[pal] = fl
+	cache[shape] = sp
 	return tex
 
 

@@ -575,6 +575,8 @@ func set_biome(b: int, instant: bool = false) -> void:
 			if not queue.has(key):
 				queue.append(key)
 	queue.sort_custom(func(a, b2): return absi(a.x - cc.x) + absi(a.y - cc.y) < absi(b2.x - cc.x) + absi(b2.y - cc.y))
+	if is_inside_tree():
+		get_tree().call_group("fade_props", "set_process", true)   # árboles y rocas duermen salvo durante el cambio de bioma
 
 
 func bake_chunk(key: Vector2i) -> void:
@@ -682,6 +684,7 @@ func _floor_img(S: Dictionary, idx: int) -> Image:
 
 
 var _redraw_acc := 0.0
+var lite: bool = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 
 
 func _process(delta: float) -> void:
@@ -698,7 +701,7 @@ func _process(delta: float) -> void:
 		dirty = true
 	# Las texturas del suelo no cambian: solo se redibuja para animar el liquido (20 veces por s).
 	_redraw_acc += delta
-	if dirty or _redraw_acc >= 0.05:
+	if dirty or _redraw_acc >= (0.1 if lite else 0.05):   # consola: el agua se anima a 10 Hz
 		_redraw_acc = 0.0
 		queue_redraw()
 
@@ -792,7 +795,7 @@ class GrassLayer extends Node2D:
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	func _process(_d: float) -> void:
-		var t: int = int(tw.gt * 4.0)
+		var t: int = int(tw.gt * (3.0 if tw.lite else 4.0))
 		if t != tick:
 			tick = t
 			queue_redraw()
@@ -806,6 +809,11 @@ class GrassLayer extends Node2D:
 		var cen: Vector2 = tw.center
 		for key in tw.grass:
 			if absi(key.x - tw.cc.x) > 1 or absi(key.y - tw.cc.y) > 1:
+				continue
+			# el trozo entero fuera de la vista: se salta sin mirar cada mata
+			var ox: float = float(key.x) * tw.CW
+			var oy: float = float(key.y) * tw.CW
+			if ox > cen.x + 700.0 or ox + tw.CW < cen.x - 700.0 or oy > cen.y + 420.0 or oy + tw.CW < cen.y - 420.0:
 				continue
 			for g in tw.grass[key]:
 				if absf(g.x - cen.x) > 700.0 or absf(g.y - cen.y) > 420.0:

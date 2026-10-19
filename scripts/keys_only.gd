@@ -39,6 +39,8 @@ func _ready() -> void:
 	root.child_entered_tree.connect(func(_n: Node): _to_last.call_deferred())
 	var dir: String = OS.get_executable_path().get_base_dir()
 	_log = FileAccess.open(dir.path_join("perf_log.txt"), FileAccess.WRITE)
+	if _log == null:
+		_log = FileAccess.open("user://perf_log.txt", FileAccess.WRITE)   # si la carpeta del juego no es escribible
 	if _log != null:
 		_log.store_line("# %s  кадр > %d мс = рывок; раз в %d с: средний/худший кадр (мс), к/с, узлов, вызовов отрисовки" % [Time.get_datetime_string_from_system(), int(SPIKE_MS), int(REPORT_S)])
 		set_process(true)

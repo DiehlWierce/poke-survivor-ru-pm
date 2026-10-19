@@ -9,6 +9,7 @@ const MIN_GAP := {"hit": 45, "faint": 60, "xp": 35, "coin": 50, "grass": 70, "ho
 const POOL := 14
 
 var players: Array = []
+var _sv = null
 var mus_a: AudioStreamPlayer
 var mus_b: AudioStreamPlayer
 var cur_is_a := true
@@ -72,7 +73,9 @@ func _ready() -> void:
 
 
 func _vol(key: String) -> float:
-	var SV = load("res://scripts/save_data.gd")
+	if _sv == null:
+		_sv = load("res://scripts/save_data.gd")
+	var SV = _sv
 	SV.ensure()
 	var s: Dictionary = SV.d["settings"]
 	if bool(s.get("mute", false)):

@@ -5,6 +5,7 @@ const VFX = preload("res://scripts/vfx.gd")
 const PX := 2.0
 
 var dens := 1.0
+var lite := false
 var cap_parts := 1400
 var cap_sprites := 320
 var parts: Array = []
@@ -18,6 +19,10 @@ func setup(quality_dens: float) -> void:
 	dens = clampf(quality_dens, 0.15, 1.0)
 	cap_parts = int(1400.0 * dens)
 	cap_sprites = int(320.0 * dens)
+	lite = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
+	if lite:
+		cap_parts = int(cap_parts * 0.5)
+		cap_sprites = int(cap_sprites * 0.6)
 
 
 func clear() -> void:
@@ -166,7 +171,8 @@ func _process(delta: float) -> void:
 		_was_empty = true
 	else:
 		_was_empty = false
-	queue_redraw()
+	if not lite or (Engine.get_process_frames() & 1) == 0:   # consola: dibujo cada 2 fotogramas
+		queue_redraw()
 
 var _was_empty := false
 

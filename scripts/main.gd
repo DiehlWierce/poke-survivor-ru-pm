@@ -476,6 +476,7 @@ func _ready() -> void:
 	dmg_on = bool(SV.setting("dmg_numbers"))
 	shake_on = bool(SV.setting("shake"))
 	Actor.flash_k = 1.0 if shake_on else 0.35
+	Actor.lite = _hh()
 	quality = int(SV.setting("quality"))
 	var hh: bool = _hh()
 	if hh:
@@ -911,6 +912,8 @@ func _fx_cap() -> int:
 
 
 func _process(delta: float) -> void:
+	Actor.tick += 1
+	_preload_step()
 	hud.paused = paused
 	if not settings_open:
 		var want_ui: bool = paused and not player.dead
@@ -1031,10 +1034,12 @@ func _process(delta: float) -> void:
 	shake = maxf(0.0, shake - 30.0 * delta)
 	hud.hp = player.hp
 	hud.revives = revives
+	var hs: bool = not Actor.lite or (Actor.tick & 3) == 0   # consola: los textos del HUD se rehacen cada 4 fotogramas
 	hud.z_dim = _z_dim()
 	hud.z_state = z_state
 	hud.z_t = z_t
-	hud.z_name = L.t(String(ZM.DEF[z_type]["name"])) if z_type != "" else ""
+	if hs:
+		hud.z_name = L.t(String(ZM.DEF[z_type]["name"])) if z_type != "" else ""
 	hud.z_type = z_type
 	hud.z_btn = 0 if (mode == "tower" or z_type == "" or z_state != "") else (3 if z_used else (2 if player.level >= ZM.MIN_LEVEL else 0))
 	hud.z_cd = z_cd
@@ -1044,9 +1049,10 @@ func _process(delta: float) -> void:
 	hud.dyn_type = String(player.types[0])
 	hud.dyn_btn = 0 if (mode == "tower" or not DYN.unlocked(SV.d["stats"]) or _dyn_on()) else (3 if dyn_used else (2 if player.level >= DYN.MIN_LEVEL else 0))
 	hud.dyn_cd = dyn_cd
-	hud.ab_name = L.t(String(AB.FX[AB.of(_pdex())]["name"]))
+	if hs:
+		hud.ab_name = L.t(String(AB.FX[AB.of(_pdex())]["name"]))
 	hud.show_stats = bool(SV.setting("stats_box"))
-	if hud.show_stats:
+	if hud.show_stats and hs:
 		hud.stats = [
 			[L.t("Daño"), "%d%%" % roundi(_atk() / maxf(0.001, base_atk) * 100.0)],
 			[L.t("Velocidad"), "%d" % roundi(_spd())],
@@ -1075,14 +1081,19 @@ func _process(delta: float) -> void:
 	hud.level = player.level
 	hud.xp = player.xp
 	hud.xp_next = player.xp_next
-	hud.buff_text = (_buff_text() + "  " + _power_text()).strip_edges()
+	if hs:
+		hud.buff_text = (_buff_text() + "  " + _power_text()).strip_edges()
 	hud.power_id = power_kind
-	hud.item_name = _item_name()
+	if hs:
+		hud.item_name = _item_name()
 	hud.item_id = item
-	hud.item2_name = _item_name_of(item2)
+	if hs:
+		hud.item2_name = _item_name_of(item2)
 	hud.item2_id = item2
-	hud.weather_text = _weather_text()
-	hud.banner = banner_text if banner_t > 0.0 else _weather_banner()
+	if hs:
+		hud.weather_text = _weather_text()
+	if hs:
+		hud.banner = banner_text if banner_t > 0.0 else _weather_banner()
 	hud.coins = coins
 	hud.tickets = tickets
 	hud.tickets10 = tickets10
@@ -3133,6 +3144,8 @@ func _make_enemy(def: Dictionary, pos: Vector2, sc: Dictionary, boss: bool = fal
 	var e := Enemy.new()
 	var scl: float = _boss_scale_k(dex) if boss else 1.0
 	e.setup(dex, sm, flash_shader, scl, false)
+	e.stag = Actor.lite
+	enemy_maxr = maxf(enemy_maxr, e.radius)
 	e.def = def
 	e.boss = boss
 	e.behavior = String(def["behavior"])
@@ -3630,7 +3643,29 @@ func _preload_upcoming(until: float) -> void:
 			_preload_dex(int(b["dex"]))
 
 
+var _pl_done := {}
+var _pl_q: Array = []
+
+
+# Las peticiones se reparten (3 Pokémon por fotograma): antes eran cientos de ResourceLoader.exists de golpe cada 10 s
+func _preload_step() -> void:
+	for i in range(3):
+		if _pl_q.is_empty():
+			return
+		var dx: int = _pl_q.pop_front()
+		for a in ANIMS:
+			var path: String = "res://assets/pokemon/%d/%s.png" % [dx, a]
+			if ResourceLoader.exists(path) and not ResourceLoader.has_cached(path):
+				ResourceLoader.load_threaded_request(path)
+
+
 func _preload_dex(dex: int) -> void:
+	if _pl_done.has(dex):
+		return
+	_pl_done[dex] = true
+	if _hh():
+		_pl_q.append(dex)
+		return
 	for a in ANIMS:
 		var path: String = "res://assets/pokemon/%d/%s.png" % [dex, a]
 		if ResourceLoader.exists(path) and not ResourceLoader.has_cached(path):
@@ -3735,6 +3770,10 @@ func _spawn_thief() -> void:
 # ---------------------------------------------------------------
 func _update_enemies(delta: float) -> void:
 	var kn_decay: float = pow(0.0015, delta)
+	var far2 := 0.0
+	if Actor.lite:
+		var fr: float = get_viewport_rect().size.length() * 0.5 / cam_zoom + 140.0
+		far2 = fr * fr
 	for e in enemies:
 		if e.dead:
 			continue
@@ -3809,49 +3848,53 @@ func _update_enemies(delta: float) -> void:
 		elif e.slow > 0.0:
 			tint = Color(0.7, 0.85, 1.0)
 		e.sprite.modulate = tint
+		# Consola: los enemigos fuera de pantalla se mueven cada 3 fotogramas con el delta acumulado
+		if far2 > 0.0 and e.jump == null and not e.boss and e.position.distance_squared_to(player.position) > far2:
+			e.far_acc += delta
+			if (Actor.tick + (e.get_instance_id() % 3)) % 3 != 0:
+				continue
+			_enemy_step(e, e.far_acc, pow(0.0015, e.far_acc))
+			e.far_acc = 0.0
+			continue
 		_enemy_step(e, delta, kn_decay)
-	# Separacion suave para que no se apilen en un solo punto. Rejilla espacial: antes eran n*(n-1)/2 pares
-	# por fotograma (con 60 enemigos, 1770), en una consola decenas de ms.
-	var n: int = enemies.size()
-	var maxr := 8.0
-	for e in enemies:
-		maxr = maxf(maxr, e.radius)
-	var cell: float = maxf(48.0, maxr * 1.4)
-	var inv: float = 1.0 / cell
+	# Consola: la separacion solo cada 2 fotogramas (las posiciones cambian poco en 33 ms)
+	if Actor.lite and (Actor.tick & 1) == 1:
+		return
+	# Separacion suave para que no se apilen en un solo punto. Rejilla espacial (clave entera, cada par una sola vez:
+	# misma celda y 4 vecinas "hacia delante"): antes eran n*(n-1)/2 pares por fotograma.
+	var inv: float = 1.0 / maxf(48.0, enemy_maxr * 1.4)
 	var grid := {}
-	for i in range(n):
-		var a = enemies[i]
+	for a in enemies:
 		if a.dead or a.jump != null:
 			continue
-		var gk := Vector2i(floori(a.position.x * inv), floori(a.position.y * inv))
+		var gk: int = floori(a.position.x * inv) * 1048576 + floori(a.position.y * inv)
 		var lst = grid.get(gk)
 		if lst == null:
-			grid[gk] = [i]
+			grid[gk] = [a]
 		else:
-			lst.append(i)
-	for i in range(n):
-		var a = enemies[i]
-		if a.dead or a.jump != null:
-			continue
-		var ck := Vector2i(floori(a.position.x * inv), floori(a.position.y * inv))
-		for ox in range(-1, 2):
-			for oy in range(-1, 2):
-				var lst2 = grid.get(Vector2i(ck.x + ox, ck.y + oy))
-				if lst2 == null:
-					continue
-				for j in lst2:
-					if j <= i:
-						continue
-					var b = enemies[j]
-					if b.dead or b.jump != null:
-						continue
-					var diff: Vector2 = b.position - a.position
-					var min_d: float = (a.radius + b.radius) * 0.7
-					var dd: float = diff.length()
-					if dd < min_d and dd > 0.001:
-						var push: Vector2 = diff / dd * (min_d - dd) * 0.5
-						a.position -= push
-						b.position += push
+			lst.append(a)
+	for gk in grid:
+		var cell: Array = grid[gk]
+		var cn: int = cell.size()
+		for ai in range(cn):
+			var a = cell[ai]
+			for bi in range(ai + 1, cn):
+				_sep_pair(a, cell[bi])
+			for nk in [gk + 1048576, gk - 1048576 + 1, gk + 1, gk + 1048576 + 1]:
+				var nl = grid.get(nk)
+				if nl != null:
+					for b in nl:
+						_sep_pair(a, b)
+
+
+func _sep_pair(a, b) -> void:
+	var diff: Vector2 = b.position - a.position
+	var min_d: float = (a.radius + b.radius) * 0.7
+	var dd: float = diff.length()
+	if dd < min_d and dd > 0.001:
+		var push: Vector2 = diff / dd * (min_d - dd) * 0.5
+		a.position -= push
+		b.position += push
 
 
 func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
@@ -4614,13 +4657,28 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 		grass_jobs.append(job)   # en la consola la hierba se reparte entre varios fotogramas
 	else:
 		_grass_rows(job, 0)
-	return {"props": props}
+	return _chunk_dict(props)
+
+
+# Listas por trozo para no recorrer todos los objetos en cada consulta: los sólidos (colisión), las fuentes y los especiales (minimapa)
+func _chunk_dict(props: Array) -> Dictionary:
+	var solids: Array = []
+	var springs: Array = []
+	var specials: Array = []
+	for p in props:
+		if p.solid:
+			solids.append(p)
+		elif p.kind == "spring":
+			springs.append(p)
+			specials.append(p)
+		elif p.kind == "chest" or p.kind == "altar" or p.kind == "trap":
+			specials.append(p)
+	return {"props": props, "solids": solids, "springs": springs, "specials": specials}
 
 
 var grass_jobs: Array = []
+var enemy_maxr := 8.0
 var _hh_c := -1
-
-
 # Consola (PortMaster) o prueba en el ordenador con -- --keys-only
 func _hh() -> bool:
 	if _hh_c < 0:
@@ -4850,7 +4908,7 @@ func _update_world(delta: float) -> void:
 		chunks[nk] = _gen_chunk(nk.x, nk.y)
 		made += 1
 		# Al empezar solo los 9 de alrededor (lo que se ve); el resto llega de uno en uno en los siguientes fotogramas
-		if delta > 0.0 or made >= (5 if _hh() else 9):
+		if delta > 0.0 or made >= (3 if _hh() else 9):
 			break
 	_grass_step()
 	_update_props(delta)
@@ -4900,8 +4958,8 @@ func _spring_push(pos: Vector2) -> Vector2:
 			var ch = chunks.get(Vector2i(cx, cy))
 			if ch == null:
 				continue
-			for p in ch["props"]:
-				if not is_instance_valid(p) or p.kind != "spring" or p.used:
+			for p in ch["springs"]:
+				if not is_instance_valid(p) or p.used:
 					continue
 				var d: Vector2 = pos - p.position
 				var q := Vector2(d.x / 30.0, d.y / 19.0)
@@ -4928,9 +4986,7 @@ func _collide(pos: Vector2, rad: float) -> Vector2:
 			var ch = chunks.get(Vector2i(cx, cy))
 			if ch == null:
 				continue
-			for p in ch["props"]:
-				if not p.solid:
-					continue
+			for p in ch["solids"]:
 				var d: Vector2 = pos - p.position
 				var md: float = p.r + rad
 				var dd: float = d.length_squared()
@@ -5168,7 +5224,11 @@ func _trigger_trap(p: Prop) -> void:
 
 func _forget_prop(p: Prop) -> void:
 	for key in chunks:
-		(chunks[key]["props"] as Array).erase(p)
+		var ch: Dictionary = chunks[key]
+		(ch["props"] as Array).erase(p)
+		(ch["solids"] as Array).erase(p)
+		(ch["springs"] as Array).erase(p)
+		(ch["specials"] as Array).erase(p)
 
 
 const CHEST_HOLD := 3.5
@@ -6451,6 +6511,10 @@ class Actor extends Node2D:
 	var body_h := 40.0
 	var shadow_rx := 16.0
 	static var flash_k := 1.0
+	static var lite := false     # consola: se redibuja y se anima menos a menudo
+	static var tick := 0         # contador de fotogramas (lo sube main)
+	var stag := false            # anima solo en fotogramas alternos (con el delta acumulado)
+	var _acc_dt := 0.0
 	var flash := 0.0
 	var fade := -1.0
 	var active := true
@@ -6664,7 +6728,13 @@ class Actor extends Node2D:
 			if flash <= 0.0:
 				sprite.material = null
 		if (active or hold) and not meta.is_empty():   # hold: la animacion de muerte sigue aunque el actor este inactivo
-			tick_anim(delta)
+			if stag and ((Actor.tick + (get_instance_id() & 1)) & 1) == 1:
+				_acc_dt += delta
+				if hover or lift_extra != 0.0:
+					_apply()
+				return
+			tick_anim(delta + _acc_dt)
+			_acc_dt = 0.0
 		elif hover or lift_extra != 0.0:
 			_apply()
 
@@ -6781,6 +6851,7 @@ class Enemy extends Actor:
 	var conf_cd := 0.0
 	var cc_imm := 0.0
 	var cc_fx := 0.0
+	var far_acc := 0.0
 
 	var burn_k := 0.0
 
@@ -7057,11 +7128,15 @@ class Prop extends Node2D:
 		t = v * 10.0
 		if kind == "spring":
 			charge = 120.0
-		set_process(true)
+		# árboles y rocas (la mayoría de los objetos) solo necesitan _process mientras dura el cambio de bioma
+		if kind == "tree" or kind == "rock":
+			add_to_group("fade_props")
+		set_process(not (kind == "tree" or kind == "rock") or (tw != null and tw.fade_t < 1.0))
 
 	var _trap_off := false
 
 	var _fading := false
+	var _was_used := false
 
 	func _process(delta: float) -> void:
 		if kind == "tree" or kind == "rock":
@@ -7069,11 +7144,22 @@ class Prop extends Node2D:
 			var fd: bool = tw != null and tw.fade_t < 1.0
 			if fd or _fading:
 				queue_redraw()
+			elif not fd:
+				set_process(false)   # _update_biome lo despierta en el siguiente cambio
 			_fading = fd
 			return
 		if kind != "spring" and kind != "altar" and kind != "chest" and kind != "trap":
+			set_process(false)
 			return
 		t += delta
+		if kind != "trap":
+			# se animan solo estando cerca de la cámara; al gastarse, un último redibujo y quieto
+			if used != _was_used:
+				_was_used = used
+				queue_redraw()
+			elif not used and tw != null and (tw.center - position).length_squared() < 640000.0 and (not Actor.lite or (Actor.tick & 1) == 0):
+				queue_redraw()
+			return
 		if kind == "trap":
 			# las trampas se quedan quietas: solo se redibujan al activarse o recargarse
 			if (cd > 0.0) != _trap_off:
@@ -7291,11 +7377,19 @@ class Bullet extends Node2D:
 	var trail := ""
 	var trail_t := 0.0
 
+	var _lf := -1
+
 	func _init() -> void:
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	func _process(_d: float) -> void:
-		queue_redraw()
+		# sin forma: círculos fijos; con forma: solo al cambiar el fotograma, el ángulo (giro, teledirigido, orbital) o el desvanecido
+		if shape != "":
+			var fr: int = int(age * 12.0)
+			var chg: bool = fr != _lf
+			_lf = fr
+			if chg or ((orb or homing > 0.0 or boom > 0.0 or life - age < 0.25 or VFX.spins(shape)) and (not Actor.lite or (Actor.tick & 1) == 0)):
+				queue_redraw()
 
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
@@ -7335,7 +7429,7 @@ class Fx extends Node2D:
 		age += delta
 		if age >= life:
 			queue_free()
-		else:
+		elif not Actor.lite or (Actor.tick & 1) == 0 or age <= delta * 1.5:
 			queue_redraw()
 
 	func _draw() -> void:
@@ -7393,7 +7487,8 @@ class Field extends Node2D:
 	var gone := false
 
 	func _process(_delta: float) -> void:
-		queue_redraw()
+		if not Actor.lite or (Actor.tick & 1) == 0:
+			queue_redraw()
 
 	func _spr(pos: Vector2, ang: float, scl: float, frame: int, al: float) -> void:
 		if vis.is_empty():
@@ -7463,7 +7558,8 @@ class Slots extends Node2D:
 		return out
 
 	func _process(_delta: float) -> void:
-		queue_redraw()
+		if not Actor.lite or (Actor.tick % 3) == 0:   # consola: 10 veces por segundo bastan
+			queue_redraw()
 
 	func _input(event: InputEvent) -> void:
 		if not enabled:
@@ -7845,14 +7941,15 @@ class Floater extends Node2D:
 		position.y -= 38.0 * delta
 		if age >= life:
 			queue_free()
-		queue_redraw()
+			return
+		var k: float = clampf(age / life, 0.0, 1.0)
+		modulate.a = clampf(1.0 - k * k, 0.0, 1.0)   # el texto se dibuja una vez; el desvanecido va por modulate
 
 	func _draw() -> void:
-		var k: float = clampf(age / life, 0.0, 1.0)
-		var a: float = clampf(1.0 - k * k, 0.0, 1.0)
 		var font := ThemeDB.fallback_font
-		draw_string_outline(font, Vector2(-30.0, 0.0), L.t(text), HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, 4, Color(0, 0, 0, a))
-		draw_string(font, Vector2(-30.0, 0.0), L.t(text), HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, Color(color.r, color.g, color.b, a))
+		var tx: String = L.t(text)
+		draw_string_outline(font, Vector2(-30.0, 0.0), tx, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, 4, Color(0, 0, 0, 1.0))
+		draw_string(font, Vector2(-30.0, 0.0), tx, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, Color(color.r, color.g, color.b, 1.0))
 
 
 
@@ -8067,7 +8164,7 @@ class Minimap extends Node2D:
 			_acc = 1.0
 		_fog_step()
 		_acc += delta
-		if _acc >= 0.04:   # 25 veces por segundo bastan para el minimapa
+		if _acc >= (0.1 if Actor.lite else 0.04):   # 25 veces por segundo bastan para el minimapa (10 en consola)
 			_acc = 0.0
 			queue_redraw()
 
@@ -8144,12 +8241,10 @@ class Minimap extends Node2D:
 		var foe_r: float = FOE_R * m.ground.TS
 		# eventos especiales y trampas ocultas
 		for key in m.chunks:
-			for p in m.chunks[key]["props"]:
+			for p in m.chunks[key]["specials"]:
 				if not is_instance_valid(p) or p.used:
 					continue
 				var k: String = p.kind
-				if k != "chest" and k != "altar" and k != "spring" and k != "trap":
-					continue
 				var d: float = p.position.distance_to(ppos)
 				var q: Vector2 = _pt(p.position)
 				if not _inside(q, 6.0):
@@ -8306,7 +8401,7 @@ class Hud extends Node2D:
 			if thief_notice >= 4.0:
 				thief_notice = -1.0
 		_acc += delta
-		if _acc >= 0.033:   # el HUD se redibuja 30 veces por segundo (texto y barras)
+		if _acc >= (0.066 if Actor.lite else 0.033):   # el HUD se redibuja 30 veces por segundo (15 en consola)
 			_acc = 0.0
 			queue_redraw()
 
