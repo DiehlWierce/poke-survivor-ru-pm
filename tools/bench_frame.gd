@@ -14,6 +14,9 @@ var samples: Array = []
 var proc_sum := 0.0
 var spawn_t := 0.0
 var prev_pf := {}
+var load_frames := 0     # кадров экрана загрузки (main.loading_done == false)
+var load_worst := 0.0    # самый длинный кадр во время загрузки, мс
+var load_total := 0.0    # вся загрузка, мс
 
 
 func _initialize() -> void:
@@ -27,6 +30,18 @@ func _initialize() -> void:
 
 func _process(_delta: float) -> bool:
 	var now := Time.get_ticks_usec()
+	# Пока main грузит мир по кускам (экран загрузки), игры ещё нет: ждём и мерим сами кадры загрузки отдельно
+	if not m.loading_done:
+		load_frames += 1
+		load_worst = maxf(load_worst, (now - last) / 1000.0)
+		load_total += (now - last) / 1000.0
+		last = now
+		if load_frames > 5000:
+			print("загрузка не закончилась")
+			return true
+		return false
+	if load_frames > 0 and n == 0:
+		print("загрузка: кадров=%d  всего=%.0f мс  худший кадр=%.1f мс" % [load_frames, load_total, load_worst])
 	if n == 3:
 		m.run_time = 900.0
 		m.player.hp = 1e9

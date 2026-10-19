@@ -8,6 +8,7 @@ extends Node
 const SV = preload("res://scripts/save_data.gd")
 const L = preload("res://scripts/lang.gd")
 const PAD = preload("res://scripts/pad.gd")
+const DSP = preload("res://scripts/display.gd")
 
 const REPO := "JayElDragon/poke-survivor"
 const FALLBACK_VERSION := "4.0.0"
@@ -86,6 +87,10 @@ class UpdatePopup extends Control:
 	var btns: Array = []
 	var sel := 0
 	var msg: Label
+	var cc: CenterContainer
+	var pc: PanelContainer
+	var sc: ScrollContainer
+	var vbox: VBoxContainer
 
 	func build(inf: Dictionary) -> void:
 		info = inf
@@ -96,15 +101,21 @@ class UpdatePopup extends Control:
 		dim.color = Color(0, 0, 0, 0.62)
 		dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		add_child(dim)
-		var cc := CenterContainer.new()
+		cc = CenterContainer.new()
 		cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		add_child(cc)
-		var pc := PanelContainer.new()
-		pc.custom_minimum_size = Vector2(620, 0)
+		pc = PanelContainer.new()
 		cc.add_child(pc)
+		# Dentro de un ScrollContainer y limitado a la zona visible (zoom 140 %, margenes seguros).
+		sc = ScrollContainer.new()
+		sc.follow_focus = true
+		pc.add_child(sc)
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 14)
-		pc.add_child(v)
+		v.custom_minimum_size = Vector2(620, 0)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sc.add_child(v)
+		vbox = v
 		var t1 := Label.new()
 		t1.text = L.t("New Update Available!")
 		t1.add_theme_font_size_override("font_size", 34)
@@ -139,8 +150,20 @@ class UpdatePopup extends Control:
 			row.add_child(b)
 			btns.append(b)
 		(btns[0] as Button).grab_focus.call_deferred()
+		get_viewport().size_changed.connect(_fit)
+		v.minimum_size_changed.connect(_fit_later)
+		_fit()
 		SV.d["update_seen"] = String(info["tag"])
 		SV.save()
+
+	func _fit_later() -> void:
+		_fit.call_deferred()
+
+	func _fit() -> void:
+		if cc == null or not is_inside_tree():
+			return
+		DSP.fit_to_safe(get_tree(), cc)
+		DSP.fit_scroll(get_tree(), sc, vbox, pc.get_theme_stylebox("panel").get_minimum_size(), 8.0)
 
 	func _press(what: String) -> void:
 		if what == "go":

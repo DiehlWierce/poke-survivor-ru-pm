@@ -71,6 +71,9 @@ var dex_detail: VBoxContainer
 var dex_prev: Preview
 var gacha_region := 1
 var gacha_box: VBoxContainer
+var gacha_tabs: HFlowContainer
+var gacha_content: VBoxContainer
+var gacha_pages := {}   # region -> {"page": Control, "fp": huella, "first": Button}
 var gacha_result: Control
 var up_picker: Control = null
 var pk_gen := 0
@@ -95,6 +98,8 @@ var test_scores := {}
 var test_result_dex := 0
 var reset_armed := false
 var settings_box: VBoxContainer
+var settings_host: VBoxContainer
+var settings_pages := {}   # pestana -> pagina ya construida
 
 
 # ---------------------------------------------------------------
@@ -107,7 +112,16 @@ class Preview extends Control:
 	var dark := false
 	var t := 0.0
 	var frame := 0
-	var tr: TextureRect = null
+	# Animacion y hoja cacheadas: en la consola buscar el archivo en cada fotograma costaba milisegundos.
+	var _an: Dictionary = {}
+	var _tx: Texture2D = null
+	var _cdex := -1
+	var _cshiny := false
+	# Cache de hojas ya cargadas (clave "dex|anim|shiny"); se vacia si crece demasiado para no ocupar memoria.
+	static var _tex_cache: Dictionary = {}
+
+	func _init() -> void:
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	func setup(d: int, shn: bool = false, k: float = 5.0, drk: bool = false) -> void:
 		dex = d
@@ -116,11 +130,11 @@ class Preview extends Control:
 		dark = drk
 		frame = 0
 		t = 0.0
+		_sync()
 		queue_redraw()
 
 	static func anim_of(d: int) -> Dictionary:
-		var SVl = load("res://scripts/save_data.gd")
-		var sm: Dictionary = SVl.smeta.get(str(d), {})
+		var sm: Dictionary = SV.smeta.get(str(d), {})
 		if sm.is_empty():
 			return {}
 		var a: Dictionary = sm["a"]
@@ -128,35 +142,57 @@ class Preview extends Control:
 		return {"name": nm, "info": a[nm], "sm": sm}
 
 	static func tex_of(d: int, nm: String, shn: bool) -> Texture2D:
+		var key := "%d|%s|%d" % [d, nm, 1 if shn else 0]
+		if _tex_cache.has(key):
+			return _tex_cache[key]
+		var res: Texture2D = null
 		if shn:
 			var ps := "res://assets/pokemon/%d/s/%s.png" % [d, nm]
 			if ResourceLoader.exists(ps):
-				return load(ps)
-		var p := "res://assets/pokemon/%d/%s.png" % [d, nm]
-		if ResourceLoader.exists(p):
-			return load(p)
-		return null
+				res = load(ps)
+		if res == null:
+			var p := "res://assets/pokemon/%d/%s.png" % [d, nm]
+			if ResourceLoader.exists(p):
+				res = load(p)
+		if _tex_cache.size() >= 64:
+			_tex_cache.clear()
+		_tex_cache[key] = res
+		return res
+
+	# Recarga la animacion y la hoja solo cuando cambia el Pokemon.
+	func _sync() -> void:
+		if _cdex == dex and _cshiny == shiny:
+			return
+		_cdex = dex
+		_cshiny = shiny
+		_an = anim_of(dex)
+		_tx = null
+		if not _an.is_empty():
+			_tx = tex_of(dex, String(_an["name"]), shiny)
 
 	func _process(delta: float) -> void:
-		var an: Dictionary = anim_of(dex)
-		if an.is_empty():
+		if not is_visible_in_tree():
 			return
-		var info: Dictionary = an["info"]
+		_sync()
+		if _an.is_empty():
+			return
+		var info: Dictionary = _an["info"]
 		t += delta * 60.0
 		var guard := 0
+		var old := frame
 		while t >= float(info["d"][frame]) and guard < 12:
 			guard += 1
 			t -= float(info["d"][frame])
 			frame = (frame + 1) % int(info["n"])
-		queue_redraw()
+		if frame != old:
+			queue_redraw()   # solo se redibuja cuando cambia el fotograma
 
 	func _draw() -> void:
-		var an: Dictionary = anim_of(dex)
-		if an.is_empty():
+		_sync()
+		if _an.is_empty():
 			return
-		var info: Dictionary = an["info"]
-		var tx: Texture2D = tex_of(dex, String(an["name"]), shiny)
-		if tx == null:
+		var info: Dictionary = _an["info"]
+		if _tx == null:
 			draw_rect(Rect2(size * 0.5 - Vector2(16, 16), Vector2(32, 32)), Color(1, 1, 1, 0.15))
 			return
 		var w: float = float(info["w"])
@@ -164,25 +200,12 @@ class Preview extends Control:
 		var k: float = scale_k
 		# ajusta para que no se salga del cuadro
 		k = minf(k, minf(size.x / w, size.y / h) * 0.92)
-		var pos := Vector2(size.x * 0.5 - float(info["ax"]) * k, size.y * 0.5 + h * k * 0.5 - (h - float(info["ay"])) * k * 0.0 - float(info["ay"]) * k + (float(info["ay"]) * k) * 0.0)
-		pos = Vector2(size.x * 0.5 - float(info["ax"]) * k, size.y * 0.84 - float(info["ay"]) * k)
+		var pos := Vector2(size.x * 0.5 - float(info["ax"]) * k, size.y * 0.84 - float(info["ay"]) * k)
 		draw_set_transform(Vector2(size.x * 0.5, size.y * 0.84), 0.0, Vector2(1.0, 0.35))
 		draw_circle(Vector2.ZERO, w * k * 0.28, Color(0, 0, 0, 0.3))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		if tr == null:
-			tr = TextureRect.new()
-			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			tr.stretch_mode = TextureRect.STRETCH_SCALE
-			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			add_child(tr)
-		var at := AtlasTexture.new()
-		at.atlas = tx
-		at.region = Rect2(float(frame) * w, 0.0, w, h)
-		tr.texture = at
-		tr.position = pos
-		tr.size = Vector2(w * k, h * k)
-		tr.modulate = Color(0, 0, 0, 0.9) if dark else Color.WHITE
+		# se dibuja directo (antes: TextureRect + AtlasTexture nuevos en cada fotograma)
+		draw_texture_rect_region(_tx, Rect2(pos, Vector2(w * k, h * k)), Rect2(float(frame) * w, 0.0, w, h), Color(0, 0, 0, 0.9) if dark else Color.WHITE)
 
 
 
@@ -214,6 +237,12 @@ class Mon extends Node2D:
 	var lunge := 22.0
 	var fdir := 0
 	var walk_ok: Callable = Callable()   # (desde, hasta) -> bool: el camino esta libre de paredes y agua
+	# Hojas por animacion y ultimo estado aplicado: _apply() ya no recarga la textura en cada fotograma.
+	var _texs: Dictionary = {}
+	var _la := ""
+	var _lf := -1
+	var _ld := -1
+	var _lk := -1.0
 
 	func setup(d: int, kk: float, shn: bool, b: Rect2, wd: bool = true) -> void:
 		dex = d
@@ -221,9 +250,10 @@ class Mon extends Node2D:
 		shiny = shn
 		bounds = b
 		wander = wd
-		var SVl = load("res://scripts/save_data.gd")
-		var sm: Dictionary = SVl.smeta.get(str(d), {})
+		var sm: Dictionary = SV.smeta.get(str(d), {})
 		meta = sm.get("a", {})
+		_texs.clear()
+		_la = ""
 		sprite = Sprite2D.new()
 		sprite.centered = false
 		sprite.region_enabled = true
@@ -234,6 +264,7 @@ class Mon extends Node2D:
 		if meta.has("Idle"):
 			shadow_w = float(meta["Idle"]["w"]) * k * 0.22
 		_set_anim("Idle")
+		queue_redraw()   # la sombra es fija: se dibuja una sola vez
 
 	func _set_anim(a: String) -> void:
 		if meta.is_empty():
@@ -257,13 +288,23 @@ class Mon extends Node2D:
 		if meta.is_empty() or not meta.has(anim):
 			return
 		var am: Dictionary = meta[anim]
-		var tx: Texture2D = Preview.tex_of(dex, anim, shiny)
+		if anim == _la and frame == _lf and dir == _ld and k == _lk:
+			return   # nada ha cambiado: no se vuelve a tocar el sprite
+		if not _texs.has(anim):
+			_texs[anim] = Preview.tex_of(dex, anim, shiny)
+		var tx: Texture2D = _texs[anim]
 		if tx == null:
 			sprite.visible = false
 			return
+		var new_sheet: bool = anim != _la
+		_la = anim
+		_lf = frame
+		_ld = dir
+		_lk = k
 		sprite.visible = true
-		sprite.texture = tx
-		sprite.offset = Vector2(-float(am["ax"]), -float(am["ay"]))
+		if new_sheet:
+			sprite.texture = tx
+			sprite.offset = Vector2(-float(am["ax"]), -float(am["ay"]))
 		sprite.scale = Vector2(k, k)
 		var rows: int = int(am.get("r", 8))
 		var w: float = float(am["w"])
@@ -306,7 +347,7 @@ class Mon extends Node2D:
 			_set_anim(a)
 
 	func _process(delta: float) -> void:
-		if meta.is_empty() or not meta.has(anim):
+		if meta.is_empty() or not meta.has(anim) or not is_visible_in_tree():
 			return
 		var am: Dictionary = meta[anim]
 		t += delta * 60.0
@@ -354,7 +395,6 @@ class Mon extends Node2D:
 		if not ysort and not fixed:
 			z_index = int(position.y)
 		_apply()
-		queue_redraw()
 
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.35))
@@ -1019,12 +1059,28 @@ func _cost_btn(title: String, cost: String, icon: String, cost_icon: String, cb:
 
 
 # Boton dorado (se puede pagar) o marron apagado (no alcanza).
+# Los estilos se crean una sola vez y se comparten (antes: 5 StyleBoxFlat nuevos en cada llamada).
+var _gold_sbs := {}
+
+
 func _gold_btn(b: Button, on: bool) -> void:
-	var c := Color("#f7b733") if on else Color("#8c7f66")
-	var edge := Color("#fff4d0") if on else Color("#5b5240")
+	if not _gold_sbs.has(on):
+		var c := Color("#f7b733") if on else Color("#8c7f66")
+		var edge := Color("#fff4d0") if on else Color("#5b5240")
+		_gold_sbs[on] = [_sb(c, edge, 3, 12), _sb_focus(c.lightened(0.15))]
+	var sbs: Array = _gold_sbs[on]
 	for st in ["normal", "hover", "pressed", "disabled"]:
-		b.add_theme_stylebox_override(st, _sb(c, edge, 3, 12))
-	b.add_theme_stylebox_override("focus", _sb_focus(c.lightened(0.15)))
+		b.add_theme_stylebox_override(st, sbs[0])
+	b.add_theme_stylebox_override("focus", sbs[1])
+
+
+# Dorado si esta activo; si no, vuelve al estilo normal del tema (quita los estilos propios).
+func _gold_on(b: Button, on: bool) -> void:
+	if on:
+		_gold_btn(b, true)
+	else:
+		for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+			b.remove_theme_stylebox_override(st)
 
 
 func _card_sb() -> StyleBoxFlat:
@@ -1139,7 +1195,12 @@ func _show(name: String) -> void:
 	if name == "up" and cur != "up":
 		up_dex = int(SV.d["selected"])
 	_close_up_picker()
+	_flush_save()
+	if cur != name:
+		_release_screen(cur)
 	cur = name
+	gi_dirty = true
+	pad_chk = 0.0
 	if name != "dex":
 		dex_pick_party = false
 		dex_pick_team = false
@@ -1160,6 +1221,37 @@ func _show(name: String) -> void:
 	call("_refresh_" + name)
 	if focus_first != null and is_instance_valid(focus_first):
 		_gf(focus_first)
+
+
+# Al salir de una pantalla pesada se libera su contenido (las paginas guardadas de Lexico / Gacha y la lista de Misiones):
+# no se queda oculto en el arbol haciendo crecer los nodos. Al volver a entrar se reconstruye.
+func _release_screen(name: String) -> void:
+	match name:
+		"lexicon":
+			for k in lex_pages:
+				if is_instance_valid(lex_pages[k]):
+					(lex_pages[k] as Node).queue_free()
+			lex_pages.clear()
+			for ch in lex_box.get_children():
+				lex_box.remove_child(ch)
+		"gacha":
+			for k in gacha_pages:
+				var pg = gacha_pages[k]["page"]
+				if is_instance_valid(pg):
+					(pg as Node).queue_free()
+			gacha_pages.clear()
+			for ch in gacha_content.get_children():
+				gacha_content.remove_child(ch)
+		"goals":
+			_clear(goals_box)
+		"settings":
+			for k in settings_pages:
+				if is_instance_valid(settings_pages[k]):
+					(settings_pages[k] as Node).queue_free()
+			settings_pages.clear()
+			for ch in settings_host.get_children():
+				settings_host.remove_child(ch)
+			settings_box = settings_host
 
 
 func _gf(c: Control) -> void:
@@ -1203,8 +1295,38 @@ func _build_pad_hint() -> void:
 		pad_hint.add_child(_gap(10))
 
 
+# Guardado diferido (deslizadores): evita escribir el archivo en cada paso al mantener la direccion.
+var save_t := 0.0
+# Comprobacion de la ayuda de mando: no hace falta cada fotograma.
+var pad_chk := 0.0
+
+
+func _save_later() -> void:
+	save_t = 0.5
+
+
+func _flush_save() -> void:
+	if save_t > 0.0:
+		save_t = 0.0
+		SV.save()
+
+
+func _exit_tree() -> void:
+	_flush_save()
+	# las paginas guardadas que no estan en el arbol no cuelgan de nadie: hay que liberarlas a mano
+	for sn in ["lexicon", "gacha", "settings"]:
+		_release_screen(sn)
+
+
 func _process(delta: float) -> void:
-	if pad_hint != null:
+	if save_t > 0.0:
+		save_t -= delta
+		if save_t <= 0.0:
+			save_t = 0.0
+			SV.save()
+	pad_chk -= delta
+	if pad_hint != null and pad_chk <= 0.0:
+		pad_chk = 0.5
 		var has_pad := Input.get_connected_joypads().size() > 0
 		pad_hint.visible = has_pad and cur != "test"
 		if has_pad:
@@ -1291,13 +1413,136 @@ func _go_back() -> void:
 
 
 func _popup_open() -> bool:
-	for n in find_children("*", "OptionButton", true, false):
-		if (n as OptionButton).get_popup().visible:
-			return true
-	return false
+	# El desplegable abierto conserva el foco: basta mirar el control enfocado (antes: find_children por todo el arbol).
+	var f: Control = get_viewport().gui_get_focus_owner()
+	return f is OptionButton and (f as OptionButton).get_popup().visible
+
+
+# Pantallas con pestanas: L1/R1 (o Q/E, RePag/AvPag) las cambian al instante.
+const TAB_SCREENS := ["settings", "goals", "lexicon", "gacha"]
+const GOALS_TABS := ["m", "a", "z", "p", "r"]
+const LEX_TABS := ["i", "m", "s", "a", "z"]
+# Con izquierda/derecha sobre la fila de pestanas el foco se queda en la fila (se pueden encadenar);
+# con L1/R1 y al pulsar una pestana el foco salta al primer elemento del contenido.
+const TAB_ROW_KEEPS_FOCUS := true
+
+
+# -1 / +1 si el evento es "pestana anterior / siguiente"; 0 si no.
+func _tab_dir(event: InputEvent) -> int:
+	if event is InputEventJoypadButton and event.pressed:
+		if event.button_index == PAD.btn("prev"):
+			return -1
+		if event.button_index == PAD.btn("next"):
+			return 1
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_Q, KEY_PAGEUP:
+				return -1
+			KEY_E, KEY_PAGEDOWN:
+				return 1
+	return 0
+
+
+# Hay un cuadro encima (resultado del gacha / selector de favorito / tragaperras): las pestanas no responden.
+func _tab_blocked() -> bool:
+	if listening != "" or slots_busy or _popup_open():
+		return true
+	if gacha_result != null and gacha_result.visible:
+		return true
+	if up_picker != null and is_instance_valid(up_picker):
+		return true
+	var f: Control = get_viewport().gui_get_focus_owner()
+	return f is LineEdit
+
+
+func _tab_count() -> int:
+	match cur:
+		"settings":
+			return SET_TABS.size()
+		"goals":
+			return GOALS_TABS.size()
+		"lexicon":
+			return LEX_TABS.size()
+		"gacha":
+			return SV.REGIONS.size()
+	return 0
+
+
+# Cambia de pestana d posiciones (con vuelta) y reconstruye solo el contenido.
+func _tab_step(d: int, to_content: bool) -> void:
+	var n: int = _tab_count()
+	if n <= 1:
+		return
+	match cur:
+		"settings":
+			set_tab = posmod(set_tab + d, n)
+			last_act = ""
+			_refresh_settings()
+		"goals":
+			goals_tab = GOALS_TABS[posmod(GOALS_TABS.find(goals_tab) + d, n)]
+			_refresh_goals()
+		"lexicon":
+			lex_tab = LEX_TABS[posmod(LEX_TABS.find(lex_tab) + d, n)]
+			_refresh_lexicon()
+		"gacha":
+			gacha_region = posmod(gacha_region - 1 + d, n) + 1
+			_refresh_gacha()
+	_tab_scroll_top()
+	Aud.sfx("hover")
+	if to_content:
+		_focus_content()
+	elif tab_sel != null and is_instance_valid(tab_sel):
+		tab_sel.grab_focus()
+
+
+# Raiz del contenido de la pestana actual (lo que cambia al cambiar de pestana).
+func _tab_content_root() -> Node:
+	match cur:
+		"settings":
+			return settings_box
+		"goals":
+			return goals_box
+		"lexicon":
+			return lex_box
+		"gacha":
+			return gacha_content
+	return null
+
+
+func _tab_scroll_top() -> void:
+	var root: Node = _tab_content_root()
+	var p: Node = root.get_parent() if root != null else null
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	if p != null:
+		(p as ScrollContainer).scroll_vertical = 0
+
+
+# Foco al primer elemento del contenido (si no hay ninguno, se queda en la pestana).
+func _focus_content() -> void:
+	var root: Node = _tab_content_root()
+	var f: Control = null
+	if root != null:
+		if focus_first != null and is_instance_valid(focus_first) and root.is_ancestor_of(focus_first) and focus_first.is_visible_in_tree():
+			f = focus_first
+		else:
+			var items: Array = NAVG.focusables(root)
+			if not items.is_empty():
+				f = items[0]
+	if f == null:
+		f = tab_sel
+	if f != null and is_instance_valid(f):
+		f.grab_focus()
+		NAVG.sticky_for = null
+		call_deferred("_follow_focus")
 
 
 func _input(event: InputEvent) -> void:
+	# Lo que no es una pulsacion no hace nada aqui: movimiento del raton, soltar teclas/botones...
+	if event is InputEventMouse or event is InputEventScreenTouch or event is InputEventScreenDrag:
+		return
+	if (event is InputEventKey or event is InputEventJoypadButton) and not event.pressed:
+		return
 	if not is_visible_in_tree():
 		return
 	if listening != "":
@@ -1312,14 +1557,27 @@ func _input(event: InputEvent) -> void:
 			_refresh_listen()
 			get_viewport().set_input_as_handled()
 			return
-	if event is InputEventJoypadButton and event.pressed and cur == "gacha" and not (gacha_result != null and gacha_result.visible):
-		if event.button_index == PAD.btn("prev") or event.button_index == PAD.btn("next"):
-			var d := -1 if event.button_index == PAD.btn("prev") else 1
-			gacha_region = posmod(gacha_region - 1 + d, SV.REGIONS.size()) + 1
-			_refresh_gacha()
+	var on_tabs: bool = cur in TAB_SCREENS and tab_row != null and is_instance_valid(tab_row)
+	if on_tabs and not _tab_blocked():
+		# L1 / R1: pestana anterior / siguiente al instante, y el foco al primer elemento
+		var td: int = _tab_dir(event)
+		if td != 0:
+			_tab_step(td, true)
 			get_viewport().set_input_as_handled()
 			return
-	if event.is_action_pressed("ui_left") and cur in ["settings", "goals", "gacha", "lexicon"] and tab_sel != null and is_instance_valid(tab_sel) and tab_row != null:
+		# izquierda / derecha con el foco en la fila de pestanas: cambia de pestana sin confirmar
+		var lr: int = 0
+		if event.is_action_pressed("ui_left", true):
+			lr = -1
+		elif event.is_action_pressed("ui_right", true):
+			lr = 1
+		if lr != 0:
+			var fr: Control = get_viewport().gui_get_focus_owner()
+			if fr != null and tab_row.is_ancestor_of(fr):
+				_tab_step(lr, not TAB_ROW_KEEPS_FOCUS)
+				get_viewport().set_input_as_handled()
+				return
+	if event.is_action_pressed("ui_left") and on_tabs and tab_sel != null and is_instance_valid(tab_sel):
 		var f0: Control = get_viewport().gui_get_focus_owner()
 		if f0 != null and not tab_row.is_ancestor_of(f0) and screens.has(cur) and screens[cur].is_ancestor_of(f0):
 			var nb: Control = f0.find_valid_focus_neighbor(SIDE_LEFT)
@@ -1331,22 +1589,33 @@ func _input(event: InputEvent) -> void:
 		news_scroll.scroll_vertical += 130 if event.is_action_pressed("ui_down", true) else -130
 		get_viewport().set_input_as_handled()
 		return
-	if _grid_nav(event):
+	# Lexico: no tiene elementos enfocables, asi que con el foco en las pestanas arriba/abajo desplaza la lista
+	if cur == "lexicon" and lex_box != null and (event.is_action_pressed("ui_down", true) or event.is_action_pressed("ui_up", true)):
+		var fl: Control = get_viewport().gui_get_focus_owner()
+		var lsc := lex_box.get_parent() as ScrollContainer
+		if lsc != null and fl != null and lex_tabs.is_ancestor_of(fl):
+			var ld: bool = event.is_action_pressed("ui_down", true)
+			if ld or lsc.scroll_vertical > 0:
+				lsc.scroll_vertical += 140 if ld else -140
+				get_viewport().set_input_as_handled()
+				return
+	var nav: bool = _nav_event(event)
+	if _dir_event(event) and _grid_nav(event):
 		get_viewport().set_input_as_handled()
 		call_deferred("_follow_focus")
 		return
 	if (event.is_action_pressed("ui_down") or event.is_action_pressed("ui_up")) and _scroll_fallback(event.is_action_pressed("ui_down")):
 		get_viewport().set_input_as_handled()
 		return
-	if _nav_event(event):
+	if nav:
 		call_deferred("_follow_focus")
-	if _nav_event(event) and get_viewport().gui_get_focus_owner() == null:
-		# Al reconstruir una pantalla se pierde el foco: con mando/teclado lo recuperamos.
-		var fc: Control = _first_focusable()
-		if fc != null:
-			fc.grab_focus()
-			get_viewport().set_input_as_handled()
-			return
+		if get_viewport().gui_get_focus_owner() == null:
+			# Al reconstruir una pantalla se pierde el foco: con mando/teclado lo recuperamos.
+			var fc: Control = _first_focusable()
+			if fc != null:
+				fc.grab_focus()
+				get_viewport().set_input_as_handled()
+				return
 	if PAD.is_cancel(event) or event.is_action_pressed("ui_cancel"):
 		if _popup_open():
 			return
@@ -1355,33 +1624,68 @@ func _input(event: InputEvent) -> void:
 
 
 # Navegacion con mando igual de comoda en todas las pantallas (navgrid.gd), como en Mejoras.
+# La lista de controles enfocables se guarda y solo se recalcula si cambia la pantalla, se reconstruye
+# algo (_clear / _show), cambia el numero de nodos o el control enfocado no esta en ella.
+var gi_cache: Array = []
+var gi_key := ""
+var gi_nodes := -1
+var gi_dirty := true
+
+
 func _grid_items() -> Array:
 	var root: Node = self
+	var key := "m"
 	if gacha_result != null and gacha_result.visible:
 		root = gacha_result
+		key = "r"
 	if up_picker != null and is_instance_valid(up_picker):
 		root = up_picker
+		key = "p"
+	key += cur
+	var nc: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	if not gi_dirty and key == gi_key and nc == gi_nodes and _gi_valid():
+		return gi_cache
 	var out: Array = []
-	for c in NAVG.focusables(root):
-		# con una pantalla abierta solo cuentan ella y la barra superior (no las ocultas)
-		if root == self and screens.has(cur):
-			if not (screens[cur].is_ancestor_of(c) or not _in_any_screen(c)):
+	if root == self:
+		# solo lo visible: la pantalla abierta, la barra superior y los cuadros encima (no las pantallas ocultas)
+		for k in get_children():
+			if k is Node2D or (k is Control and not (k as Control).visible):
 				continue
-		out.append(c)
+			if k is Control and (k as Control).focus_mode == Control.FOCUS_ALL and (k as Control).is_visible_in_tree():
+				out.append(k)
+			out.append_array(NAVG.focusables(k))
+	else:
+		out = NAVG.focusables(root)
+	gi_cache = out
+	gi_key = key
+	gi_nodes = nc
+	gi_dirty = false
 	return out
 
 
-func _in_any_screen(c: Control) -> bool:
-	for k in screens:
-		if screens[k].is_ancestor_of(c):
-			return true
-	return false
+# La lista guardada sigue valiendo si todos sus controles siguen vivos, visibles y activos.
+func _gi_valid() -> bool:
+	for c in gi_cache:
+		if not is_instance_valid(c):
+			return false
+		var ctl := c as Control
+		if not ctl.is_visible_in_tree():
+			return false
+		if ctl is BaseButton and (ctl as BaseButton).disabled:
+			return false
+	var f: Control = get_viewport().gui_get_focus_owner()
+	return f == null or gi_cache.has(f) or f is LineEdit
 
 
 func _grid_nav(event: InputEvent) -> bool:
 	if _popup_open() or listening != "":
 		return false
 	return NAVG.move(get_viewport(), event, _grid_items())
+
+
+# Cruceta / flechas / stick (admite repeticion al mantener la tecla).
+func _dir_event(event: InputEvent) -> bool:
+	return event.is_action_pressed("ui_down", true) or event.is_action_pressed("ui_up", true) or event.is_action_pressed("ui_left", true) or event.is_action_pressed("ui_right", true)
 
 
 func _nav_event(event: InputEvent) -> bool:
@@ -1414,6 +1718,7 @@ func _clear(box: Node) -> void:
 	for c in box.get_children():
 		box.remove_child(c)
 		c.queue_free()
+	gi_dirty = true
 
 
 func _name_of(dex: int) -> String:
@@ -2753,6 +3058,19 @@ func _build_gacha() -> void:
 	gacha_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gacha_box.add_theme_constant_override("separation", 12)
 	sc.add_child(gacha_box)
+	# pestanas de region: se crean una vez; debajo va el contenido de la region (cambia al cambiar de pestana)
+	gacha_tabs = HFlowContainer.new()
+	gacha_tabs.add_theme_constant_override("h_separation", 8)
+	gacha_tabs.add_theme_constant_override("v_separation", 8)
+	gacha_box.add_child(gacha_tabs)
+	for i in range(1, 10):
+		var r: int = i
+		var tb := _btn(L.t(SV.REGIONS[r - 1]) + "\n" + L.t("Gen %d") % r, func(): gacha_region = r; _refresh_gacha(); _tab_scroll_top(); _focus_content(), Vector2(112, 62))
+		tb.add_theme_font_size_override("font_size", 20)
+		gacha_tabs.add_child(tb)
+	gacha_content = VBoxContainer.new()
+	gacha_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gacha_box.add_child(gacha_content)
 	gacha_result = ColorRect.new()
 	gacha_result.color = Color(0, 0, 0, 0.7)
 	gacha_result.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -2787,28 +3105,46 @@ func _region_counts(region: int) -> Vector2i:
 
 
 func _refresh_gacha() -> void:
-	_clear(gacha_box)
-	var first: Button = null
-	# --- pestanas de region
-	var tabs := HFlowContainer.new()
-	tabs.add_theme_constant_override("h_separation", 8)
-	tabs.add_theme_constant_override("v_separation", 8)
-	gacha_box.add_child(tabs)
-	tab_row = tabs
-	for i in range(1, 10):
-		var r: int = i
-		var tb := _btn(L.t(SV.REGIONS[r - 1]) + "\n" + L.t("Gen %d") % r, func(): gacha_region = r; _refresh_gacha(); _gf(tab_sel), Vector2(112, 62))
-		tb.add_theme_font_size_override("font_size", 20)
-		if r == gacha_region:
-			tb.add_theme_stylebox_override("normal", _sb(Color("#2a4aa8"), C_GOLD, 3, 12))
+	# pestanas de region (ya existen): se marca la activa
+	var tbs: Array = gacha_tabs.get_children()
+	for i in range(tbs.size()):
+		var tb := tbs[i] as Button
+		if i + 1 == gacha_region:
+			if not _seg_sb.has("greg"):
+				_seg_sb["greg"] = _sb(Color("#2a4aa8"), C_GOLD, 3, 12)
+			tb.add_theme_stylebox_override("normal", _seg_sb["greg"])
 			tb.add_theme_color_override("font_color", C_GOLD)
-			first = tb
 			tab_sel = tb
-		tabs.add_child(tb)
+		else:
+			tb.remove_theme_stylebox_override("normal")
+			tb.remove_theme_color_override("font_color")
+	tab_row = gacha_tabs
+	# pagina de la region: se reutiliza si tickets / pity / coleccion no han cambiado; si no, se reconstruye
+	var fp := "%d_%d_%d_%d" % [int(SV.d["tickets"]), int(SV.d.get("tickets10", 0)), int(SV.d["pity"].get(str(gacha_region), 0)), SV.owned_count()]
+	for ch in gacha_content.get_children():
+		gacha_content.remove_child(ch)
+	var ent: Dictionary = gacha_pages.get(gacha_region, {})
+	if ent.is_empty() or String(ent["fp"]) != fp or not is_instance_valid(ent["page"]):
+		if not ent.is_empty() and is_instance_valid(ent["page"]):
+			(ent["page"] as Node).queue_free()
+		ent = _build_gacha_page(fp)
+		gacha_pages[gacha_region] = ent
+	gacha_content.add_child(ent["page"])
+	gi_dirty = true
+	var gits: Array = NAVG.focusables(ent["page"])
+	focus_first = gits[0] if not gits.is_empty() else tab_sel
+
+
+# Contenido de la region actual (escenario, tiradas, probabilidades); se guarda por region.
+func _build_gacha_page(fp: String) -> Dictionary:
+	var pg := VBoxContainer.new()
+	pg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pg.add_theme_constant_override("separation", 12)
+	var first: Button = null
 	# --- escenario + probabilidades
 	var main := HBoxContainer.new()
 	main.add_theme_constant_override("separation", 16)
-	gacha_box.add_child(main)
+	pg.add_child(main)
 	var left := VBoxContainer.new()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 12)
@@ -2921,7 +3257,7 @@ func _refresh_gacha() -> void:
 	ov.add_child(_label(L.t("· A las %d tiradas sin legendario en un banner, la siguiente lo es.") % SV.PITY_5, 16, Color("#c8d6ee")))
 	ov.add_child(_label(L.t("· Los repetidos dan Pokémonedas. Los shiny no se repiten."), 16, Color("#c8d6ee")))
 	ov.add_child(_label(L.t("· Los tickets se consiguen jugando: algunos Pokémon los sueltan al caer, y los jefes y los cofres a veces dan tickets ×10."), 16, Color("#c8d6ee")))
-	focus_first = first
+	return {"page": pg, "fp": fp, "first": first}
 
 
 func _nw(parent: Node, l: Label) -> void:
@@ -3005,7 +3341,7 @@ func _show_pulls(results: Array) -> void:
 		zrow.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.add_child(zrow)
 		Aud.sfx("legend")
-	var ok := _btn("Aceptar", func(): gacha_result.visible = false; _refresh_gacha(), Vector2(0, 54))
+	var ok := _btn("Aceptar", func(): gacha_result.visible = false; _refresh_gacha(); _focus_content(), Vector2(0, 54))
 	v.add_child(ok)
 	gacha_result.visible = true
 	_gf(ok)
@@ -3029,7 +3365,7 @@ func _build_goals() -> void:
 	v.add_child(goals_tabs)
 	for t in [["m", "Misiones"], ["a", "Logros"], ["z", "Cristales Z"], ["p", "Perfil"], ["r", "Récords"]]:
 		var k: String = String(t[0])
-		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(); _gf(tab_sel), Vector2(200, 46))
+		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(); _tab_scroll_top(); _focus_content(), Vector2(200, 46))
 		if k == "a":
 			tb.icon = IC.btn_tex("medal1", 28)
 			tb.expand_icon = false
@@ -3074,7 +3410,7 @@ func _build_lexicon() -> void:
 	v.add_child(lex_tabs)
 	for t in [["i", "Objetos"], ["m", "Movimientos"], ["s", "Estados"], ["a", "Habilidades"], ["z", "Z y Dynamax"]]:
 		var k: String = String(t[0])
-		var tb := _btn(String(t[1]), func(): lex_tab = k; _refresh_lexicon(); _gf(tab_sel), Vector2(200, 46))
+		var tb := _btn(String(t[1]), func(): lex_tab = k; _refresh_lexicon(); _tab_scroll_top(); _focus_content(), Vector2(200, 46))
 		lex_tabs.add_child(tb)
 	var sc := ScrollContainer.new()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -3120,23 +3456,58 @@ func _lex_grid(cols: int) -> GridContainer:
 	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	g.add_theme_constant_override("h_separation", 10)
 	g.add_theme_constant_override("v_separation", 10)
-	lex_box.add_child(g)
+	lex_tgt.add_child(g)
 	return g
 
 
+# Paginas del lexico ya construidas (clave = pestana): cambiar de pestana solo las cambia de sitio.
+var lex_pages := {}
+var lex_tgt: VBoxContainer = null
+
+
 func _refresh_lexicon() -> void:
-	_clear(lex_box)
 	var tbs: Array = lex_tabs.get_children()
 	for i in range(tbs.size()):
-		var key: String = ["i", "m", "s", "a", "z"][i]
+		var key: String = LEX_TABS[i]
 		_gold_btn(tbs[i], key == lex_tab)
 		if key == lex_tab:
 			tab_sel = tbs[i]
 	tab_row = lex_tabs
+	# saca la pagina anterior (sin liberarla) y pone la de esta pestana; solo se construye la primera vez
+	for ch in lex_box.get_children():
+		lex_box.remove_child(ch)
+	var page: VBoxContainer = lex_pages.get(lex_tab)
+	if page == null or not is_instance_valid(page):
+		page = VBoxContainer.new()
+		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		page.add_theme_constant_override("separation", 8)
+		lex_tgt = page
+		_lex_fill()
+		lex_pages[lex_tab] = page
+	lex_box.add_child(page)
+	gi_dirty = true
+	focus_first = tab_sel
+	_update_top()
+
+
+# Sustituye los "%d" en orden, sin interpretar otros "%" del texto (ej. "+30%": con el operador % da error de formato).
+func _fmt_d(tpl: String, vals: Array) -> String:
+	var out := ""
+	var rest := tpl
+	for v in vals:
+		var i := rest.find("%d")
+		if i < 0:
+			break
+		out += rest.substr(0, i) + str(v)
+		rest = rest.substr(i + 2)
+	return out + rest
+
+
+func _lex_fill() -> void:
 	var cols: int = 2 if get_viewport_rect().size.x >= 900.0 else 1
 	if lex_tab == "i":
 		var found: Dictionary = SV.d.get("itemsFound", {})
-		lex_box.add_child(_label(L.t("Objetos: %d / %d encontrados") % [found.size(), TD.ITEMS.size()], 24, C_GOLD))
+		lex_tgt.add_child(_label(L.t("Objetos: %d / %d encontrados") % [found.size(), TD.ITEMS.size()], 24, C_GOLD))
 		var g := _lex_grid(cols)
 		for it in TD.ITEMS:
 			var id: String = String(it["id"])
@@ -3144,7 +3515,7 @@ func _refresh_lexicon() -> void:
 			g.add_child(_lex_card(IC.rect(id, 40), L.t(String(it["name"])), L.t("✔ Encontrado") if ok else L.t("Aún sin encontrar"), Color("#8fe3b0") if ok else Color("#8fa3c4"), L.t(String(it["desc"])), not ok))
 	elif lex_tab == "m":
 		var moves: Dictionary = MD.MOVES
-		lex_box.add_child(_label(L.t("Movimientos: %d") % moves.size(), 24, C_GOLD))
+		lex_tgt.add_child(_label(L.t("Movimientos: %d") % moves.size(), 24, C_GOLD))
 		for ty in TYPE_IDS:
 			var ids: Array = []
 			for mid in MD.ORDER:
@@ -3153,7 +3524,7 @@ func _refresh_lexicon() -> void:
 			if ids.is_empty():
 				continue
 			var tcol: Color = Color.html(String(MD.TYPE_COLOR.get(ty, "#ffffff")))
-			lex_box.add_child(_label(L.t(String(MD.TYPE_NAME[ty])), 22, tcol))
+			lex_tgt.add_child(_label(L.t(String(MD.TYPE_NAME[ty])), 22, tcol))
 			var g2 := _lex_grid(cols)
 			for mid in ids:
 				var m: Dictionary = moves[mid]
@@ -3164,13 +3535,13 @@ func _refresh_lexicon() -> void:
 					desc += "\n" + L.t("Evoluciona en: %s") % L.t(String(MD.EVO_ALT[mid][0]))
 				g2.add_child(_lex_card(IC.rect("move:" + String(mid), 36), L.t(String(m["name"])), L.t(String(MD.TYPE_NAME[ty])), tcol, desc))
 	elif lex_tab == "z":
-		lex_box.add_child(_label(L.t("Movimientos Z: %d") % ZM.ORDER.size(), 24, C_GOLD))
-		lex_box.add_child(_label(L.t("Se recargan cada 4 minutos, desde el nivel %d. Se desbloquean derrotando %d Pokémon de ese tipo.") % [ZM.MIN_LEVEL, ZM.NEED], 16, Color("#c8d6ee")))
+		lex_tgt.add_child(_label(L.t("Movimientos Z: %d") % ZM.ORDER.size(), 24, C_GOLD))
+		lex_tgt.add_child(_label(L.t("Se recargan cada 4 minutos, desde el nivel %d. Se desbloquean derrotando %d Pokémon de ese tipo.") % [ZM.MIN_LEVEL, ZM.NEED], 16, Color("#c8d6ee")))
 		var dn: int = int(SV.d["stats"].get("dens", 0))
 		var dok: bool = dn >= 1
 		var gd := _lex_grid(cols)
 		gd.add_child(_lex_card(null, "Dynamax", L.t("Desbloqueado") if dok else L.t("Vence una guarida Dynamax: %d/1") % dn, Color("#ff7a9a"),
-			L.t("Cada 4 minutos (desde el nivel %d): tu Pokémon se vuelve gigante %d s con +30% a todos sus atributos y lanza ondas Max de su tipo. Cada guarida Dynamax vencida lo recarga al instante.") % [DYN.MIN_LEVEL, int(DYN.DUR)], not dok))
+			_fmt_d(L.t("Cada 4 minutos (desde el nivel %d): tu Pokémon se vuelve gigante %d s con +30% a todos sus atributos y lanza ondas Max de su tipo. Cada guarida Dynamax vencida lo recarga al instante."), [DYN.MIN_LEVEL, int(DYN.DUR)]), not dok))
 		var gz := _lex_grid(cols)
 		for zt in ZM.ORDER:
 			var zd: Dictionary = ZM.DEF[zt]
@@ -3180,20 +3551,16 @@ func _refresh_lexicon() -> void:
 			var zsub: String = L.t(String(MD.TYPE_NAME[zt])) + " · " + (L.t("Desbloqueado") if zok else L.t("Derrota %d Pokémon de tipo %s: %d/%d") % [ZM.NEED, L.t(String(MD.TYPE_NAME[zt])), zn, ZM.NEED])
 			gz.add_child(_lex_card(IC.rect("zc:" + zt, 48), L.t(String(zd["name"])), zsub, zcol, L.t(String(zd["desc"])), not zok))
 	elif lex_tab == "a":
-		lex_box.add_child(_label(L.t("Habilidades: %d") % AB.FX.size(), 24, C_GOLD))
+		lex_tgt.add_child(_label(L.t("Habilidades: %d") % AB.FX.size(), 24, C_GOLD))
 		var g4 := _lex_grid(cols)
 		for aid in AB.FX:
 			var ad: Dictionary = AB.FX[aid]
 			g4.add_child(_lex_card(null, L.t(String(ad["name"])), "", Color.WHITE, L.t(String(ad["desc"]))))
 	else:
-		lex_box.add_child(_label(L.t("Estados alterados"), 24, C_GOLD))
+		lex_tgt.add_child(_label(L.t("Estados alterados"), 24, C_GOLD))
 		var g3 := _lex_grid(cols)
 		for st in LEX_STATUS:
 			g3.add_child(_lex_card(null, L.t(String(st[1])), "", Color.WHITE, L.t(String(st[2]))))
-	focus_first = tbs[0]
-	if tab_sel != null:
-		focus_first = tab_sel
-	_update_top()
 
 
 func _reward_box(r: Dictionary, w: float = 170.0) -> HBoxContainer:
@@ -3845,14 +4212,19 @@ func _build_settings() -> void:
 	set_tabs_row.add_theme_constant_override("h_separation", 10)
 	set_tabs_row.add_theme_constant_override("v_separation", 8)
 	v.add_child(set_tabs_row)
+	# las pestanas se crean una sola vez: al cambiar de pestana solo se repinta la marcada y se rehace el contenido
+	for i in range(SET_TABS.size()):
+		var ti: int = i
+		set_tabs_row.add_child(_btn(L.t(SET_TABS[i]), func(): _settings_pick(ti), Vector2(0, 46)))
 	var ssc := ScrollContainer.new()
 	ssc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	ssc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(ssc)
-	settings_box = VBoxContainer.new()
-	settings_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	settings_box.add_theme_constant_override("separation", 8)
-	ssc.add_child(settings_box)
+	# settings_host es fijo; las paginas (una por pestana) cuelgan de el y settings_box apunta a la pagina actual
+	settings_host = VBoxContainer.new()
+	settings_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ssc.add_child(settings_host)
+	settings_box = settings_host
 
 
 # Pantalla de novedades, como la pestana "What's new" del original: una tarjeta por version con etiquetas de color.
@@ -3956,7 +4328,7 @@ func _slider_row(label: String, key: String) -> void:
 	sl.focus_mode = Control.FOCUS_ALL
 	sl.value_changed.connect(func(v: float):
 		SV.d["settings"][key] = int(v)
-		SV.save()
+		_save_later()
 		if Aud.inst != null:
 			Aud.inst.apply()
 		if key == "sfx":
@@ -4027,24 +4399,57 @@ func _srow(title: String, desc: String, ctrl: Control) -> void:
 
 
 # Selector de opciones: la elegida lleva borde dorado.
+# Se repinta solo al pulsar (sin reconstruir la pagina); cb recibe el indice elegido.
 func _seg(opts: Array, cur_i: int, cb: Callable, translate: bool = true) -> HBoxContainer:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
+	var btns: Array = []
 	for i in range(opts.size()):
-		var b := _btn(L.t(String(opts[i])) if translate else String(opts[i]), func(): cb.call(i), Vector2(0, 44))
-		if i == cur_i:
-			for st in ["normal", "hover", "pressed"]:
-				b.add_theme_stylebox_override(st, _sb(C_BTN_H, C_GOLD, 3, 22))
-			b.add_theme_color_override("font_color", C_GOLD)
+		var idx: int = i
+		var b := _btn(L.t(String(opts[i])) if translate else String(opts[i]), func():
+			_seg_mark(btns, idx)
+			cb.call(idx), Vector2(0, 44))
+		btns.append(b)
 		h.add_child(b)
+	_seg_mark(btns, cur_i)
 	return h
 
 
+func _seg_mark(btns: Array, sel: int) -> void:
+	for j in range(btns.size()):
+		var b: Button = btns[j]
+		if not is_instance_valid(b):
+			continue
+		if j == sel:
+			if not _seg_sb.has("on"):
+				_seg_sb["on"] = _sb(C_BTN_H, C_GOLD, 3, 22)
+			for st in ["normal", "hover", "pressed"]:
+				b.add_theme_stylebox_override(st, _seg_sb["on"])
+			b.add_theme_color_override("font_color", C_GOLD)
+		else:
+			for st in ["normal", "hover", "pressed"]:
+				b.remove_theme_stylebox_override(st)
+			b.remove_theme_color_override("font_color")
+
+
+var _seg_sb := {}
+
+
+# Si/No: al pulsar cambia solo su propio texto y color (antes se reconstruia toda la pestana).
 func _yesno(on: bool, cb: Callable) -> Button:
-	var b := _btn(L.t("Sí") if on else L.t("No"), func(): cb.call(not on), Vector2(90, 46))
-	if on:
-		_gold_btn(b, true)
+	var state := [on]
+	var b := _btn("", func(): pass, Vector2(90, 46))
+	_yesno_look(b, on)
+	b.pressed.connect(func():
+		state[0] = not bool(state[0])
+		_yesno_look(b, bool(state[0]))
+		cb.call(bool(state[0])))
 	return b
+
+
+func _yesno_look(b: Button, on: bool) -> void:
+	b.text = L.t("Sí") if on else L.t("No")
+	_gold_on(b, on)
 
 
 func _toggle_set(key: String, inverted: bool = false) -> Button:
@@ -4053,38 +4458,100 @@ func _toggle_set(key: String, inverted: bool = false) -> Button:
 		on = not on
 	return _yesno(on, func(v: bool):
 		SV.d["settings"][key] = (not v) if inverted else v
-		SV.save()
-		_refresh_settings())
+		SV.save())
 
 
+# Pulsar una pestana (raton / toque): cambia y el foco va al primer elemento.
+func _settings_pick(i: int) -> void:
+	set_tab = i
+	last_act = ""
+	_refresh_settings()
+	_tab_scroll_top()
+	_focus_content()
+
+
+func _mark_tab(b: Button, on: bool) -> void:
+	if on:
+		if not _seg_sb.has("tab"):
+			_seg_sb["tab"] = _sb(Color("#3b5aa8"), C_GOLD, 3, 14)
+		for st in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(st, _seg_sb["tab"])
+	else:
+		for st in ["normal", "hover", "pressed"]:
+			b.remove_theme_stylebox_override(st)
+
+
+# Marca la pestana activa (las pestanas ya existen) y rehace el contenido.
 func _refresh_settings() -> void:
 	reset_armed = false
 	import_armed = false
-	listening = ""
-	_clear(set_tabs_row)
-	var first_tab: Button = null
-	for i in range(SET_TABS.size()):
-		var tb := _btn(L.t(SET_TABS[i]), func(): set_tab = i; last_act = ""; _refresh_settings(); _gf(tab_sel), Vector2(0, 46))
+	if listening != "":
+		listening = ""
+		_refresh_listen()
+	var tbs: Array = set_tabs_row.get_children()
+	for i in range(tbs.size()):
+		_mark_tab(tbs[i], i == set_tab)
 		if i == set_tab:
-			for st in ["normal", "hover", "pressed"]:
-				tb.add_theme_stylebox_override(st, _sb(Color("#3b5aa8"), C_GOLD, 3, 14))
-			first_tab = tb
-			tab_sel = tb
-		set_tabs_row.add_child(tb)
+			tab_sel = tbs[i]
 	tab_row = set_tabs_row
-	_clear(settings_box)
-	focus_first = first_tab
-	match set_tab:
-		0:
-			_set_sound()
-		1:
-			_set_graphics()
-		2:
-			_set_controls()
-		3:
-			_set_account()
-		4:
-			_set_about()
+	_settings_content()
+
+
+# Pone la pagina de la pestana actual; solo se construye la primera vez (los controles se actualizan en su sitio).
+# La de Cuenta se rehace siempre para quitar los avisos "pulsa otra vez".
+func _settings_content() -> void:
+	for ch in settings_host.get_children():
+		settings_host.remove_child(ch)
+	if set_tab == 3 and settings_pages.has(3):
+		(settings_pages[3] as Node).queue_free()
+		settings_pages.erase(3)
+	var page: VBoxContainer = settings_pages.get(set_tab)
+	focus_first = null
+	if page == null or not is_instance_valid(page):
+		page = VBoxContainer.new()
+		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		page.add_theme_constant_override("separation", 8)
+		settings_box = page
+		match set_tab:
+			0:
+				_set_sound()
+			1:
+				_set_graphics()
+			2:
+				_set_controls()
+			3:
+				_set_account()
+			4:
+				_set_about()
+		settings_pages[set_tab] = page
+	settings_box = page
+	settings_host.add_child(page)
+	gi_dirty = true
+	if focus_first == null or not is_instance_valid(focus_first):
+		var items: Array = NAVG.focusables(page)
+		focus_first = items[0] if not items.is_empty() else tab_sel
+
+
+# Rehace la pagina de la pestana manteniendo el foco en el mismo lugar (para cambios que afectan a otros controles).
+func _settings_rebuild() -> void:
+	var idx := -1
+	var f: Control = get_viewport().gui_get_focus_owner()
+	if f != null and settings_box.is_ancestor_of(f):
+		idx = NAVG.focusables(settings_box).find(f)
+	var sc := settings_host.get_parent() as ScrollContainer
+	var keep_scroll: int = sc.scroll_vertical if sc != null else 0
+	var keep_listen := listening
+	if settings_pages.has(set_tab):
+		(settings_pages[set_tab] as Node).queue_free()
+		settings_pages.erase(set_tab)
+	_settings_content()
+	listening = keep_listen
+	if sc != null:
+		sc.scroll_vertical = keep_scroll
+	if idx >= 0:
+		var items: Array = NAVG.focusables(settings_box)
+		if idx < items.size():
+			(items[idx] as Control).grab_focus()
 
 
 func _set_sound() -> void:
@@ -4092,15 +4559,19 @@ func _set_sound() -> void:
 	_slider_row("Volumen general", "master")
 	_slider_row("Música", "music")
 	_slider_row("Efectos", "sfx")
-	var muted: bool = bool(SV.d["settings"]["mute"])
-	var mb := _btn(L.t("Activar sonido") if muted else L.t("Silenciar todo"), func():
-		SV.d["settings"]["mute"] = not muted
+	var mb := _btn("", func(): pass, Vector2(220, 50))
+	var mute_look := func():
+		var m: bool = bool(SV.d["settings"]["mute"])
+		mb.text = L.t("Activar sonido") if m else L.t("Silenciar todo")
+		_gold_on(mb, not m)
+	mute_look.call()
+	mb.pressed.connect(func():
+		SV.d["settings"]["mute"] = not bool(SV.d["settings"]["mute"])
 		SV.save()
 		if Aud.inst != null:
 			Aud.inst.apply()
-		_refresh_settings(), Vector2(220, 50))
-	if not muted:
-		_gold_btn(mb, true)
+		mute_look.call()
+		_update_top())
 	mb.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	settings_box.add_child(mb)
 
@@ -4134,8 +4605,7 @@ func _set_graphics() -> void:
 	_sec("Calidad")
 	_srow("Efectos y partículas", "Cuántos efectos se dibujan. Auto los baja solo si el juego va a tirones.", _seg(["Auto", "Alta", "Media", "Baja"], int(SV.d["settings"]["quality"]), func(i: int):
 		SV.d["settings"]["quality"] = i
-		SV.save()
-		_refresh_settings()))
+		SV.save()))
 	_sec("Pantalla")
 	_view_row()
 	_srow("Números de daño", "Los números que salen al golpear o ser golpeado.", _toggle_set("dmg_numbers"))
@@ -4147,47 +4617,58 @@ func _set_graphics() -> void:
 
 
 func _set_controls() -> void:
+	pad_btns = {}
 	_sec("En móvil o tableta")
 	settings_box.add_child(_label("Pon el dedo en cualquier parte y arrástralo para moverte: el joystick aparece donde tocas. Toca un movimiento abajo para cambiar a él y el botón de arriba a la derecha para pausar. Juega en horizontal.", 20, Color("#c8d6ee")))
 	_srow("Tamaño del joystick", "Cuánto tienes que arrastrar el dedo.", _seg(["Pequeño", "Mediano", "Grande"], clampi(int(SV.d["settings"]["stick"]), 0, 2), func(i: int):
 		SV.d["settings"]["stick"] = i
-		SV.save()
-		_refresh_settings()))
+		SV.save()))
 	_srow("Joystick fijo", "El joystick se queda siempre abajo a la izquierda en vez de aparecer donde tocas.", _toggle_set("stick_fixed"))
 	_sec("Mando")
 	settings_box.add_child(_label("Stick izquierdo o cruceta: moverte y navegar por los menús. Pulsa un botón de la lista y luego el botón del mando que quieras asignarle.", 20, Color("#c8d6ee")))
 	_srow("Tipo de mando", "Cambia los nombres de los botones y restablece la asignación.", _seg(PAD.NAMES, PAD.layout(), func(i: int):
 		PAD.reset(i)
-		_refresh_settings(), false))
+		_refresh_listen(), false))
 	for a in PAD.ACTIONS:
 		var act: String = a
-		var txt: String = L.t("Pulsa un botón…") if listening == act else ""
-		var cb := _btn(txt, func():
+		var cb := _btn("", func():
 			listening = "" if listening == act else act
 			last_act = act
 			_refresh_listen(), Vector2(190, 46))
-		if listening == act:
-			_gold_btn(cb, true)
-		else:
-			cb.icon = PADI.tex(PAD.btn(act))
-			cb.expand_icon = true
-			cb.add_theme_constant_override("icon_max_width", 36)
-			cb.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pad_btns[act] = cb
+		_pad_btn_look(act)
 		_srow(PAD.LABELS[act], "", cb)
 		if act == last_act:
 			focus_first = cb
-	var rb := _btn("Restablecer asignación", func(): PAD.reset(); last_act = ""; _refresh_settings(), Vector2(280, 46))
+	var rb := _btn("Restablecer asignación", func(): PAD.reset(); last_act = ""; _refresh_listen(), Vector2(280, 46))
 	settings_box.add_child(rb)
 
 
-# Redibuja la pestana de controles manteniendo el modo "escuchando".
+# Botones de asignacion de la pestana Controles (accion -> boton): se repintan en su sitio.
+var pad_btns := {}
+
+
+func _pad_btn_look(act: String) -> void:
+	var cb: Button = pad_btns.get(act)
+	if cb == null or not is_instance_valid(cb):
+		return
+	if listening == act:
+		cb.text = L.t("Pulsa un botón…")
+		cb.icon = null
+		_gold_btn(cb, true)
+	else:
+		cb.text = ""
+		_gold_on(cb, false)
+		cb.icon = PADI.tex(PAD.btn(act))
+		cb.expand_icon = true
+		cb.add_theme_constant_override("icon_max_width", 36)
+		cb.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+
+# Repinta los botones de la pestana de controles (modo "escuchando" / asignacion nueva) sin reconstruir la pagina.
 func _refresh_listen() -> void:
-	var keep := listening
-	_clear(settings_box)
-	_set_controls()
-	listening = keep
-	if focus_first != null and is_instance_valid(focus_first):
-		_gf(focus_first)
+	for a in PAD.ACTIONS:
+		_pad_btn_look(String(a))
 
 
 func _set_account() -> void:

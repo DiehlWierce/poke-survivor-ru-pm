@@ -9,6 +9,7 @@ const IC = preload("res://scripts/icons.gd")
 const Aud = preload("res://scripts/audio.gd")
 const SV = preload("res://scripts/save_data.gd")
 const L = preload("res://scripts/lang.gd")
+const DSP = preload("res://scripts/display.gd")
 
 signal finished
 
@@ -181,9 +182,10 @@ func stop() -> void:
 
 
 func _layout() -> void:
-	var vp: Vector2 = get_viewport_rect().size
-	k = float(maxi(1, floori(minf((vp.x - 40.0) / W, (vp.y - 110.0) / H))))
-	org = Vector2((vp.x - W * k) * 0.5, (vp.y - H * k) * 0.5 - 14.0).round()
+	# Se centra en la zona util (rect visible - margenes seguros): a 140 % en 720x480 son ~914x609.
+	var a: Rect2 = DSP.area(get_tree()) if is_inside_tree() else Rect2(Vector2.ZERO, get_viewport_rect().size)
+	k = float(maxi(1, floori(minf((a.size.x - 40.0) / W, (a.size.y - 110.0) / H))))
+	org = (a.position + Vector2((a.size.x - W * k) * 0.5, (a.size.y - H * k) * 0.5 - 14.0)).round()
 
 
 func _burst(col: Color, n: int) -> void:
@@ -350,7 +352,7 @@ func _draw() -> void:
 	var f: Font = ThemeDB.fallback_font
 	var hint: String = L.t("Toca o pulsa un botón para acelerar")
 	var hw: float = f.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-	draw_string(f, Vector2((vp.x - hw) * 0.5, org.y + H * k + 30.0), hint, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color(0.72, 0.8, 0.94, 0.8))
+	draw_string(f, Vector2(org.x + (W * k - hw) * 0.5, org.y + H * k + 30.0), hint, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color(0.72, 0.8, 0.94, 0.8))
 
 
 func _bulb(x: float, y: float, i: int, wc: Color) -> void:

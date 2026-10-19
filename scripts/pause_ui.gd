@@ -10,6 +10,7 @@ const IC = preload("res://scripts/icons.gd")
 const L = preload("res://scripts/lang.gd")
 const Aud = preload("res://scripts/audio.gd")
 const PXF = preload("res://scripts/pxfont.gd")
+const DSP = preload("res://scripts/display.gd")
 
 signal resume
 signal quit_run
@@ -22,6 +23,10 @@ var th := Theme.new()
 var cont_btn: Button
 var mute_btn: Button
 var hint_row: HBoxContainer
+var cc: CenterContainer
+var pc: PanelContainer
+var sc: ScrollContainer
+var vbox: VBoxContainer
 
 
 func _init() -> void:
@@ -96,16 +101,25 @@ func build() -> void:
 	dim.color = Color(0.02, 0.04, 0.12, 0.62)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
-	var cc := CenterContainer.new()
+	cc = CenterContainer.new()
 	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(cc)
-	var pc := PanelContainer.new()
+	pc = PanelContainer.new()
 	pc.add_theme_stylebox_override("panel", _sb(Color("#27489a"), Color("#f4f8ff"), 3, 14, 6))
 	cc.add_child(pc)
+	# El contenido va en un ScrollContainer: si el panel no cabe en la vista visible (zoom 140 %,
+	# pantalla 16:9, margenes seguros) se desplaza y el foco del mando lo trae a la vista.
+	sc = ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	sc.follow_focus = true
+	pc.add_child(sc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 14)
 	v.custom_minimum_size = Vector2(700, 0)
-	pc.add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(v)
+	vbox = v
 	var title := _label("Pausa", 52)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
@@ -132,6 +146,22 @@ func build() -> void:
 	brow.add_child(cont_btn)
 	brow.add_child(_btn("Ajustes", false, func(): open_settings.emit()))
 	brow.add_child(_btn("Abandonar partida", false, func(): quit_run.emit()))
+	get_viewport().size_changed.connect(_fit)
+	v.minimum_size_changed.connect(_fit_later)
+	_fit()
+
+
+func _fit_later() -> void:
+	_fit.call_deferred()
+
+
+# Recoloca el panel dentro de la zona visible (rect visible - margenes seguros) y limita su tamano.
+func _fit() -> void:
+	if cc == null or not is_inside_tree():
+		return
+	DSP.fit_to_safe(get_tree(), cc)
+	var sb: StyleBox = pc.get_theme_stylebox("panel")
+	DSP.fit_scroll(get_tree(), sc, vbox, sb.get_minimum_size() + Vector2(6, 6), 6.0)
 
 
 func _slider_row(label: String, key: String) -> HBoxContainer:
@@ -314,6 +344,8 @@ func _input(event: InputEvent) -> void:
 
 func open() -> void:
 	_refresh_hints()
+	sc.scroll_vertical = 0
+	_fit()
 	_refresh_mute()
 	visible = true
 	cont_btn.call_deferred("grab_focus")

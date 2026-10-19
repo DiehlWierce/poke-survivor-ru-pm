@@ -421,6 +421,11 @@ func _ready() -> void:
 	pfx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	fx.add_child(pfx)
 
+	_ld_show()   # el resto de la preparacion se reparte entre fotogramas (_load_tick)
+
+
+# Carga, etapa 1: datos de la partida, modo, mejoras y ajustes
+func _boot_data() -> void:
 	_load_data()
 	mode = SV.run_mode
 	mods = SV.run_mods.duplicate()
@@ -482,6 +487,10 @@ func _ready() -> void:
 	if hh:
 		ENEMY_CAP = 44
 	pfx.setup([1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)] * (0.5 if hh else 1.0))
+
+
+# Carga, etapa 2: el jugador y la semilla del mundo
+func _boot_player() -> void:
 	var sel_dex: int = SV.run_dex
 	var st: Dictionary = _dex_by[sel_dex]
 	player = Player.new()
@@ -529,8 +538,10 @@ func _ready() -> void:
 	world_seed = randi() % 100000
 	ground.setup(world_seed)
 	Prop.tw = ground
-	_update_world(0.0)
-	ground.flush_bake()
+
+
+# Carga, etapa 4: camara y capa de interfaz
+func _boot_ui() -> void:
 	cam = Camera2D.new()
 	player.add_child(cam)
 	_apply_fov()
@@ -545,41 +556,247 @@ func _ready() -> void:
 	ui.add_child(wx)
 	hud = Hud.new()
 	hud.show_fps = bool(SV.setting("fps"))
-	hud.poke_name = L.t(String(st["name"]))
+	hud.poke_name = L.t(String((_dex_by[SV.run_dex] as Dictionary)["name"]))
 	ui.add_child(hud)
 	mini = Minimap.new()
 	mini.m = self
-	mini.position = Vector2(8.0 + DSP.insets(get_tree()).x, 92.0)
 	ui.add_child(mini)
+	_layout_ui()
+	get_viewport().size_changed.connect(_layout_ui)   # al cambiar la ventana o el % de vista
+
+
+# Minimapa: lo coloca el Hud (esquina izquierda, bajo la barra de vida); en pantallas bajas se encoge.
+# Se recalcula en size_changed (ventana o % de vista), no en cada cuadro.
+func _layout_ui() -> void:
+	if hud == null or mini == null:
+		return
+	hud._relayout()
+	mini.position = hud.mini_pos
+	mini.scale = Vector2(hud.mini_scale, hud.mini_scale)
+
+
+# Carga, etapa 5: menu de pausa
+func _boot_pause() -> void:
 	pause_ui = PAUSEUI.new()
 	add_child(pause_ui)
 	pause_ui.build()
 	pause_ui.resume.connect(func(): paused = false)
 	pause_ui.fov_changed.connect(func(_p: int): _apply_fov())
-	pause_ui.stick_fixed_changed.connect(func(on: bool): stick.fixed = on; stick.queue_redraw())
+	pause_ui.stick_fixed_changed.connect(func(on: bool): stick.fixed = on; stick._relayout())
 	pause_ui.quit_run.connect(_abandon)
 	pause_ui.open_settings.connect(_open_settings)
+
+
+# Carga, etapa 6: mando tactil, huecos de movimientos, cartas
+func _boot_ctrl() -> void:
 	stick = Stick.new()
 	stick.radius = [70.0, 90.0, 120.0][clampi(int(SV.setting("stick")), 0, 2)]
 	stick.fixed = bool(SV.d["settings"].get("stick_fixed", false))
-	ui.add_child(stick)
+	ui_layer.add_child(stick)
 	slots = Slots.new()
-	ui.add_child(slots)
+	ui_layer.add_child(slots)
 	if mode == "team":
 		var tu := TeamUi.new()
 		tu.m = self
-		ui.add_child(tu)
+		ui_layer.add_child(tu)
 	slots.picked.connect(_set_active)
 	cards = Cards.new()
-	ui.add_child(cards)
+	ui_layer.add_child(cards)
 	cards.chosen.connect(_on_card_chosen)
 	cards.reroll_pressed.connect(_on_reroll)
 	cards.ban_picked.connect(_on_ban)
 
+
+# Carga, ultima etapa: unos pocos enemigos al empezar, para que no se vea vacio al probar
+func _boot_spawn() -> void:
 	# Unos pocos al empezar, para que no se vea vacio al probar.
 	for i in range(3):
 		if mode != "rush" and mode != "tower":
 			_spawn_one(randf() * TAU, true)
+
+
+# ---------------------------------------------------------------
+# Pantalla de carga: la preparacion de la partida (datos, jugador, trozos del mundo, suelo, interfaz,
+# texturas) se reparte entre fotogramas con un presupuesto de LD_BUDGET usec cada uno. Mientras tanto
+# no corre nada del juego (_process sale antes) y no se atiende la entrada.
+# ---------------------------------------------------------------
+const LD_BUDGET := 25000   # usec de trabajo por fotograma durante la carga (a 30 k/s caben 33 ms)
+const LD_RING_HH := 1      # en la consola se generan antes de empezar los 3x3 trozos de alrededor (el resto, de uno en uno en juego)
+# Peso de cada etapa en la barra: datos, jugador, mundo, suelo, interfaz, pausa, mandos, texturas, enemigos
+const LD_W := [0.03, 0.05, 0.40, 0.17, 0.04, 0.08, 0.03, 0.17, 0.03]
+const LD_TXT := {
+	"en": "Loading...", "es": "Cargando...", "es_419": "Cargando...", "fr": "Chargement...", "it": "Caricamento...",
+	"pt_BR": "Carregando...", "pt_PT": "A carregar...", "ru": "Загрузка...", "ja": "読み込み中...",
+	"zh_CN": "加载中...", "zh_HK": "載入中...",
+}
+var loading_done := false   # true cuando termina la carga inicial (tools/bench_frame.gd lo espera)
+var _ld_stage := 0
+var _ld_wait := 1           # fotogramas de espera para que la pantalla de carga llegue a dibujarse antes del trabajo pesado
+var _ld_sub := 0            # avance dentro de una etapa por partes
+var _ld_frac := 0.0
+var _ld_layer: CanvasLayer = null
+var _ld_screen: Node2D = null
+var _ld_keep: Array = []    # texturas calentadas: se sueltan pasados unos segundos de partida
+var _ld_list: Array = []
+var _ld_total := 1
+
+
+func _ld_show() -> void:
+	ground.set_process(false)   # el suelo no se hornea por su cuenta durante la carga: lo hace la etapa 3 con presupuesto
+	_ld_layer = CanvasLayer.new()
+	_ld_layer.layer = 100
+	add_child(_ld_layer)
+	var ls := LoadScreen.new()
+	var txt: String = L.t("Cargando...")
+	if txt == "Cargando...":
+		txt = String(LD_TXT.get(L.lang(), LD_TXT["en"]))
+	ls.text = txt
+	_ld_layer.add_child(ls)
+	_ld_screen = ls
+	# Un sprite casi invisible con el material del destello: el shader se compila aqui y no en el primer golpe de la partida
+	var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+	img.fill(Color.WHITE)
+	var spr := Sprite2D.new()
+	spr.texture = ImageTexture.create_from_image(img)
+	var sm := ShaderMaterial.new()
+	sm.shader = flash_shader
+	spr.material = sm
+	spr.modulate.a = 0.02
+	spr.position = Vector2(4.0, 4.0)
+	_ld_layer.add_child(spr)
+
+
+func _load_tick() -> void:
+	if _ld_wait > 0:
+		_ld_wait -= 1
+		return
+	var t0: int = Time.get_ticks_usec()
+	var deadline: int = t0 + LD_BUDGET
+	while not loading_done:
+		if _load_stage(deadline):
+			_ld_stage += 1
+			_ld_sub = 0
+			_ld_frac = 0.0
+		var acc := 0.0
+		for i in range(mini(_ld_stage, LD_W.size())):
+			acc += float(LD_W[i])
+		if _ld_stage < LD_W.size():
+			acc += float(LD_W[_ld_stage]) * clampf(_ld_frac, 0.0, 1.0)
+		(_ld_screen as LoadScreen).set_prog(acc)
+		if _ld_stage >= LD_W.size():
+			_load_finish()
+			break
+		if Time.get_ticks_usec() >= deadline:
+			break
+
+
+# Arranca la etapa del mundo: el centro, los trozos que hay que tener antes de empezar (3x3 en la consola, 5x5 en el resto)
+# y, en la cola de generacion, el resto de los 5x5, que llega de uno en uno ya en juego.
+func _ld_world_begin() -> void:
+	var c: Vector2i = _chunk_of(player.position)
+	player_chunk = c
+	ground.center = player.position
+	ground.set_center(c)
+	var ring: int = LD_RING_HH if _hh() else 2
+	var near_f := func(a: Vector2i, b: Vector2i) -> bool: return absi(a.x - c.x) + absi(a.y - c.y) < absi(b.x - c.x) + absi(b.y - c.y)
+	_ld_list = []
+	for dx in range(-ring, ring + 1):
+		for dy in range(-ring, ring + 1):
+			_ld_list.append(Vector2i(c.x + dx, c.y + dy))
+	_ld_list.sort_custom(near_f)
+	_ld_total = _ld_list.size()
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			var key := Vector2i(c.x + dx, c.y + dy)
+			if not _ld_list.has(key):
+				gen_q.append(key)
+	gen_q.sort_custom(near_f)
+
+
+# Una pasada de la etapa actual. Devuelve true cuando la etapa ya esta terminada.
+func _load_stage(deadline: int) -> bool:
+	match _ld_stage:
+		0:
+			_boot_data()
+		1:
+			_boot_player()
+		2:
+			# Los trozos del mundo de alrededor, con el terreno por tandas (como en juego), y luego su hierba
+			if _ld_sub == 0:
+				_ld_world_begin()
+				_ld_sub = 1
+			while not _ld_list.is_empty():
+				var k: Vector2i = _ld_list[0]
+				if _warm_terrain(k):
+					_ld_list.pop_front()
+					chunks[k] = _gen_chunk(k.x, k.y)
+					_ld_frac = 1.0 - float(_ld_list.size()) / float(_ld_total) * 0.9
+				if Time.get_ticks_usec() >= deadline and not _ld_list.is_empty():
+					return false
+			while not grass_jobs.is_empty():
+				_grass_step()
+				if Time.get_ticks_usec() >= deadline and not grass_jobs.is_empty():
+					return false
+		3:
+			# Suelo de los 3x3 trozos de alrededor, por franjas de filas
+			while ground._bake_step():
+				_ld_frac = 1.0 - float(ground.queue.size()) / 9.0
+				if Time.get_ticks_usec() >= deadline:
+					return false
+			ground.queue_redraw()
+		4:
+			_boot_ui()
+		5:
+			_boot_pause()
+		6:
+			_boot_ctrl()
+		7:
+			# Texturas de lo que va a salir en los primeros segundos: una por llamada, para que el primer golpe no cargue de disco
+			if _ld_sub == 0:
+				_ld_list = _ld_warm_paths()
+			while _ld_sub < _ld_list.size():
+				var path: String = _ld_list[_ld_sub]
+				_ld_sub += 1
+				_ld_frac = float(_ld_sub) / float(_ld_list.size())
+				if ResourceLoader.exists(path):
+					var tx: Resource = load(path)
+					if tx != null:
+						_ld_keep.append(tx)
+				if Time.get_ticks_usec() >= deadline:
+					return _ld_sub >= _ld_list.size()
+		8:
+			_boot_spawn()
+	return true
+
+
+# Rutas de las texturas a calentar: el jugador (todas sus animaciones de combate) y los Pokemon del primer tramo.
+func _ld_warm_paths() -> Array:
+	var out: Array = []
+	var seen := {}
+	var pd: int = SV.run_dex
+	for a in ["Idle", "Walk", "Attack", "Shoot", "Charge", "Hurt"]:
+		out.append("res://assets/pokemon/%d/%s.png" % [pd, a])
+	seen[pd] = true
+	if cast_run.is_empty():
+		return out
+	var defs: Array = (cast_run[0]["list"] as Array).duplicate()
+	defs.append_array(_bio_extra(0, _biome_key(biome_idx)))
+	for d in defs:
+		var dx: int = int(d["dex"])
+		if seen.has(dx):
+			continue
+		seen[dx] = true
+		for a in ["Idle", "Walk"]:
+			out.append("res://assets/pokemon/%d/%s.png" % [dx, a])
+	return out
+
+
+func _load_finish() -> void:
+	ground.set_process(true)
+	_ld_layer.queue_free()
+	_ld_layer = null
+	_ld_screen = null
+	loading_done = true
 
 
 func _add_input_actions() -> void:
@@ -619,7 +836,7 @@ func _add_input_actions() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if settings_open:
+	if settings_open or not loading_done:   # durante la carga la entrada no hace nada
 		return
 	var slot := -1
 	var cyc := 0
@@ -726,7 +943,7 @@ func _death_clock() -> float:
 
 # Boton atras de Android: pausa / reanuda; en la pantalla final vuelve al menu.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST and player != null:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and loading_done:
 		if player.dead:
 			if _death_clock() > 1.3:
 				_go_menu()
@@ -912,8 +1129,13 @@ func _fx_cap() -> int:
 
 
 func _process(delta: float) -> void:
+	if not loading_done:
+		_load_tick()   # carga inicial por etapas: no corre nada de la partida hasta terminar
+		return
 	Actor.tick += 1
 	_preload_step()
+	if not _ld_keep.is_empty() and run_time > 20.0:
+		_ld_keep.clear()   # las texturas calentadas ya las tienen los actores vivos o se pueden volver a cargar
 	hud.paused = paused
 	if not settings_open:
 		var want_ui: bool = paused and not player.dead
@@ -7545,16 +7767,31 @@ class Slots extends Node2D:
 	var info: Array = []
 	var active := 0
 	var enabled := true
+	var _vp := Vector2(1280.0, 720.0)   # tamano de la vista y margen inferior en cache (se refrescan en size_changed)
+	var _inw := 0.0
+
+	func _ready() -> void:
+		_relayout()
+		get_viewport().size_changed.connect(_relayout)
+
+	func _relayout() -> void:
+		_vp = get_viewport_rect().size
+		_inw = DSP.insets(get_tree()).w
 
 	func _rects() -> Array:
-		var vp: Vector2 = get_viewport_rect().size
+		var vp: Vector2 = _vp
 		var n: int = info.size()
-		var total: float = SZ * float(n) + 8.0 * float(maxi(0, n - 1))
+		# Si no caben todos a 76 px (vista pequena), los huecos se estrechan un poco.
+		var gap := 8.0
+		var total: float = SZ * float(n) + gap * float(maxi(0, n - 1))
+		if total > vp.x - 16.0 and n > 1:
+			gap = maxf(2.0, (vp.x - 16.0 - SZ * float(n)) / float(n - 1))
+			total = SZ * float(n) + gap * float(n - 1)
 		var x0: float = (vp.x - total) * 0.5
-		var y0: float = vp.y - SZ - 12.0 - DSP.insets(get_tree()).w
+		var y0: float = vp.y - SZ - 12.0 - _inw
 		var out: Array = []
 		for i in range(n):
-			out.append(Rect2(x0 + float(i) * (SZ + 8.0), y0, SZ, SZ))
+			out.append(Rect2(x0 + float(i) * (SZ + gap), y0, SZ, SZ))
 		return out
 
 	func _process(_delta: float) -> void:
@@ -7676,10 +7913,37 @@ class Cards extends Node2D:
 	var bans := 0
 	var ban_mode := false
 	var extras := true
+	# Disposicion en cache: bloque vertical (titulo, cartas, botones, pie) que cabe en la zona util.
+	# Se recalcula al abrir y en size_changed (ventana o % de vista), no en cada _draw.
+	var _vp := Vector2(1280.0, 720.0)
+	var _ins := Vector4.ZERO
+	var _cx := 640.0       # centro horizontal de la zona util
+	var _top := 100.0      # arriba del bloque (linea del titulo = _top + 34)
+	var _h := 294.0        # alto de las cartas (240..294)
+	var _btn_y := 0.0
+	var _bw := 230.0       # ancho de cada boton Cambiar / Vetar
+
+	func _ready() -> void:
+		_relayout()
+		get_viewport().size_changed.connect(_relayout)
+
+	func _relayout() -> void:
+		_vp = get_viewport_rect().size
+		_ins = DSP.insets(get_tree())
+		_cx = (_ins.x + _vp.x - _ins.z) * 0.5
+		var top_lim: float = _ins.y + 6.0
+		var bot_lim: float = _vp.y - _ins.w - 48.0          # encima del pie (iconos de 28 px)
+		var head := 78.0                                     # titulo y subtitulo antes de las cartas
+		var tail: float = (12.0 + 50.0 + 30.0) if extras else 0.0   # botones y cartel de veto
+		var avail: float = bot_lim - top_lim
+		_h = clampf(avail - head - tail, 240.0, 294.0)
+		_top = top_lim + maxf(0.0, (avail - (head + _h + tail)) * 0.6)
+		_btn_y = _top + head + _h + 12.0
+		_bw = clampf((_vp.x - _ins.x - _ins.z - 60.0) * 0.5, 120.0, 230.0)
+		queue_redraw()
 
 	func _btn_rects() -> Array:
-		var vp: Vector2 = get_viewport_rect().size
-		return [Rect2(vp.x * 0.5 - 250.0, vp.y - 100.0, 230.0, 50.0), Rect2(vp.x * 0.5 + 20.0, vp.y - 100.0, 230.0, 50.0)]
+		return [Rect2(_cx - 20.0 - _bw, _btn_y, _bw, 50.0), Rect2(_cx + 20.0, _btn_y, _bw, 50.0)]
 
 	func _do_reroll() -> void:
 		if extras and rerolls > 0 and not ban_mode:
@@ -7700,6 +7964,7 @@ class Cards extends Node2D:
 		open = true
 		age = 0.0
 		_axis_free = false
+		_relayout()   # sin botones el bloque es mas bajo
 		queue_redraw()
 
 	func hide_cards() -> void:
@@ -7707,14 +7972,13 @@ class Cards extends Node2D:
 		queue_redraw()
 
 	func _rects() -> Array:
-		var vp: Vector2 = get_viewport_rect().size
 		var n: int = items.size()
 		var gap := 20.0
-		var w: float = minf(300.0, (vp.x - 80.0 - gap * float(n - 1)) / float(maxi(n, 1)))
-		var h := 294.0
+		var w: float = minf(300.0, (_vp.x - _ins.x - _ins.z - 40.0 - gap * float(n - 1)) / float(maxi(n, 1)))
+		var h: float = _h
 		var total: float = w * float(n) + gap * float(n - 1)
-		var x0: float = (vp.x - total) * 0.5
-		var y0: float = vp.y * 0.5 - 106.0
+		var x0: float = _cx - total * 0.5
+		var y0: float = _top + 78.0
 		var out: Array = []
 		for i in range(n):
 			out.append(Rect2(x0 + float(i) * (w + gap), y0, w, h))
@@ -7811,11 +8075,16 @@ class Cards extends Node2D:
 		if not open:
 			return
 		var font := ThemeDB.fallback_font
-		var vp: Vector2 = get_viewport_rect().size
+		var vp: Vector2 = _vp
 		draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
-		draw_string(font, Vector2(0.0, vp.y * 0.5 - 150.0), L.t(headline), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color("#ffd33d"))
-		draw_string(font, Vector2(0.0, vp.y * 0.5 - 118.0), L.t(title), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color.WHITE)
+		draw_string(font, Vector2(0.0, _top + 34.0), L.t(headline), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color("#ffd33d"))
+		draw_string(font, Vector2(0.0, _top + 66.0), L.t(title), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color.WHITE)
 		var rs: Array = _rects()
+		# Con cartas mas bajas (vista pequena) el icono, el titulo y la descripcion suben un poco.
+		var sh: float = 294.0 - _h
+		var t_y: float = 134.0 - sh * 0.25
+		var d_y: float = 196.0 - sh * 0.5
+		var d_lines: int = clampi(int((_h - d_y + 8.0) / 21.0), 2, 5)
 		for i in range(rs.size()):
 			var r: Rect2 = rs[i]
 			var it: Dictionary = items[i]
@@ -7839,13 +8108,13 @@ class Cards extends Node2D:
 			draw_rect(Rect2(r.position, Vector2(r.size.x, 32.0)), Color(tag_col.r, tag_col.g, tag_col.b, 0.35))
 			draw_string(font, r.position + Vector2(10.0, 22.0), L.t(String(it["tag"])), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 40.0, 16, Color("#2b1a00") if legend else Color.WHITE)
 			draw_string(font, r.position + Vector2(r.size.x - 24.0, 22.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#8fa8cc"))
-			var ic_c: Vector2 = r.position + Vector2(r.size.x * 0.5, 72.0)
+			var ic_c: Vector2 = r.position + Vector2(r.size.x * 0.5, 72.0 - sh * 0.1)
 			var ic_bg := Rect2(ic_c - Vector2(34.0, 34.0), Vector2(68.0, 68.0))
 			draw_rect(ic_bg, Color(0.1, 0.06, 0.0, 0.82) if legend else Color(tag_col.r, tag_col.g, tag_col.b, 0.22))
 			draw_rect(ic_bg, Color(tag_col.r, tag_col.g, tag_col.b, 0.7), false, 2.0)
 			IC.draw_in(self, String(it.get("icon", "star")), ic_c, 52.0)
-			draw_multiline_string(font, r.position + Vector2(12.0, 134.0), L.t(String(it["title"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 24.0, 24, 2, Color("#4a2f12") if paper else (Color("#2b1a00") if legend else Color.WHITE))
-			draw_multiline_string(font, r.position + Vector2(16.0, 196.0), L.t(String(it["desc"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 32.0, 18, 5, Color("#5a3d1c") if paper else (Color("#3a2600") if legend else Color("#c8d6ee")))
+			draw_multiline_string(font, r.position + Vector2(12.0, t_y), L.t(String(it["title"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 24.0, 24, 2, Color("#4a2f12") if paper else (Color("#2b1a00") if legend else Color.WHITE))
+			draw_multiline_string(font, r.position + Vector2(16.0, d_y), L.t(String(it["desc"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 32.0, 18, d_lines, Color("#5a3d1c") if paper else (Color("#3a2600") if legend else Color("#c8d6ee")))
 		if extras:
 			var brs: Array = _btn_rects()
 			if rerolls > 0:
@@ -7857,7 +8126,7 @@ class Cards extends Node2D:
 				draw_rect(brs[1], Color("#ff6b7a"), false, 2.0)
 				_draw_key_label(brs[1], L.t("Vetar (%d)  [B]") % bans, "ban")
 			if ban_mode:
-				draw_string(font, Vector2(0.0, vp.y * 0.5 + 214.0), L.t("Elige un movimiento nuevo para vetarlo"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color("#ff9aa5"))
+				draw_string(font, Vector2(0.0, _btn_y + 50.0 + 24.0), L.t("Elige un movimiento nuevo para vetarlo"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color("#ff9aa5"))
 		_draw_footer(vp)
 
 
@@ -7915,8 +8184,8 @@ class Cards extends Node2D:
 		var total := 0.0
 		for p in parts:
 			total += isz if p.has("i") else font.get_string_size(String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var x: float = (vp.x - total) * 0.5
-		var y: float = vp.y - 24.0
+		var x: float = _cx - total * 0.5
+		var y: float = vp.y - 24.0 - _ins.w
 		for p in parts:
 			if p.has("i"):
 				draw_texture_rect(p["i"], Rect2(Vector2(x, y - 21.0), Vector2(isz, isz)), false)
@@ -8391,6 +8660,62 @@ class Hud extends Node2D:
 	var thief_gold := false
 	var death_t := 0.0
 
+	# --- Disposicion en cache (se recalcula en size_changed y al cambiar el equipo, no en cada _draw) ---
+	var _vp := Vector2(1280.0, 720.0)
+	var _ins := Vector4.ZERO
+	var _team_n := -1
+	var mini_pos := Vector2(8.0, 92.0)   # minimapa: esquina izquierda bajo la barra de vida
+	var mini_scale := 1.0                # 0.8 si la vista es baja (< 500)
+	var stats_y := 300.0                 # panel de estadisticas, bajo el minimapa
+	var _rz := Rect2()                   # boton Z
+	var _rd := Rect2()                   # boton Dynamax
+	var _rt := Rect2()                   # boton de cambio de equipo
+	var _rp := Rect2()                   # boton de pausa
+	var _side_l := 270.0                 # ancho que ocupan a la izquierda la vida y el nombre (el texto central no lo pisa)
+
+	func _ready() -> void:
+		_relayout()
+		get_viewport().size_changed.connect(_relayout)
+
+	# Columna derecha, de arriba abajo: pausa, lista de equipo, [Dynamax, Z], cambio de equipo, huecos.
+	# Si Dynamax no cabe encima de Z (vista baja a 140 %), se pone a su izquierda; si Z tampoco cabe,
+	# los dos van en una fila junto al boton de equipo, encima de la barra de movimientos.
+	func _relayout() -> void:
+		_vp = get_viewport_rect().size
+		_ins = DSP.insets(get_tree())
+		_team_n = team.size()
+		var vp: Vector2 = _vp
+		var tight: bool = vp.y - _ins.y - _ins.w < 500.0
+		mini_scale = 0.8 if tight else 1.0
+		mini_pos = Vector2(8.0 + _ins.x, 92.0 + _ins.y)
+		stats_y = mini_pos.y + 200.0 * mini_scale + 8.0
+		_rp = Rect2(vp.x - 70.0 - _ins.z, 70.0 + _ins.y, 54.0, 46.0)
+		var b: float = vp.y - _ins.w
+		var col_top: float = _rp.end.y + 2.0
+		if _team_n > 0:
+			col_top = 126.0 + _ins.y + 52.0 * float(_team_n - 1) + 46.0 + 2.0
+		var zx: float = vp.x - 126.0 - _ins.z
+		_rt = Rect2(vp.x - 150.0 - _ins.z, b - 214.0, 120.0, 120.0)
+		if b - 442.0 >= col_top:
+			_rz = Rect2(zx, b - 330.0, 100.0, 100.0)
+			_rd = Rect2(zx, b - 442.0, 100.0, 100.0)
+		elif b - 330.0 >= col_top:
+			_rz = Rect2(zx, b - 330.0, 100.0, 100.0)
+			_rd = Rect2(zx - 112.0, b - 330.0, 100.0, 100.0)
+		else:
+			if _team_n >= 2:
+				zx = _rt.position.x - 112.0
+			_rt.position.y = maxf(_rt.position.y, col_top)   # sin pisar la lista de equipo si la vista es muy baja
+			var ry: float = maxf(b - 204.0, col_top)
+			_rz = Rect2(zx, ry, 100.0, 100.0)
+			_rd = Rect2(zx - 112.0, ry, 100.0, 100.0)
+		# lo que queda a ambos lados del texto central: vida/nombre a la izquierda y contadores a la derecha
+		_side_l = 270.0 + _ins.x
+		queue_redraw()
+
+	func team_btn_rect() -> Rect2:
+		return _rt
+
 	func _process(delta: float) -> void:
 		if rift_notice >= 0.0:
 			rift_notice += delta
@@ -8561,7 +8886,11 @@ class Hud extends Node2D:
 			if arena_left >= 0.0:
 				draw_string(font, Vector2(x0, vp.y - 154.0), "%02d:%02d" % [int(arena_left) / 60, int(arena_left) % 60], HORIZONTAL_ALIGNMENT_RIGHT, w, 18, Color("#ffd33d") if arena_left > 20.0 else Color("#ff6b7a"))
 
-	var team: Array = []
+	var team: Array = []:
+		set(v):
+			team = v
+			if v.size() != _team_n and is_inside_tree():
+				_relayout()   # la columna derecha depende de cuantos miembros hay
 	var swap_cd := 0.0
 	var limit := 0.0
 	var rifts_n := 0
@@ -8575,11 +8904,9 @@ class Hud extends Node2D:
 	var reap_pct := -1.0
 
 	func team_rects() -> Array:
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
 		var out: Array = []
 		for i in range(team.size()):
-			out.append(Rect2(vp.x - 190.0 - ins.z, 126.0 + float(i) * 52.0, 174.0, 46.0))
+			out.append(Rect2(_vp.x - 190.0 - _ins.z, 126.0 + _ins.y + float(i) * 52.0, 174.0, 46.0))
 		return out
 
 	func draw_team(font: Font) -> void:
@@ -8622,14 +8949,10 @@ class Hud extends Node2D:
 		return n1 * x * x + 0.984375
 
 	func z_rect() -> Rect2:
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
-		return Rect2(vp.x - 126.0 - ins.z, vp.y - 330.0 - ins.w, 100.0, 100.0)
+		return _rz
 
 	func dyn_rect() -> Rect2:
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
-		return Rect2(vp.x - 126.0 - ins.z, vp.y - 442.0 - ins.w, 100.0, 100.0)
+		return _rd
 
 	# Dynamax: boton (listo / bloqueado por nivel), barra de tiempo, borde rojo y cartel "DYNAMAX" al activarse.
 	func draw_dyn(font: Font, vp: Vector2) -> void:
@@ -8798,9 +9121,8 @@ class Hud extends Node2D:
 				draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % ZM.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 
 	func pause_rects() -> Array:
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
-		return [Rect2(vp.x - 70.0 - ins.z, 70.0, 54.0, 46.0), Rect2(vp.x * 0.5 - 160.0, vp.y * 0.5, 320.0, 58.0), Rect2(vp.x * 0.5 - 160.0, vp.y * 0.5 + 76.0, 320.0, 58.0)]
+		var vp: Vector2 = _vp
+		return [_rp, Rect2(vp.x * 0.5 - 160.0, vp.y * 0.5, 320.0, 58.0), Rect2(vp.x * 0.5 - 160.0, vp.y * 0.5 + 76.0, 320.0, 58.0)]
 
 	func draw_toast(font: Font, vp: Vector2) -> void:
 		if toast_t <= 0.0 or toast.is_empty():
@@ -8832,10 +9154,21 @@ class Hud extends Node2D:
 		if sub != "":
 			draw_string(font, Vector2(x0 + 66.0, y0 + 60.0), sub, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, 16, Color(0.72, 0.8, 0.94, a))
 
+	# Texto centrado que se encoge (hasta 11 px) para no pisar lo que hay a los lados; half = semiancho libre.
+	func _ctext(font: Font, y: float, txt: String, fs: int, col: Color, half: float) -> void:
+		var f: int = fs
+		var maxw: float = maxf(120.0, half * 2.0)
+		var w: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1.0, fs).x
+		if w > maxw:
+			f = maxi(11, int(floor(float(fs) * maxw / w)))
+		draw_string(font, Vector2(0.0, y), txt, HORIZONTAL_ALIGNMENT_CENTER, _vp.x, f, col)
+
 	func _draw() -> void:
 		var font := ThemeDB.fallback_font
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
+		if team.size() != _team_n:
+			_relayout()
+		var vp: Vector2 = _vp
+		var ins: Vector4 = _ins
 		draw_z(font, vp)
 		draw_dyn(font, vp)
 		draw_toast(font, vp)
@@ -8851,7 +9184,8 @@ class Hud extends Node2D:
 		draw_rect(Rect2(0.0, 0.0, vp.x * clampf(xp / xp_next, 0.0, 1.0), 8.0), Color("#7fe0ff"))
 		draw_rect(Rect2(16.0 + ins.x, 16.0 + ins.y, 240.0, 18.0), Color(0, 0, 0, 0.55))
 		draw_rect(Rect2(18.0 + ins.x, 18.0 + ins.y, 236.0 * frac, 14.0), col)
-		draw_string(font, Vector2(16.0 + ins.x, 54.0 + ins.y), L.t("%s  PS %d/%d") % [poke_name, ceili(hp), ceili(max_hp)], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
+		var hp_txt: String = L.t("%s  PS %d/%d") % [poke_name, ceili(hp), ceili(max_hp)]
+		draw_string(font, Vector2(16.0 + ins.x, 54.0 + ins.y), hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
 		draw_string(font, Vector2(16.0 + ins.x, 76.0 + ins.y), L.t("Nv. %d") % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#7fe0ff"))
 		if ab_name != "":
 			draw_string(font, Vector2(132.0 + ins.x, 76.0 + ins.y), ab_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color("#ffd98a"))
@@ -8865,9 +9199,11 @@ class Hud extends Node2D:
 			draw_rect(Rect2(bx + 1.0, by + 29.0, (bw - 2.0) * pbar, 12.0), Color("#9ad0ff"))
 			draw_string(font, Vector2(bx, by + 60.0), L.t("Vida de tu compañero"), HORIZONTAL_ALIGNMENT_CENTER, bw, 16, Color("#cfe6ff"))
 		if show_stats and not stats.is_empty():
-			var sy: float = 300.0 + ins.y
+			# bajo el minimapa; si no cabe encima de la barra de huecos, sube lo justo (minimo pegado al minimapa)
+			var sh: float = 18.0 * float(stats.size()) + 6.0
+			var sy: float = minf(stats_y, maxf(mini_pos.y + 200.0 * mini_scale + 4.0, vp.y - 88.0 - ins.w - 6.0 - sh))
 			var sx: float = 16.0 + ins.x
-			draw_rect(Rect2(sx - 4.0, sy - 2.0, 150.0, 18.0 * stats.size() + 6.0), Color(0, 0, 0, 0.32))
+			draw_rect(Rect2(sx - 4.0, sy - 2.0, 150.0, sh), Color(0, 0, 0, 0.32))
 			for row in stats:
 				draw_string(font, Vector2(sx, sy + 13.0), String(row[0]), HORIZONTAL_ALIGNMENT_LEFT, 90.0, 14, Color(1, 1, 1, 0.75))
 				draw_string(font, Vector2(sx + 40.0, sy + 13.0), String(row[1]), HORIZONTAL_ALIGNMENT_RIGHT, 100.0, 14, Color("#ffe58a"))
@@ -8877,16 +9213,23 @@ class Hud extends Node2D:
 		draw_powers(font, vp)
 		if not team.is_empty():
 			draw_team(font)
+		# Contadores de la derecha (se miden antes: el texto central se encoge para no pisarlos)
+		var tw: float = font.get_string_size(str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var t10w: float = font.get_string_size(str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var cw: float = font.get_string_size(str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var cnt_left: float = vp.x - 16.0 - ins.z - (t10w + 40.0) - (tw + 40.0) - cw - 28.0   # borde izquierdo de los contadores
+		var name_r: float = 16.0 + ins.x + font.get_string_size(hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x + 12.0
+		# semiancho libre para el texto centrado en la linea de los contadores (y ~58) y en la del cartel (y ~92)
+		var half58: float = vp.x * 0.5 - maxf(maxf(name_r, 16.0 + ins.x + 240.0), vp.x - cnt_left + 8.0)
+		var half92: float = vp.x * 0.5 - maxf(mini_pos.x + 200.0 * mini_scale + 8.0, 100.0 + ins.z)
 		if weather_text != "":
-			draw_string(font, Vector2(0.0, 62.0), L.t(weather_text), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, Color("#cfe2ff"))
+			_ctext(font, 62.0, L.t(weather_text), 18, Color("#cfe2ff"), half58)
 		if banner != "":
-			draw_string(font, Vector2(0.0, 92.0), L.t(banner), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffffff"))
+			_ctext(font, 92.0, L.t(banner), 20, Color("#ffffff"), half92)
 		draw_rift(font, vp)
 		draw_rift_notice(font, vp)
 		draw_thief_notice(font, vp)
 		draw_thieves(font, vp)
-		var tw: float = font.get_string_size(str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var t10w: float = font.get_string_size(str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
 		var rx: float = vp.x - 16.0 - ins.z
 		draw_string(font, Vector2(rx - t10w, 62.0), str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#c47bff"))
 		IC.draw_in(self, "ticket10", Vector2(rx - t10w - 16.0, 56.0), 24.0)
@@ -8894,7 +9237,6 @@ class Hud extends Node2D:
 		draw_string(font, Vector2(rx - tw, 62.0), str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
 		IC.draw_in(self, "ticket", Vector2(rx - tw - 16.0, 56.0), 24.0)
 		rx -= tw + 40.0
-		var cw: float = font.get_string_size(str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
 		draw_string(font, Vector2(rx - cw, 62.0), str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
 		IC.draw_in(self, "coin", Vector2(rx - cw - 16.0, 56.0), 24.0)
 		var pr: Array = pause_rects()
@@ -8907,12 +9249,12 @@ class Hud extends Node2D:
 			var left: float = maxf(0.0, limit - run_time)
 			var lc: String = "%02d:%02d" % [floori(left / 60.0), int(left) % 60]
 			draw_string(font, Vector2(0.0, 36.0), lc, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color("#ff6b7a") if left < 30.0 else Color.WHITE)
-			draw_string(font, Vector2(0.0, 58.0), L.t("Grietas ganadas: %d") % rifts_n, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, Color("#c9a6ff"))
+			_ctext(font, 58.0, L.t("Grietas ganadas: %d") % rifts_n, 18, Color("#c9a6ff"), half58)
 		else:
 			draw_string(font, Vector2(0.0, 36.0), L.t(clock), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
 		if adapt_pct > 0 and tower_floor <= 0 and limit <= 0.0:
 			var ac: Color = Color("#8fe39b") if adapt_pct < 100 else (Color("#ffd23f") if adapt_pct == 100 else Color("#ff9a5a"))
-			draw_string(font, Vector2(0.0, 58.0), L.t("Reto: %d%%") % adapt_pct, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 16, ac)
+			_ctext(font, 58.0, L.t("Reto: %d%%") % adapt_pct, 16, ac, half58)
 		if tower_floor > 0:
 			var sub: String = L.t("Piso %d / %d") % [tower_floor, TOWER_FLOORS]
 			if tower_t >= 0.0:
@@ -8923,7 +9265,7 @@ class Hud extends Node2D:
 				sub += "  ·  " + L.t("Pactos: %d") % tower_risk
 			if reap_pct >= 0.0:
 				sub += "  ·  " + L.t("Sed de victoria +%s%%") % ("%.1f" % reap_pct)
-			draw_string(font, Vector2(0.0, 58.0), sub, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 18, Color("#ffd23f"))
+			_ctext(font, 58.0, sub, 18, Color("#ffd23f"), half58)
 		draw_string(font, Vector2(vp.x - 236.0 - ins.z, 36.0), L.t("Derrotados: %d") % kills, HORIZONTAL_ALIGNMENT_RIGHT, 220.0, 20, Color.WHITE)
 		if dead:
 			# Camara lenta: primero se ve caer al Pokemon; despues oscurece y aparece GAME OVER.
@@ -9022,9 +9364,7 @@ class TeamUi extends Node2D:
 	var m: Node = null
 
 	func _btn_rect() -> Rect2:
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
-		return Rect2(vp.x - 150.0 - ins.z, vp.y - 214.0 - ins.w, 120.0, 120.0)
+		return m.hud.team_btn_rect()   # el Hud lo coloca junto con Z y Dynamax (columna derecha)
 
 	func _live() -> bool:
 		return m != null and not m.player.dead and not m.paused and not m.choosing and m.arena_ok_for_ui()
@@ -9068,6 +9408,30 @@ class TeamUi extends Node2D:
 			draw_arc(c, 60.0, -PI / 2.0, -PI / 2.0 + TAU * (m.swap_cd / 3.0), 32, Color(1, 0.4, 0.4, 0.9), 4.0)
 
 
+# Pantalla de carga: fondo oscuro, texto y barra de progreso
+class LoadScreen extends Node2D:
+	var text := ""
+	var prog := 0.0
+
+	func set_prog(v: float) -> void:
+		if absf(v - prog) >= 0.005 or v >= 1.0:
+			prog = v
+			queue_redraw()
+
+	func _draw() -> void:
+		var vp: Vector2 = get_viewport_rect().size
+		draw_rect(Rect2(Vector2.ZERO, vp), Color("#0c1220"))
+		var font := ThemeDB.fallback_font
+		var fs: int = int(clampf(vp.y / 15.0, 18.0, 44.0))
+		draw_string(font, Vector2(0.0, vp.y * 0.5 - fs * 0.4), text, HORIZONTAL_ALIGNMENT_CENTER, vp.x, fs, Color.WHITE)
+		var bw: float = minf(vp.x * 0.6, 460.0)
+		var bh: float = maxf(8.0, vp.y / 50.0)
+		var r := Rect2((vp.x - bw) * 0.5, vp.y * 0.5 + fs * 0.6, bw, bh)
+		draw_rect(r.grow(2.0), Color("#8fa8cc"))
+		draw_rect(r, Color("#16233a"))
+		draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(prog, 0.0, 1.0), r.size.y)), Color("#ffd33d"))
+
+
 class Stick extends Node2D:
 	var radius := 90.0
 	var axis := Vector2.ZERO
@@ -9075,11 +9439,25 @@ class Stick extends Node2D:
 	var _id := -1
 	var _origin := Vector2.ZERO
 	var _pos := Vector2.ZERO
+	var _vp := Vector2(1280.0, 720.0)
+	var _ins := Vector4.ZERO
+	var _rad := 90.0     # radio efectivo: el fijo se encoge si en una vista baja taparia el minimapa
+
+	func _ready() -> void:
+		_relayout()
+		get_viewport().size_changed.connect(_relayout)
+
+	func _relayout() -> void:
+		_vp = get_viewport_rect().size
+		_ins = DSP.insets(get_tree())
+		_rad = radius
+		if fixed:
+			var mini_bottom: float = 98.0 + _ins.y + (160.0 if _vp.y - _ins.y - _ins.w < 500.0 else 200.0)
+			_rad = clampf((_vp.y - _ins.w - 56.0 - mini_bottom) * 0.5, 56.0, radius)
+		queue_redraw()
 
 	func _home() -> Vector2:
-		var vp: Vector2 = get_viewport_rect().size
-		var ins: Vector4 = DSP.insets(get_tree())
-		return Vector2(radius + 56.0 + ins.x, vp.y - radius - 56.0 - ins.w)
+		return Vector2(_rad + 56.0 + _ins.x, _vp.y - _rad - 56.0 - _ins.w)
 
 	func _process(_d: float) -> void:
 		if fixed:
@@ -9092,15 +9470,15 @@ class Stick extends Node2D:
 			if event.pressed and _id == -1:
 				if fixed:
 					var h: Vector2 = _home()
-					if event.position.distance_to(h) > radius * 1.8:
+					if event.position.distance_to(h) > _rad * 1.8:
 						return
 					_id = event.index
 					_origin = h
 					var v0: Vector2 = event.position - h
-					if v0.length() > radius:
-						v0 = v0.normalized() * radius
+					if v0.length() > _rad:
+						v0 = v0.normalized() * _rad
 					_pos = h + v0
-					axis = v0 / radius
+					axis = v0 / _rad
 				else:
 					_id = event.index
 					_origin = event.position
@@ -9111,18 +9489,18 @@ class Stick extends Node2D:
 			queue_redraw()
 		elif event is InputEventScreenDrag and event.index == _id:
 			var v: Vector2 = event.position - _origin
-			if v.length() > radius:
-				v = v.normalized() * radius
+			if v.length() > _rad:
+				v = v.normalized() * _rad
 			_pos = _origin + v
-			axis = v / radius
+			axis = v / _rad
 			queue_redraw()
 
 	func _draw() -> void:
 		if _id == -1:
 			if fixed:
 				var h: Vector2 = _home()
-				draw_arc(h, radius, 0.0, TAU, 48, Color(1, 1, 1, 0.2), 3.0)
+				draw_arc(h, _rad, 0.0, TAU, 48, Color(1, 1, 1, 0.2), 3.0)
 				draw_circle(h, 28.0, Color(1, 1, 1, 0.18))
 			return
-		draw_arc(_origin, radius, 0.0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)
+		draw_arc(_origin, _rad, 0.0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)
 		draw_circle(_pos, 28.0, Color(1, 1, 1, 0.45))
