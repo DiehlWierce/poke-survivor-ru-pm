@@ -9,7 +9,9 @@ PortMaster Weston wrapper (`weston_pkg_0.2`) with OpenGL ES (the Compatibility r
 Buttons are translated to keys by gptokeyb and the game's native joystick input is off; the update check (it downloads an Android APK) is off here.
 The game language is chosen in the in-game settings; Russian is included.
 
-Saves and settings live in `pokesurvivors/conf/`. The log is `pokesurvivors/log.txt`.
+Saves and settings live in `pokesurvivors/conf/`. The log is `pokesurvivors/log.txt`; frame-time stats and hitches are in `pokesurvivors/perf_log.txt`.
+
+Handheld tweaks: fewer enemies on screen (44), lighter effects, 60 fps cap, minimap fog updated in slices. For the lightest picture pick Settings > Effects > Low.
 
 This build has not been tested on real hardware by the upstream authors. If the buttons feel
 wrong, edit `pokesurvivors.gptk`.
@@ -23,8 +25,8 @@ RG34XX-SP labels (Nintendo layout); swap `a` and `b` in the .gptk file if yours 
 | Button | Action |
 |--|--|
 | D-pad / left stick | Move / menu cursor |
-| A (right) | Confirm / pick a card |
-| B (bottom) | Back / pause |
+| B (bottom) | Confirm / pick a card |
+| A (right) | Back / pause |
 | Y (left) | Reroll cards |
 | X (top) | Ban a card |
 | L1 / R1 | Previous / next move, previous / next card |
@@ -39,4 +41,4 @@ RG34XX-SP labels (Nintendo layout); swap `a` and `b` in the .gptk file if yours 
 
 ## По-русски
 
-Бесплатная фанатская игра в духе Vampire Survivors (оригинал — JPTER78, порт на Android — JayElDragon, сборка для PortMaster — DiehlWierce). Кнопки превращаются в клавиши через gptokeyb (раскладка в `pokesurvivors.gptk`), выход — Select+Start. Русский язык включается в настройках игры. Сохранения лежат в `pokesurvivors/conf/`, лог — `pokesurvivors/log.txt`. На реальном железе порт пока не проверен; если подтверждение и отмена перепутаны, поменяй местами `a` и `b` в `pokesurvivors.gptk`.
+Бесплатная фанатская игра в духе Vampire Survivors (оригинал — JPTER78, порт на Android — JayElDragon, сборка для PortMaster — DiehlWierce). Кнопки превращаются в клавиши через gptokeyb (раскладка в `pokesurvivors.gptk`), выход — Select+Start. Русский язык включается в настройках игры. Сохранения лежат в `pokesurvivors/conf/`, лог — `pokesurvivors/log.txt`, замеры кадров и рывки — `pokesurvivors/perf_log.txt`. На реальном железе порт пока не проверен; если подтверждение и отмена перепутаны, поменяй местами `a` и `b` в `pokesurvivors.gptk`.

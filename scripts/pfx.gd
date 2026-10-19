@@ -15,7 +15,7 @@ var beams: Array = []
 
 
 func setup(quality_dens: float) -> void:
-	dens = clampf(quality_dens, 0.35, 1.0)
+	dens = clampf(quality_dens, 0.15, 1.0)
 	cap_parts = int(1400.0 * dens)
 	cap_sprites = int(320.0 * dens)
 

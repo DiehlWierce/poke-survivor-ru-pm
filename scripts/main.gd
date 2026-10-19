@@ -28,7 +28,7 @@ const PFX = preload("res://scripts/pfx.gd")
 const PAUSEUI = preload("res://scripts/pause_ui.gd")
 
 
-const ENEMY_CAP := 64
+var ENEMY_CAP := 64   # en la consola (PortMaster) baja a 44: menos enemigos que mover y dibujar
 const AIM_REACH := 520.0
 const MAX_MOVES := 4
 const ORB_CAP := 420
@@ -477,7 +477,10 @@ func _ready() -> void:
 	shake_on = bool(SV.setting("shake"))
 	Actor.flash_k = 1.0 if shake_on else 0.35
 	quality = int(SV.setting("quality"))
-	pfx.setup([1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)])
+	var hh: bool = OS.has_feature("handheld")
+	if hh:
+		ENEMY_CAP = 44
+	pfx.setup([1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)] * (0.5 if hh else 1.0))
 	var sel_dex: int = SV.run_dex
 	var st: Dictionary = _dex_by[sel_dex]
 	player = Player.new()
@@ -896,14 +899,15 @@ func _on_ban(idx: int) -> void:
 
 
 func _fx_cap() -> int:
+	var k := 0.4 if OS.has_feature("handheld") else 1.0
 	match quality:
 		1:
-			return 600
+			return int(600.0 * k)
 		2:
-			return 160
+			return int(160.0 * k)
 		3:
-			return 50
-	return int(600.0 * q_auto) if q_auto > 0.2 else 50
+			return int(50.0 * k)
+	return int((600.0 * q_auto if q_auto > 0.2 else 50.0) * k)
 
 
 func _process(delta: float) -> void:
@@ -7917,25 +7921,40 @@ class Minimap extends Node2D:
 		ti = i0
 
 	# Descubre el area alrededor del jugador y repinta la niebla.
-	func _fog_update(i0: Vector2i) -> void:
+	# La niebla se repinta por tandas de filas (unas pocas por fotograma): hacerlo entera de golpe,
+	# en cada tile que cruza el jugador, eran decenas de ms en una consola.
+	const FOG_ROWS := 10
+	var _fog_c := Vector2i.ZERO
+	var _fog_row := N   # N = nada pendiente
+
+	func _fog_begin(i0: Vector2i) -> void:
 		for oy in range(-SIGHT, SIGHT + 1):
 			for ox in range(-SIGHT, SIGHT + 1):
 				if ox * ox + oy * oy <= SIGHT * SIGHT:
 					explored[Vector2i(i0.x + ox, i0.y + oy)] = true
+		_fog_c = i0
+		_fog_row = 0
+
+	func _fog_step() -> void:
+		if _fog_row >= N:
+			return
+		var i0: Vector2i = _fog_c
 		var half: int = N / 2
-		for r in range(N):
+		var r_end: int = mini(_fog_row + FOG_ROWS, N)
+		var s2: int = SIGHT * SIGHT
+		for r in range(_fog_row, r_end):
+			var oy: int = r - half
 			for c in range(N):
-				var tx: int = i0.x - half + c
-				var ty: int = i0.y - half + r
-				var ox: int = tx - i0.x
-				var oy: int = ty - i0.y
+				var ox: int = c - half
 				var a := 0.94
-				if ox * ox + oy * oy <= SIGHT * SIGHT:
+				if ox * ox + oy * oy <= s2:
 					a = 0.0
-				elif explored.has(Vector2i(tx, ty)):
+				elif explored.has(Vector2i(i0.x + ox, i0.y + oy)):
 					a = 0.5
 				fog.set_pixel(c, r, Color(0.03, 0.05, 0.11, a))
-		fog_tex.update(fog)
+		_fog_row = r_end
+		if _fog_row >= N:
+			fog_tex.update(fog)
 
 	var _acc := 0.0
 
@@ -7954,8 +7973,9 @@ class Minimap extends Node2D:
 			bio = g.biome
 			sd = g.seed_v
 			_refresh(i0, full)
-			_fog_update(i0)
+			_fog_begin(i0)
 			_acc = 1.0
+		_fog_step()
 		_acc += delta
 		if _acc >= 0.04:   # 25 veces por segundo bastan para el minimapa
 			_acc = 0.0

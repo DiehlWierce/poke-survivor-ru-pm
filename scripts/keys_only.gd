@@ -1,20 +1,37 @@
 extends Node
 # Режим приставки (PortMaster): кнопки приходят клавишами из gptokeyb, а нативный джойстик Godot
 # дублирует их (d-pad одновременно кнопками и осью, раскладка SDL не совпадает) — поэтому события
-# джойстика отбрасываются раньше остальных обработчиков. Вне приставки ничего не делает.
+# джойстика отбрасываются раньше остальных обработчиков. Заодно: потолок 60 к/с и лог рывков
+# (perf_log.txt рядом с игрой). Вне приставки ничего не делает.
+
+const SPIKE_MS := 45.0
+const REPORT_S := 10.0
 
 var active := false
+var _log: FileAccess
+var _acc := 0.0
+var _frames := 0
+var _sum := 0.0
+var _worst := 0.0
+var _spikes := 0
 
 
 func _ready() -> void:
 	active = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 	set_process_input(active)
+	set_process(false)
 	if not active:
 		return
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	Engine.max_fps = 60
 	# _input вызывается с конца дерева: держим узел последним ребёнком корня, чтобы он шёл первым
 	var root := get_tree().root
 	root.child_entered_tree.connect(func(_n: Node): _to_last.call_deferred())
+	var dir: String = OS.get_executable_path().get_base_dir()
+	_log = FileAccess.open(dir.path_join("perf_log.txt"), FileAccess.WRITE)
+	if _log != null:
+		_log.store_line("# %s  кадр > %d мс = рывок; раз в %d с: средний/худший кадр (мс), к/с, узлов, вызовов отрисовки" % [Time.get_datetime_string_from_system(), int(SPIKE_MS), int(REPORT_S)])
+		set_process(true)
 
 
 func _to_last() -> void:
@@ -26,3 +43,24 @@ func _to_last() -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
 		get_viewport().set_input_as_handled()
+
+
+func _process(delta: float) -> void:
+	var ms := delta * 1000.0
+	_frames += 1
+	_sum += ms
+	_acc += delta
+	_worst = maxf(_worst, ms)
+	if ms > SPIKE_MS:
+		_spikes += 1
+		if _spikes <= 200:
+			var scene: Node = get_tree().current_scene
+			_log.store_line("рывок %.0f мс  t=%.1f  сцена=%s  узлов=%d  процесс=%.1f мс" % [ms, Time.get_ticks_msec() / 1000.0, scene.name if scene != null else "-", int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
+			_log.flush()
+	if _acc >= REPORT_S:
+		_log.store_line("t=%.0f  средн=%.1f  худший=%.0f  к/с=%d  рывков=%d  узлов=%d  отрисовка=%d  память=%d МБ" % [Time.get_ticks_msec() / 1000.0, _sum / maxf(1.0, _frames), _worst, int(_frames / _acc), _spikes, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), int(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0)])
+		_log.flush()
+		_acc = 0.0
+		_frames = 0
+		_sum = 0.0
+		_worst = 0.0

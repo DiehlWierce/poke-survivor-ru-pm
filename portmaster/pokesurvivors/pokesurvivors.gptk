@@ -1,6 +1,6 @@
 # Кнопки приставки -> клавиши игры (SDL-имена кнопок: a = нижняя, b = правая, x = левая, y = верхняя).
 # На RG34XX-SP подписи Nintendo: A справа, B снизу, X сверху, Y слева.
-# Если кнопки подтверждения/отмены не те, поменяй местами значения у a и b.
+# Если подтверждение и отмена перепутаны, поменяй местами значения у a и b.
 up = up
 down = down
 left = left
@@ -9,8 +9,8 @@ left_analog_up = up
 left_analog_down = down
 left_analog_left = left
 left_analog_right = right
-b = enter
-a = esc
+b = esc
+a = enter
 x = r
 y = b
 l1 = q
