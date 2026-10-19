@@ -1,23 +1,34 @@
-# Pokémon Survivors — Android port
+# Pokémon Survivors — русская версия + порт для PortMaster
 
-A free, fan-made Android port of **[PokéSurvivor](https://github.com/JPTER78/pokesurvivor) by JPTER78**, built with Godot. Survive endless waves of Pokémon, level up, evolve your moves, enter rifts to fight legendaries and face the Judgment of Arceus.
+Форк [JayElDragon/poke-survivor](https://github.com/JayElDragon/poke-survivor) — бесплатного фанатского Android-порта игры **[PokéSurvivor](https://github.com/JPTER78/pokesurvivor) от JPTER78**, сделанного на Godot. Выживай среди бесконечных волн покемонов, получай уровни, эволюционируй приёмы, входи в разломы, чтобы сразиться с легендарными, и встреть Суд Арсеуса.
 
-**Port by [JayElDragon](https://github.com/JayElDragon).** All game design, systems and content come from the original game.
+**Оригинальная игра:** JPTER78. **Android-порт:** [JayElDragon](https://github.com/JayElDragon). **Порт для PortMaster и русификация в этом форке:** DiehlWierce. Весь геймдизайн, системы и контент — из оригинальной игры.
 
-## Features
-- Touch controls (floating or fixed joystick) and gamepad support with **Xbox, PlayStation and Nintendo** layouts, fully remappable
-- 11 languages: English, Español (España / Latinoamérica), Français, Italiano, Português (Brasil / Portugal), Русский, 日本語, 中文（普通话）, 廣東話
-- Notch-safe UI, minimap, field-of-view slider, quality and accessibility options
-- 960+ Pokémon, gacha, permanent upgrades, missions, 130 achievements, trainer profile
-- Offline only: no ads, no purchases, no online features
+## Что добавлено в форке
+- **Порт для PortMaster** (Linux arm64: muOS, ArkOS, Knulli и др.), проверялся на Anbernic RG34XX-SP (muOS 2601). На реальном железе пока не опробован.
+- Проверка обновлений (она скачивает APK) включена только на Android.
+- Русификация: перевод `data/lang_ru.json` в игре уже есть, в форке его проверяют и дорабатывают.
 
-## Download
-Get the APK from the [Releases](../../releases) page.
+## Возможности игры
+- Сенсорное управление (плавающий или фиксированный джойстик) и геймпад с раскладками **Xbox, PlayStation и Nintendo**, кнопки переназначаются
+- 11 языков: English, Español (España / Latinoamérica), Français, Italiano, Português (Brasil / Portugal), Русский, 日本語, 中文（普通话）, 廣東話
+- Интерфейс с учётом вырезов экрана, миникарта, ползунок поля зрения, настройки качества и доступности
+- 960+ покемонов, гача, постоянные улучшения, задания, 130 достижений, профиль тренера
+- Только офлайн: без рекламы, покупок и онлайн-функций
 
-## Build
-1. Install [Godot 4](https://godotengine.org/) with the Android export templates.
-2. Open `project.godot`, let it import, then export with the included Android preset.
+## Скачать
+- **PortMaster (приставки):** zip в [Releases](../../releases). Распакуй в папку `ports` на приставке и запусти «Pokemon Survivors».
+- **Android:** APK в [релизах оригинального порта](https://github.com/JayElDragon/poke-survivor/releases).
 
-## Credits and licenses
-- Code: MIT (see [`LICENSE`](LICENSE)). Sprites: CC BY-NC 4.0, non-commercial use only. Full artist list in [`CREDITS.md`](CREDITS.md).
-- Pokémon and its characters are trademarks of Nintendo, Creatures Inc. and GAME FREAK inc. This is a non-profit fan project with no affiliation to them.
+## Сборка
+**Android:** установи [Godot 4](https://godotengine.org/) с шаблонами экспорта Android, открой `project.godot`, дождись импорта и экспортируй встроенным пресетом Android.
+
+**PortMaster:** нужен Godot 4.7.x с шаблонами экспорта Linux arm64.
+```
+zsh tools/portmaster/build.sh
+```
+Результат: `build/release/PokemonSurvivors-<версия>-PortMaster.zip`.
+
+## Авторы и лицензии
+- Код: MIT (см. [`LICENSE`](LICENSE)). Спрайты: CC BY-NC 4.0, только некоммерческое использование. Полный список художников — в [`CREDITS.md`](CREDITS.md).
+- Pokémon и его персонажи — торговые марки Nintendo, Creatures Inc. и GAME FREAK inc. Это некоммерческий фанатский проект, не связанный с ними.

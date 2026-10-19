@@ -32,3 +32,7 @@ if A/B are swapped.
 ## Compile
 
 `zsh tools/portmaster/build.sh` in the project (Godot 4.7.2 with the Linux arm64 export templates).
+
+## По-русски
+
+Бесплатная фанатская игра в духе Vampire Survivors (оригинал — JPTER78, порт на Android — JayElDragon, сборка для PortMaster — DiehlWierce). Игра читает геймпад сама, выход — Select+Start. Русский язык включается в настройках игры. Сохранения лежат в `pokesurvivors/conf/`, лог — `pokesurvivors/log.txt`. На реальном железе порт пока не проверен; если кнопки не те, переназначь их в настройках игры (Settings → Controls).
