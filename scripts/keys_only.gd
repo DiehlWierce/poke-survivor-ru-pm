@@ -27,6 +27,12 @@ func _ready() -> void:
 		return
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Engine.max_fps = 60
+	# необязательный файл maxfps.txt рядом с игрой (например 30): ровные 30 к/с часто приятнее, чем 40–55 с провалами
+	var fpsf := FileAccess.open(OS.get_executable_path().get_base_dir().path_join("maxfps.txt"), FileAccess.READ)
+	if fpsf != null:
+		var want: int = int(fpsf.get_as_text().strip_edges())
+		if want >= 20 and want <= 120:
+			Engine.max_fps = want
 	RenderingServer.viewport_set_measure_render_time(get_tree().root.get_viewport_rid(), true)
 	# _input вызывается с конца дерева: держим узел последним ребёнком корня, чтобы он шёл первым
 	var root := get_tree().root
