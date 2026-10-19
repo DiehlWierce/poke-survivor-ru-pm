@@ -743,7 +743,8 @@ func _ready() -> void:
 	_build_theme()
 	RenderingServer.set_default_clear_color(Color("#16233a"))
 	# fondo: un trozo del mapa que se desplaza solo, con Pokemon caminando
-	if not is_overlay:
+	# En la consola el fondo vivo del menu (mundo generado + 20 Pokemon paseando) costaba segundos de 7 fps: fondo liso.
+	if not is_overlay and not (OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()):
 		var world := MenuWorld.new()
 		world.z_index = -4000   # el fondo siempre queda detras de toda la interfaz
 		add_child(world)

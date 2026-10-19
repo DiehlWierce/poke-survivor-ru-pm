@@ -477,7 +477,7 @@ func _ready() -> void:
 	shake_on = bool(SV.setting("shake"))
 	Actor.flash_k = 1.0 if shake_on else 0.35
 	quality = int(SV.setting("quality"))
-	var hh: bool = OS.has_feature("handheld")
+	var hh: bool = _hh()
 	if hh:
 		ENEMY_CAP = 44
 	pfx.setup([1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)] * (0.5 if hh else 1.0))
@@ -899,7 +899,7 @@ func _on_ban(idx: int) -> void:
 
 
 func _fx_cap() -> int:
-	var k := 0.4 if OS.has_feature("handheld") else 1.0
+	var k := 0.4 if _hh() else 1.0
 	match quality:
 		1:
 			return int(600.0 * k)
@@ -4573,16 +4573,60 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 			tg[tj * 22 + ti] = 1 if ground.terrain(bx - 3 + ti, by - 3 + tj) != 0 else 0
 	var gnear := PackedByteArray()   # 1 = hay agua o pared a menos de 2 casillas
 	gnear.resize(22 * 22)
+	# Dilatacion de 5x5 en dos pasadas (fila y luego columna): 25 lecturas por casilla -> 10
+	var grow := PackedByteArray()
+	grow.resize(22 * 22)
+	for tj in range(22):
+		for ti in range(2, 20):
+			var o: int = tj * 22 + ti
+			grow[o] = tg[o - 2] | tg[o - 1] | tg[o] | tg[o + 1] | tg[o + 2]
 	for tj in range(2, 20):
 		for ti in range(2, 20):
-			var bad: int = 0
-			for oy in range(-2, 3):
-				for ox in range(-2, 3):
-					bad |= tg[(tj + oy) * 22 + ti + ox]
-			gnear[tj * 22 + ti] = bad
+			var o2: int = tj * 22 + ti
+			gnear[o2] = grow[o2 - 44] | grow[o2 - 22] | grow[o2] | grow[o2 + 22] | grow[o2 + 44]
+	var job := {"cx": cx, "cy": cy, "bx": bx, "by": by, "placed": placed, "rng": rng, "tg": tg, "gnear": gnear, "items": grass_items, "sj": 0}
+	if _hh() and not menu_mode:
+		grass_jobs.append(job)   # en la consola la hierba se reparte entre varios fotogramas
+	else:
+		_grass_rows(job, 0)
+	return {"props": props}
+
+
+var grass_jobs: Array = []
+var _hh_c := -1
+
+
+# Consola (PortMaster) o prueba en el ordenador con -- --keys-only
+func _hh() -> bool:
+	if _hh_c < 0:
+		_hh_c = 1 if (OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()) else 0
+	return _hh_c == 1
+
+
+func _grass_step() -> void:
+	var t0: int = Time.get_ticks_usec()
+	while not grass_jobs.is_empty() and Time.get_ticks_usec() - t0 < 2500:
+		var job: Dictionary = grass_jobs[0]
+		if not chunks.has(Vector2i(job["cx"], job["cy"])) or _grass_rows(job, 2500 - (Time.get_ticks_usec() - t0)):
+			grass_jobs.pop_front()
+
+
+# Hierba de un trozo, fila a fila. Con presupuesto (usec > 0) se detiene al agotarlo y devuelve false.
+func _grass_rows(job: Dictionary, usec: int) -> bool:
+	var t0: int = Time.get_ticks_usec()
+	var bx: int = job["bx"]
+	var by: int = job["by"]
+	var placed: Array = job["placed"]
+	var rng: RandomNumberGenerator = job["rng"]
+	var tg: PackedByteArray = job["tg"]
+	var gnear: PackedByteArray = job["gnear"]
+	var grass_items: Array = job["items"]
+	var half: float = ground.TS * 0.5
 	var tile_px: float = ground.TS
 	var sq8: float = 8.0 * tile_px
-	for sj in range(32):
+	while int(job["sj"]) < 32:
+		var sj: int = job["sj"]
+		job["sj"] = sj + 1
 		for si in range(32):
 			var gx: float = float(bx) * tile_px + float(si) * half + half * 0.5 + (half * 0.5 if sj % 2 == 1 else 0.0)
 			var gy: float = float(by) * tile_px + float(sj) * half + half * 0.5
@@ -4612,9 +4656,11 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 					break
 			if not blocked:
 				grass_items.append(Vector3(gp.x, gp.y + 14.0, rng.randf() * TAU))
+		if usec > 0 and Time.get_ticks_usec() - t0 > usec:
+			return false
 	grass_items.sort_custom(func(u: Vector3, v: Vector3) -> bool: return u.y < v.y)
-	ground.add_grass(Vector2i(cx, cy), grass_items)
-	return {"props": props}
+	ground.add_grass(Vector2i(job["cx"], job["cy"]), grass_items)
+	return true
 
 
 func _place_special(kind: String, r: float, min_tiles: float, props: Array, placed: Array, rng: RandomNumberGenerator, cx: int, cy: int) -> void:
@@ -4779,8 +4825,9 @@ func _update_world(delta: float) -> void:
 		chunks[nk] = _gen_chunk(nk.x, nk.y)
 		made += 1
 		# Al empezar solo los 9 de alrededor (lo que se ve); el resto llega de uno en uno en los siguientes fotogramas
-		if delta > 0.0 or made >= 9:
+		if delta > 0.0 or made >= (5 if _hh() else 9):
 			break
+	_grass_step()
 	_update_props(delta)
 
 

@@ -14,6 +14,9 @@ var _frames := 0
 var _sum := 0.0
 var _worst := 0.0
 var _spikes := 0
+var _proc := 0.0
+var _phys := 0.0
+var _rcpu := 0.0
 
 
 func _ready() -> void:
@@ -24,6 +27,7 @@ func _ready() -> void:
 		return
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Engine.max_fps = 60
+	RenderingServer.viewport_set_measure_render_time(get_tree().root.get_viewport_rid(), true)
 	# _input вызывается с конца дерева: держим узел последним ребёнком корня, чтобы он шёл первым
 	var root := get_tree().root
 	root.child_entered_tree.connect(func(_n: Node): _to_last.call_deferred())
@@ -51,6 +55,9 @@ func _process(delta: float) -> void:
 	_sum += ms
 	_acc += delta
 	_worst = maxf(_worst, ms)
+	_proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	_phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	_rcpu += RenderingServer.viewport_get_measured_render_time_cpu(get_tree().root.get_viewport_rid())
 	if ms > SPIKE_MS:
 		_spikes += 1
 		if _spikes <= 200:
@@ -58,9 +65,12 @@ func _process(delta: float) -> void:
 			_log.store_line("рывок %.0f мс  t=%.1f  сцена=%s  узлов=%d  процесс=%.1f мс" % [ms, Time.get_ticks_msec() / 1000.0, scene.name if scene != null else "-", int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
 			_log.flush()
 	if _acc >= REPORT_S:
-		_log.store_line("t=%.0f  средн=%.1f  худший=%.0f  к/с=%d  рывков=%d  узлов=%d  отрисовка=%d  память=%d МБ" % [Time.get_ticks_msec() / 1000.0, _sum / maxf(1.0, _frames), _worst, int(_frames / _acc), _spikes, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), int(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0)])
+		_log.store_line("t=%.0f  средн=%.1f  худший=%.0f  к/с=%d  рывков=%d  узлов=%d  отрисовка=%d  скрипты=%.1f  физика=%.1f  рендер_цпу=%.1f мс" % [Time.get_ticks_msec() / 1000.0, _sum / maxf(1.0, _frames), _worst, int(_frames / _acc), _spikes, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), _proc / maxf(1.0, _frames), _phys / maxf(1.0, _frames), _rcpu / maxf(1.0, _frames)])
 		_log.flush()
 		_acc = 0.0
 		_frames = 0
 		_sum = 0.0
 		_worst = 0.0
+		_proc = 0.0
+		_phys = 0.0
+		_rcpu = 0.0

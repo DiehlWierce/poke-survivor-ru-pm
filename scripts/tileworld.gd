@@ -45,6 +45,7 @@ var biome := 0
 var prev_biome := 0
 var center := Vector2.ZERO
 var terr := {}
+const SHORE_OFFS: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
 var raw_c := {}   # terreno crudo ya calculado (la orilla lo pide ~13 veces por casilla)
 var dirt := {}
 var chunks := {}
@@ -387,26 +388,44 @@ func prop_tex(name: String, b: int = -1) -> Texture2D:
 
 # Lagos grandes: cada celda de LAKE_CELL casillas puede tener un lago (elipse con orilla irregular),
 # asi no salen charcos pequenos. Solo depende de las coordenadas.
+# Lagos activos de las 9 celdas vecinas, guardados por celda: casi todas las casillas comparten celda y casi
+# ninguna celda tiene lago, asi que se evita repetir ~20 hashes por casilla.
+var _lk_key := Vector2i(1 << 30, 1 << 30)
+var _lk_seed := -1
+var _lk_list: Array = []
+
+
+func _lake_cells(cx0: int, cy0: int) -> Array:
+	if _lk_key != Vector2i(cx0, cy0) or _lk_seed != seed_v:
+		_lk_key = Vector2i(cx0, cy0)
+		_lk_seed = seed_v
+		_lk_list = []
+		for cy in range(cy0 - 1, cy0 + 2):
+			for cx in range(cx0 - 1, cx0 + 2):
+				if AS.hsh(cx, cy, seed_v + 500) > LAKE_P:
+					continue
+				var mx: float = (float(cx) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 501)) * LAKE_CELL
+				var my: float = (float(cy) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 502)) * LAKE_CELL
+				if Vector2(mx, my).length() < 15.0:
+					continue
+				var rx: float = 3.4 + 2.6 * AS.hsh(cx, cy, seed_v + 503)
+				var ry: float = 3.0 + 2.2 * AS.hsh(cx, cy, seed_v + 504)
+				_lk_list.append(Vector4(mx, my, rx, ry))
+	return _lk_list
+
+
 func _lake(tx: int, ty: int) -> bool:
-	var cx0: int = floori(float(tx) / LAKE_CELL)
-	var cy0: int = floori(float(ty) / LAKE_CELL)
+	var lakes: Array = _lake_cells(floori(float(tx) / LAKE_CELL), floori(float(ty) / LAKE_CELL))
+	if lakes.is_empty():
+		return false
 	var px: float = float(tx) + 0.5
 	var py: float = float(ty) + 0.5
-	for cy in range(cy0 - 1, cy0 + 2):
-		for cx in range(cx0 - 1, cx0 + 2):
-			if AS.hsh(cx, cy, seed_v + 500) > LAKE_P:
-				continue
-			var mx: float = (float(cx) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 501)) * LAKE_CELL
-			var my: float = (float(cy) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 502)) * LAKE_CELL
-			if Vector2(mx, my).length() < 15.0:
-				continue
-			var rx: float = 3.4 + 2.6 * AS.hsh(cx, cy, seed_v + 503)
-			var ry: float = 3.0 + 2.2 * AS.hsh(cx, cy, seed_v + 504)
-			var dx: float = (px - mx) / rx
-			var dy: float = (py - my) / ry
-			var wob: float = (AS.fbm(px / 5.0, py / 5.0, seed_v + 111) - 0.5) * 1.5 + (AS.fbm(px / 2.2, py / 2.2, seed_v + 113) - 0.5) * 0.5
-			if dx * dx + dy * dy < 1.0 + wob:
-				return true
+	for lk in lakes:
+		var dx: float = (px - lk.x) / lk.z
+		var dy: float = (py - lk.y) / lk.w
+		var wob: float = (AS.fbm(px / 5.0, py / 5.0, seed_v + 111) - 0.5) * 1.5 + (AS.fbm(px / 2.2, py / 2.2, seed_v + 113) - 0.5) * 0.5
+		if dx * dx + dy * dy < 1.0 + wob:
+			return true
 	return false
 
 
@@ -439,10 +458,10 @@ func terrain(tx: int, ty: int) -> int:
 	# Orilla: junto al agua aparecen tramos de pared de tierra (como barrancos)
 	if res == FLOOR and Vector2(float(tx) + 0.5, float(ty) + 0.5).length() >= 12.0:
 		var near_liq := false
-		for oy in range(-3, 4):
-			for ox in range(-3, 4):
-				if (absi(ox) + absi(oy)) <= 2 and _raw(tx + ox, ty + oy) == LIQUID:
-					near_liq = true
+		for o in SHORE_OFFS:   # los 13 vecinos con |ox|+|oy| <= 2; al primer agua se corta
+			if _raw(tx + o.x, ty + o.y) == LIQUID:
+				near_liq = true
+				break
 		# barrancos: tramos de pared de tierra pegados a la orilla (se rompen con ruido para dejar pasos)
 		if near_liq and AS.fbm(float(tx) / 3.5, float(ty) / 3.5, seed_v + 910) > SHORE_WALL:
 			res = WALL
