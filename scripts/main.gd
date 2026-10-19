@@ -3810,23 +3810,48 @@ func _update_enemies(delta: float) -> void:
 			tint = Color(0.7, 0.85, 1.0)
 		e.sprite.modulate = tint
 		_enemy_step(e, delta, kn_decay)
-	# Separacion suave para que no se apilen en un solo punto.
+	# Separacion suave para que no se apilen en un solo punto. Rejilla espacial: antes eran n*(n-1)/2 pares
+	# por fotograma (con 60 enemigos, 1770), en una consola decenas de ms.
 	var n: int = enemies.size()
+	var maxr := 8.0
+	for e in enemies:
+		maxr = maxf(maxr, e.radius)
+	var cell: float = maxf(48.0, maxr * 1.4)
+	var inv: float = 1.0 / cell
+	var grid := {}
 	for i in range(n):
 		var a = enemies[i]
 		if a.dead or a.jump != null:
 			continue
-		for j in range(i + 1, n):
-			var b = enemies[j]
-			if b.dead or b.jump != null:
-				continue
-			var diff: Vector2 = b.position - a.position
-			var min_d: float = (a.radius + b.radius) * 0.7
-			var dd: float = diff.length()
-			if dd < min_d and dd > 0.001:
-				var push: Vector2 = diff / dd * (min_d - dd) * 0.5
-				a.position -= push
-				b.position += push
+		var gk := Vector2i(floori(a.position.x * inv), floori(a.position.y * inv))
+		var lst = grid.get(gk)
+		if lst == null:
+			grid[gk] = [i]
+		else:
+			lst.append(i)
+	for i in range(n):
+		var a = enemies[i]
+		if a.dead or a.jump != null:
+			continue
+		var ck := Vector2i(floori(a.position.x * inv), floori(a.position.y * inv))
+		for ox in range(-1, 2):
+			for oy in range(-1, 2):
+				var lst2 = grid.get(Vector2i(ck.x + ox, ck.y + oy))
+				if lst2 == null:
+					continue
+				for j in lst2:
+					if j <= i:
+						continue
+					var b = enemies[j]
+					if b.dead or b.jump != null:
+						continue
+					var diff: Vector2 = b.position - a.position
+					var min_d: float = (a.radius + b.radius) * 0.7
+					var dd: float = diff.length()
+					if dd < min_d and dd > 0.001:
+						var push: Vector2 = diff / dd * (min_d - dd) * 0.5
+						a.position -= push
+						b.position += push
 
 
 func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
@@ -4867,18 +4892,26 @@ func _props_near(pos: Vector2) -> Array:
 
 # Los enemigos que no vuelan no pisan las fuentes de curacion (solo las usas tu)
 func _spring_push(pos: Vector2) -> Vector2:
-	for p in _props_near(pos):
-		if not is_instance_valid(p) or p.kind != "spring" or p.used:
-			continue
-		var d: Vector2 = pos - p.position
-		var q := Vector2(d.x / 30.0, d.y / 19.0)
-		var l: float = q.length()
-		if l < 1.0:
-			if l < 0.001:
-				q = Vector2(1.0, 0.0)
-				l = 1.0
-			q /= l
-			pos = p.position + Vector2(q.x * 30.0, q.y * 19.0)
+	# solo los trozos que toca el radio de la fuente (30 px): casi siempre 1, sin armar un array con los 9 vecinos
+	var c0: Vector2i = _chunk_of(pos - Vector2(32.0, 32.0))
+	var c1: Vector2i = _chunk_of(pos + Vector2(32.0, 32.0))
+	for cx in range(c0.x, c1.x + 1):
+		for cy in range(c0.y, c1.y + 1):
+			var ch = chunks.get(Vector2i(cx, cy))
+			if ch == null:
+				continue
+			for p in ch["props"]:
+				if not is_instance_valid(p) or p.kind != "spring" or p.used:
+					continue
+				var d: Vector2 = pos - p.position
+				var q := Vector2(d.x / 30.0, d.y / 19.0)
+				var l: float = q.length()
+				if l < 1.0:
+					if l < 0.001:
+						q = Vector2(1.0, 0.0)
+						l = 1.0
+					q /= l
+					pos = p.position + Vector2(q.x * 30.0, q.y * 19.0)
 	return pos
 
 
@@ -4886,10 +4919,13 @@ func _collide(pos: Vector2, rad: float) -> Vector2:
 	if arena != null:
 		return arena.collide(pos, rad)
 	pos = ground.collide(pos, rad)
-	var c: Vector2i = _chunk_of(pos)
-	for dx in range(-1, 2):
-		for dy in range(-1, 2):
-			var ch = chunks.get(Vector2i(c.x + dx, c.y + dy))
+	# solo los trozos a los que llega el objeto mas grande (radio <= 48) + rad: casi siempre 1 de 9
+	var m: float = 48.0 + rad
+	var c0: Vector2i = _chunk_of(pos - Vector2(m, m))
+	var c1: Vector2i = _chunk_of(pos + Vector2(m, m))
+	for cx in range(c0.x, c1.x + 1):
+		for cy in range(c0.y, c1.y + 1):
+			var ch = chunks.get(Vector2i(cx, cy))
 			if ch == null:
 				continue
 			for p in ch["props"]:
@@ -4981,9 +5017,9 @@ func _player_terrain(delta: float) -> float:
 func _enemy_terrain(e: Enemy, delta: float) -> float:
 	if e.legend:
 		return 1.0
-	if _liquid_at(e.position) == "swamp":
-		return 1.0 if _has_t(e.types, ["poison", "water"]) else 0.55
 	var liq: String = _liquid_at(e.position)
+	if liq == "swamp":
+		return 1.0 if _has_t(e.types, ["poison", "water"]) else 0.55
 	if liq == "water":
 		if _has_t(e.types, ["water", "flying"]):
 			return 1.0
@@ -5284,6 +5320,10 @@ func _update_bullets(delta: float) -> void:
 				if e.dead or b.hits.has(e):
 					continue
 				var rr2: float = e.radius + b.r
+				# descarte barato antes de la llamada nativa: lejos del punto medio del tramo recorrido
+				var reach: float = rr2 + b.ppos.distance_to(b.position) * 0.5 + 1.0
+				if e.position.distance_squared_to((b.ppos + b.position) * 0.5) > reach * reach:
+					continue
 				var cp: Vector2 = Geometry2D.get_closest_point_to_segment(e.position, b.ppos, b.position)
 				if cp.distance_squared_to(e.position) > rr2 * rr2:
 					continue
@@ -6426,8 +6466,7 @@ class Actor extends Node2D:
 		scl = s
 		shiny = shn
 		hover = bool(sm.get("hv", 0))
-		mat.shader = shader
-		sprite.material = mat
+		mat.shader = shader   # el material se pone solo mientras dura el destello: sin material los sprites se agrupan en menos llamadas de dibujo
 		sprite.centered = false
 		sprite.region_enabled = true
 		sprite.scale = Vector2(PX * scl * SPR_K, PX * scl * SPR_K)
@@ -6619,7 +6658,11 @@ class Actor extends Node2D:
 			return
 		if flash > 0.0:
 			flash = maxf(0.0, flash - delta * 8.0)
+			if sprite.material == null:
+				sprite.material = mat
 			mat.set_shader_parameter("flash", flash * flash_k)
+			if flash <= 0.0:
+				sprite.material = null
 		if (active or hold) and not meta.is_empty():   # hold: la animacion de muerte sigue aunque el actor este inactivo
 			tick_anim(delta)
 		elif hover or lift_extra != 0.0:

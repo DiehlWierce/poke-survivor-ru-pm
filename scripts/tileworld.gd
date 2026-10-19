@@ -763,16 +763,22 @@ func add_grass(key: Vector2i, items: Array) -> void:
 
 func cut_grass(pos: Vector2, r: float) -> Array:
 	var out: Array = []
-	var c: Vector2i = chunk_of(pos)
-	for dx in range(-1, 2):
-		for dy in range(-1, 2):
-			var key := Vector2i(c.x + dx, c.y + dy)
-			var arr = grass.get(key)
+	if grass.is_empty():
+		return out
+	# solo los trozos que toca el circulo (casi siempre 1), sin crear un Vector2 por mata
+	var c0: Vector2i = chunk_of(pos - Vector2(r, r))
+	var c1: Vector2i = chunk_of(pos + Vector2(r, r))
+	var r2: float = r * r
+	for cx in range(c0.x, c1.x + 1):
+		for cy in range(c0.y, c1.y + 1):
+			var arr = grass.get(Vector2i(cx, cy))
 			if arr == null:
 				continue
 			for i in range(arr.size() - 1, -1, -1):
 				var g: Vector3 = arr[i]
-				if Vector2(g.x, g.y).distance_squared_to(pos) <= r * r:
+				var dx: float = g.x - pos.x
+				var dy: float = g.y - pos.y
+				if dx * dx + dy * dy <= r2:
 					out.append(Vector2(g.x, g.y))
 					arr.remove_at(i)
 	return out
