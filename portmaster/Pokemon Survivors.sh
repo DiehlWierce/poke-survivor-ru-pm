@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pokémon Survivors — запуск на приставках через PortMaster (muOS, ArkOS, Knulli и т.д.).
 # Игра собрана Godot 4.7 под Linux arm64 и лежит рядом: pokesurvivors/pokesurvivors.aarch64 + .pck.
-# Геймпад игра читает сама (SDL), gptokeyb нужен только для выхода по Select+Start.
+# Кнопки идут через gptokeyb -> клавиши (pokesurvivors.gptk); выход по Select+Start.
 
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 
@@ -51,7 +51,7 @@ if [[ "$PM_CAN_MOUNT" != "N" ]]; then
 fi
 $ESUDO mount "$controlfolder/libs/${weston_runtime}.squashfs" "${weston_dir}"
 
-# gptokeyb: пустая раскладка — кнопки не превращаются в клавиши, работает только выход Select+Start
+# gptokeyb превращает кнопки в клавиши по pokesurvivors.gptk (нативный джойстик Godot в игре отключён)
 $GPTOKEYB "$BINARY" -c "$GAMEDIR/pokesurvivors.gptk" &
 pm_platform_helper "$GAMEDIR/$BINARY"
 
@@ -59,7 +59,7 @@ pm_platform_helper "$GAMEDIR/$BINARY"
 $ESUDO env $weston_dir/westonwrap.sh headless noop kiosk crusty_x11egl \
 XDG_DATA_HOME=$CONFDIR SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig" \
 $GAMEDIR/$BINARY --resolution ${DISPLAY_WIDTH}x${DISPLAY_HEIGHT} -f \
---rendering-method gl_compatibility --rendering-driver opengl3_es --audio-driver ALSA
+--rendering-method gl_compatibility --rendering-driver opengl3_es --audio-driver ALSA -- --keys-only
 
 $ESUDO $weston_dir/westonwrap.sh cleanup
 if [[ "$PM_CAN_MOUNT" != "N" ]]; then

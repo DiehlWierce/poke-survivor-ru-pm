@@ -1,2 +1,21 @@
-# Пустая раскладка: игра сама читает геймпад через SDL.
-# gptokeyb при этом по-прежнему завершает игру по Select+Start.
+# Кнопки приставки -> клавиши игры (SDL-имена кнопок: a = нижняя, b = правая, x = левая, y = верхняя).
+# На RG34XX-SP подписи Nintendo: A справа, B снизу, X сверху, Y слева.
+# Если кнопки подтверждения/отмены не те, поменяй местами значения у a и b.
+up = up
+down = down
+left = left
+right = right
+left_analog_up = up
+left_analog_down = down
+left_analog_left = left
+left_analog_right = right
+b = enter
+a = esc
+x = r
+y = b
+l1 = q
+r1 = e
+l2 = z
+r2 = c
+back = tab
+start = esc
