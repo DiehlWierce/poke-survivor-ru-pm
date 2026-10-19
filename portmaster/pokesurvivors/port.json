@@ -1,0 +1,34 @@
+{
+  "version": 4,
+  "name": "pokesurvivors.zip",
+  "items": [
+    "Pokemon Survivors.sh",
+    "pokesurvivors"
+  ],
+  "items_opt": [],
+  "attr": {
+    "title": "Pokemon Survivors",
+    "porter": [
+      "DiehlWierce"
+    ],
+    "desc": "Fan-made Vampire Survivors-style game: survive endless waves of Pokemon, level up, evolve your moves, enter rifts to fight legendaries and face the Judgment of Arceus. Original game by JPTER78, Android port by JayElDragon. 11 languages including Russian.",
+    "desc_md": null,
+    "inst": "Ready to run: the game data is included. Unpack into the ports folder and start Pokemon Survivors.",
+    "inst_md": null,
+    "genres": [
+      "action",
+      "roguelike"
+    ],
+    "image": {},
+    "rtr": true,
+    "exp": true,
+    "runtime": [
+      "weston_pkg_0.2.squashfs"
+    ],
+    "reqs": [],
+    "arch": [
+      "aarch64"
+    ],
+    "min_glibc": "2.28"
+  }
+}

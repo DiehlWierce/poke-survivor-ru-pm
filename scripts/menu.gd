@@ -748,13 +748,14 @@ func _ready() -> void:
 		world.z_index = -4000   # el fondo siempre queda detras de toda la interfaz
 		add_child(world)
 		world.start()
-		var upd := UPD.new()
-		add_child(upd)
-		upd.found.connect(func(info: Dictionary):
-			var pop := UPD.UpdatePopup.new()
-			add_child(pop)
-			pop.build(info))
-		upd.start()
+		if OS.get_name() == "Android":   # el aviso de actualizacion descarga un APK: solo tiene sentido en Android
+			var upd := UPD.new()
+			add_child(upd)
+			upd.found.connect(func(info: Dictionary):
+				var pop := UPD.UpdatePopup.new()
+				add_child(pop)
+				pop.build(info))
+			upd.start()
 	shade = ColorRect.new()
 	shade.color = Color(0, 0.05, 0.1, 0.30)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)

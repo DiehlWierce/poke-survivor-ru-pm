@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gameList>
+  <game>
+    <path>./Pokemon Survivors.sh</path>
+    <name>Pokemon Survivors</name>
+    <desc>Фанатская игра в духе Vampire Survivors: выживай среди бесконечных волн покемонов, прокачивай и эволюционируй приёмы, входи в разломы за легендарными и встреть Суд Арсеуса. Оригинал — JPTER78, порт на Android — JayElDragon.</desc>
+    <developer>JPTER78 / JayElDragon</developer>
+    <publisher>fan project</publisher>
+    <genre>Action</genre>
+    <image>./pokesurvivors/screenshot.png</image>
+  </game>
+</gameList>
