@@ -12,11 +12,11 @@ The game language is chosen in the in-game settings; Russian is included.
 Saves and settings live in `pokesurvivors/conf/`. The log is `pokesurvivors/log.txt`; frame-time stats and hitches are in `pokesurvivors/perf_log.txt`.
 
 Tips for smoother play:
-- Create `pokesurvivors/maxfps.txt` containing `30` for a locked 30 fps (default cap is 60). A steady 30 often feels better than 40-55 with dips.
+- The game is locked to 30 fps on handhelds (steadier than 40-55 fps with dips). To change it, create `pokesurvivors/maxfps.txt` containing e.g. `60`.
 - On muOS the CPU can stay at a low clock after waking from sleep (some users see lag in all ports until a full reboot). If a port lags, reboot once or set the CPU governor to performance in muOS settings.
 - Pick Settings > Effects > Low in the game.
 
-Handheld tweaks: fewer enemies on screen (44), lighter effects, 60 fps cap, minimap fog updated in slices. For the lightest picture pick Settings > Effects > Low.
+Handheld tweaks: fewer enemies on screen (44), lighter effects, 30 fps cap, minimap fog updated in slices. For the lightest picture pick Settings > Effects > Low.
 
 This build has not been tested on real hardware by the upstream authors. If the buttons feel
 wrong, edit `pokesurvivors.gptk`.

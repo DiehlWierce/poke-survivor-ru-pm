@@ -1,7 +1,7 @@
 extends Node
 # Режим приставки (PortMaster): кнопки приходят клавишами из gptokeyb, а нативный джойстик Godot
 # дублирует их (d-pad одновременно кнопками и осью, раскладка SDL не совпадает) — поэтому события
-# джойстика отбрасываются раньше остальных обработчиков. Заодно: потолок 60 к/с и лог рывков
+# джойстика отбрасываются раньше остальных обработчиков. Заодно: потолок 30 к/с и лог рывков
 # (perf_log.txt рядом с игрой). Вне приставки ничего не делает.
 
 const SPIKE_MS := 45.0
@@ -26,8 +26,8 @@ func _ready() -> void:
 	if not active:
 		return
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	Engine.max_fps = 60
-	# необязательный файл maxfps.txt рядом с игрой (например 30): ровные 30 к/с часто приятнее, чем 40–55 с провалами
+	Engine.max_fps = 30
+	# необязательный файл maxfps.txt рядом с игрой (например 60 для максимума): ровные 30 к/с часто приятнее, чем 40–55 с провалами
 	var fpsf := FileAccess.open(OS.get_executable_path().get_base_dir().path_join("maxfps.txt"), FileAccess.READ)
 	if fpsf != null:
 		var want: int = int(fpsf.get_as_text().strip_edges())
