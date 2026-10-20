@@ -40,7 +40,7 @@ run_check() {
 echo "== GDScript parse checks =="
 while IFS= read -r script; do
   case "$script" in
-    # Мёртвые, удаляются в A3/A4: старые переводы menu, исключены до удаления.
+    # Мёртвые, удаляются в A3/A4.
     scripts/menu_e14.gd|scripts/menu_e15.gd) echo "SKIP $script — мёртвые, удаляются в A3/A4"; continue ;;
   esac
   run_check "parse $script" "$GODOT_BIN" --headless --path "$ROOT" --check-only --script "res://$script" || true
