@@ -2274,7 +2274,7 @@ func _hurt_player(amount: float, atk_type: String = "", pure: bool = false) -> v
 		_ring(player.position, 8.0, 260.0, Color("#ff8ad8"), 0.8)
 		shake = 6.0
 		for e in enemies:
-			if not e.dead and e.position.distance_to(player.position) < 260.0:
+			if not e.dead and e.position.distance_squared_to(player.position) < 260.0 * 260.0:
 				e.knock = (e.position - player.position).normalized() * 500.0
 		return
 	if player.hp <= 0.0 and mode == "team":
@@ -2362,7 +2362,7 @@ func _revive_from_down() -> void:
 	_ring(player.position, 8.0, 240.0, Color("#7dffb0"), 0.8)
 	add_text(player.position + Vector2(0.0, -player.body_h - 22.0), L.t("¡Tu compañero te ha revivido!"), Color("#7dffb0"), 24)
 	for e in enemies:
-		if not e.dead and e.position.distance_to(player.position) < 220.0:
+		if not e.dead and e.position.distance_squared_to(player.position) < 220.0 * 220.0:
 			e.knock = (e.position - player.position).normalized() * 450.0
 
 
@@ -2567,7 +2567,8 @@ func _melee(m: Dictionary) -> void:
 	for e in enemies:
 		if e.dead:
 			continue
-		if e.position.distance_to(player.position) > rad + e.radius * 0.5:
+		var rr: float = rad + e.radius * 0.5
+		if e.position.distance_squared_to(player.position) > rr * rr:
 			continue
 		if not _in_arc(player.position, e.position, player.aim, half):
 			continue
@@ -2610,7 +2611,8 @@ func _aura(m: Dictionary) -> void:
 	for e in enemies:
 		if e.dead:
 			continue
-		if e.position.distance_to(player.position) <= rad + e.radius * 0.5:
+		var rr: float = rad + e.radius * 0.5
+		if e.position.distance_squared_to(player.position) <= rr * rr:
 			if m.has("dream") and e.sleep_t <= 0.0:
 				continue   # Come Sueños: solo afecta a enemigos dormidos
 			_hit_move(e, _f(m, "dmg") * _atk(), e.position - player.position, m)
@@ -2714,8 +2716,9 @@ func _mines(m: Dictionary) -> void:
 func _meteors(m: Dictionary) -> void:
 	var n: int = maxi(1, int(_f(m, "count", 1.0)))
 	var near: Array = []
+	var reach: float = _reach(m)
 	for e in enemies:
-		if not e.dead and e.position.distance_to(player.position) <= _reach(m):
+		if not e.dead and e.position.distance_squared_to(player.position) <= reach * reach:
 			near.append(e)
 	near.shuffle()
 	for i in range(n):
@@ -3055,7 +3058,8 @@ func _blast(f: Field, r: float, k: float) -> void:
 	for e in enemies:
 		if e.dead:
 			continue
-		if e.position.distance_to(f.position) <= r + e.radius * 0.5:
+		var rr: float = r + e.radius * 0.5
+		if e.position.distance_squared_to(f.position) <= rr * rr:
 			_hit_move(e, f.dmg * k, e.position - f.position, m)
 
 
@@ -3072,7 +3076,7 @@ func _update_fields(delta: float) -> void:
 			var trig: bool = false
 			if f.t >= f.arm:
 				for e in enemies:
-					if not e.dead and e.position.distance_to(f.position) <= 14.0 + e.radius * 0.5:
+					if not e.dead and e.position.distance_squared_to(f.position) <= (14.0 + e.radius * 0.5) * (14.0 + e.radius * 0.5):
 						trig = true
 						break
 			if trig or f.t >= f.life:
@@ -4552,7 +4556,7 @@ func _heal_around(e: Enemy) -> void:
 	for o in enemies:
 		if o.dead or o.hp >= o.max_hp:
 			continue
-		if o.position.distance_to(e.position) <= 150.0:
+		if o.position.distance_squared_to(e.position) <= 150.0 * 150.0:
 			o.hp = minf(o.max_hp, o.hp + o.max_hp * k)
 			o.queue_redraw()
 	e.play("Charge", 1.0)
@@ -4562,7 +4566,7 @@ func _heal_around(e: Enemy) -> void:
 func _cast_shields(e: Enemy) -> void:
 	var near: Array = []
 	for o in enemies:
-		if not o.dead and o.position.distance_to(e.position) <= 160.0:
+		if not o.dead and o.position.distance_squared_to(e.position) <= 160.0 * 160.0:
 			near.append(o)
 	near.sort_custom(func(a, b): return a.position.distance_squared_to(e.position) < b.position.distance_squared_to(e.position))
 	# Balance: escudo del 30 % (antes 35 %) durante 7 s, y un mismo Pokemon no recibe otro
@@ -5718,7 +5722,7 @@ func _trigger_trap(p: Prop) -> void:
 		col = Color("#ff7ad9")
 	_ring(pos, 6.0, 74.0, col, 0.5)
 	for e in enemies:
-		if e.dead or e.position.distance_to(pos) > 74.0:
+		if e.dead or e.position.distance_squared_to(pos) > 74.0 * 74.0:
 			continue
 		if p.sub == "poison":
 			e.apply_poison(5)
@@ -6175,7 +6179,7 @@ func _collect(kind: String, value: float) -> void:
 		Aud.sfx("ball")
 		shake = 12.0
 		for e in enemies.duplicate():
-			if not e.dead and e.position.distance_to(player.position) < 520.0:
+			if not e.dead and e.position.distance_squared_to(player.position) < 520.0 * 520.0:
 				_damage_enemy(e, 80.0, Color("#ff7b3d"))
 		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), L.t("BOOM!"), Color("#ff7b3d"))
 
