@@ -184,7 +184,7 @@ func rpos(rmax: float, rmin: float = 40.0) -> Vector2:
 func tpos(rmax: float = 460.0) -> Vector2:
 	var l: Array = []
 	for e in m.enemies:
-		if not e.dead and e.position.distance_to(c) < rmax:
+		if not e.dead and e.position.distance_squared_to(c) < rmax * rmax:
 			l.append(e)
 	if l.is_empty():
 		return rpos(rmax * 0.7)
@@ -216,7 +216,8 @@ func hit(p: Vector2, r: float, k: float = 1.0, knock: float = 0.0, cc: String = 
 	for e in m.enemies.duplicate():
 		if e.dead:
 			continue
-		if e.position.distance_to(p) <= r + e.radius * 0.5:
+		var hit_r: float = r + e.radius * 0.5
+		if e.position.distance_squared_to(p) <= hit_r * hit_r:
 			var d: Vector2 = (e.position - p).normalized()
 			zhit(e, dmg * k, d, knock, poison, slow, cc)
 
@@ -246,7 +247,7 @@ func ring_burst(shape: String, n: int, r0: float, speed: float, life: float, scl
 func near(p: Vector2, r: float) -> Array:
 	var l: Array = []
 	for e in m.enemies:
-		if not e.dead and e.position.distance_to(p) <= r:
+		if not e.dead and e.position.distance_squared_to(p) <= r * r:
 			l.append(e)
 	return l
 
@@ -323,13 +324,13 @@ func chain_from(first, used: Dictionary, maxn: int, reach: float) -> Array:
 		out.append(cur)
 		used[cur.get_instance_id()] = true
 		var best = null
-		var bd: float = reach
+		var bd_sq: float = reach * reach
 		for e in m.enemies:
 			if e.dead or used.has(e.get_instance_id()):
 				continue
-			var d: float = e.position.distance_to(cur.position)
-			if d < bd:
-				bd = d
+			var d_sq: float = e.position.distance_squared_to(cur.position)
+			if d_sq < bd_sq:
+				bd_sq = d_sq
 				best = e
 		cur = best
 	return out
@@ -346,514 +347,649 @@ func start_dash(len_: float, speed: float, target: Vector2) -> void:
 func _plan() -> void:
 	match type:
 		"normal":
-			# Tres embestidas a toda velocidad contra grupos distintos, atravesando todo
-			dur = 2.9
-			for i in range(3):
-				at(0.15 + float(i) * 0.8, func():
-					var tgt: Vector2 = tpos(520.0)
-					start_dash(470.0, 1250.0, tgt))
-			at(2.5, func():
-				var p: Vector2 = m.player.position
-				boom(p, 260.0, 8.0)
-				m.pfx.ring(p, 30.0, 300.0, Color.WHITE, 0.4, 5.0)
-				hit(p, 260.0, 1.4, 450.0))
+			_plan_normal()
 		"fire":
-
-			# Fuego fatuo: una corona de bolas de fuego flota alrededor del Pokemon y despues cada una se lanza contra un enemigo
-			dur = 4.2
-			var nw := 24
-			for i in range(nw):
-				at(0.08 + float(i) * 0.05, func():
-					var w := Wisp.new()
-					w.home = m.player
-					w.ang = float(i) * 2.4
-					w.rad = 120.0 + float(i % 3) * 38.0
-					w.t_go = 1.5 + float(i) * 0.09 - (0.08 + float(i) * 0.05)
-					w.position = m.player.position
-					var p: Vector2 = tpos()
-					w.to = p
-					w.cb = func():
-						boom(p, 95.0, 2.0)
-						m.pfx.burst(p, col(3), 12, 200.0)
-						hit(p, 100.0, 1.15, 160.0, "", 0)
-					m.fx.add_child(w)
-					)
+			_plan_fire()
 		"water":
-			# Un vortice que arrastra a todos hacia el centro y una ola final que los lanza
-			dur = 3.6
-			at(0.1, func():
-				st["vortex"] = true
-				m.pfx.ring(c, 520.0, 60.0, col(3), 0.7, 6.0))
-			at(2.9, func():
-				st["vortex"] = false
-				m.pfx.ring(c, 30.0, 520.0, col(3), 0.7, 9.0)
-				ring_burst("drop", 30, 30.0, 620.0, 0.7, 1.8)
-				boom(c, 360.0, 10.0)
-				hit(c, 400.0, 2.2, 700.0))
+			_plan_water()
 		"electric":
-			# Tres cadenas de rayos que saltan de enemigo en enemigo y paralizan
-			dur = 3.6
-			var used := {}
-			for ci in range(3):
-				at(0.2 + float(ci) * 0.25, func():
-					var pool: Array = near(c, 560.0)
-					pool = pool.filter(func(e): return not used.has(e.get_instance_id()))
-					if pool.is_empty():
-						return
-					pool.sort_custom(func(a, b): return a.position.distance_squared_to(c) < b.position.distance_squared_to(c))
-					var first = pool[mini(ci * 3, pool.size() - 1)]
-					var chain: Array = chain_from(first, used, 14, 300.0)
-					var vis: Dictionary = VFX.for_move("thunderbolt", "electric")
-					for j in range(chain.size()):
-						at(t + float(j) * 0.1, func():
-							var e = chain[j]
-							if not is_instance_valid(e) or e.dead:
-								return
-							var to: Vector2 = e.position
-							var from: Vector2 = to + Vector2(0.0, -520.0)
-							if j > 0 and is_instance_valid(chain[j - 1]):
-								from = chain[j - 1].position
-							var dv: Vector2 = to - from
-							m.pfx.beam(from, dv.angle(), dv.length(), 20.0, vis)
-							boom(to, 70.0, 3.0)
-							hit_one(e, 1.1 + 0.1 * float(j), 150.0, "para", 0, 0.0, from)))
+			_plan_electric()
 		"grass":
-			# Raices inmovilizan, estrangulan y al florecer curan por cada enemigo atrapado
-			dur = 3.6
-			at(0.2, func():
-				st["roots"] = near(c, 600.0)
-				m.pfx.ring(c, 20.0, 600.0, col(3), 0.6, 5.0)
-				for e in st["roots"]:
-					for j in range(5):
-						m.pfx.slash(e.position, TAU * float(j) / 5.0, 44.0, 0.5, VFX.for_move("vine-whip", "grass")))
-			for k in range(3):
-				at(0.9 + float(k) * 0.6, func():
-					for e in st.get("roots", []):
-						if is_instance_valid(e) and not e.dead:
-							hit_one(e, 0.5, 0.0)
-							m.pfx.sp("leaf", pal, e.position, {"v": Vector2(randf_range(-60.0, 60.0), -80.0), "life": 0.6, "scale": 1.6, "spin": 6.0}))
-			at(2.9, func():
-				var n := 0
-				for e in st.get("roots", []):
-					if is_instance_valid(e) and not e.dead:
-						n += 1
-						if n <= 30:
-							boom(e.position, 80.0, 1.5)
-							m.pfx.burst(e.position, col(3), 10, 180.0)
-						hit_one(e, 1.8, 120.0)
-				var h: float = minf(0.25, 0.02 * float(n))
-				heal(h)
-				heal_text(h))
+			_plan_grass()
 		"ice":
-			# Congela a todos los enemigos y un golpe final los rompe a la vez
-			dur = 3.8
-			at(0.2, func():
-				m.pfx.ring(c, 20.0, 760.0, col(4), 0.7, 10.0)
-				ring_burst("star", 30, 30.0, 700.0, 0.8, 1.5)
-				for e in near(c, 760.0):
-					m._apply_cc(e, "freeze", 2.4))
-			at(2.9, func():
-				m.pfx.ring(c, 20.0, 800.0, Color.WHITE, 0.5, 10.0)
-				var n := 0
-				for e in near(c, 800.0):
-					if e.frozen_t > 0.0:
-						n += 1
-						e.frozen_t = 0.0
-						if n <= 30:
-							boom(e.position, 70.0, 1.0)
-							for j in range(3):
-								m.pfx.sp("shard", pal, e.position, {"v": Vector2.from_angle(randf() * TAU) * 220.0, "life": 0.5, "scale": 2.0, "spin": 6.0})
-						hit_one(e, 2.6, 120.0)
-				m.shake = maxf(m.shake, 10.0))
+			_plan_ice()
 		"fighting":
-			# Duelo: saltas sobre el enemigo mas fuerte y le das una ronda de golpes con gancho final
-			dur = 3.2
-			at(0.05, func():
-				var best = null
-				var bh: float = -1.0
-				for e in near(c, 560.0):
-					var sc: float = e.max_hp * (10.0 if e.boss else 1.0)
-					if sc > bh:
-						bh = sc
-						best = e
-				st["tgt"] = best
-				if best != null:
-					m.pfx.ring(best.position, 200.0, 30.0, col(3), 0.4, 5.0))
-			for i in range(22):
-				at(0.35 + float(i) * 0.085, func():
-					var e = st.get("tgt")
-					if e == null or not is_instance_valid(e) or e.dead:
-						var l: Array = near(m.player.position, 400.0)
-						e = l[0] if not l.is_empty() else null
-						st["tgt"] = e
-					var p: Vector2 = e.position if e != null else tpos(300.0)
-					m.pfx.sp("impact", pal, p + Vector2.from_angle(randf() * TAU) * 22.0, {"life": 0.18, "scale": 2.6, "fr": 12.0, "fade": false})
-					m.pfx.burst(p, col(3), 6, 160.0)
-					m.shake = maxf(m.shake, 3.0)
-					if e != null:
-						hit_one(e, 0.4, 40.0, "", 0, 0.0, m.player.position))
-			at(2.5, func():
-				var e = st.get("tgt")
-				var p: Vector2 = e.position if (e != null and is_instance_valid(e) and not e.dead) else m.player.position
-				m.pfx.sp("impact", pal, p, {"life": 0.5, "scale": 6.5, "fr": 12.0, "fade": false})
-				boom(p, 220.0, 12.0)
-				if e != null:
-					hit_one(e, 4.0, 650.0, "", 0, 0.0, m.player.position)
-				hit(p, 190.0, 1.0, 500.0))
+			_plan_fighting()
 		"poison":
-			# Charcos acidos entre los enemigos: envenenan mientras estas dentro
-			dur = 4.2
-			st["pools"] = []
-			for i in range(9):
-				at(0.2 + float(i) * 0.28, func():
-					var p: Vector2 = tpos(520.0)
-					st["pools"].append({"p": p, "end": t + 2.5, "next": 0.0})
-					m.pfx.ring(p, 10.0, 115.0, col(3), 0.5, 5.0)
-					m.pfx.burst(p, col(3), 12, 150.0))
+			_plan_poison()
 		"ground":
-			# Grietas que salen de ti en todas direcciones y aplastan lo que hay sobre ellas
-			dur = 3.4
-			for w in range(3):
-				at(0.2 + float(w) * 0.85, func():
-					var base: float = randf() * TAU
-					var seen := {}
-					for j in range(5):
-						var a: float = base + TAU * float(j) / 5.0
-						m.pfx.beam(c, a, 600.0, 26.0, {"pal": "ground", "beam": ""})
-						for q in range(9):
-							var pp: Vector2 = c + Vector2.from_angle(a) * (50.0 + float(q) * 62.0)
-							m.pfx.sp("rock", pal, pp, {"v": Vector2(randf_range(-30.0, 30.0), randf_range(-230.0, -120.0)), "life": 0.8, "scale": randf_range(1.4, 2.4), "grav": 520.0, "spin": randf_range(-6.0, 6.0)})
-						hit_seg(c, c + Vector2.from_angle(a) * 600.0, 60.0, 2.6, 0.0, "", seen, 0, 0.6)
-					m.shake = maxf(m.shake, 9.0)
-					m.pfx.ring(c, 20.0, 300.0, col(3), 0.4, 6.0))
+			_plan_ground()
 		"flying":
-			# Desapareces en el cielo y caes en picado sobre el mayor grupo de enemigos
-			dur = 2.8
-			at(0.1, func():
-				m.player.visible = false
-				m.pfx.ring(c, 10.0, 90.0, col(4), 0.4, 5.0)
-				ring_burst("wind", 12, 20.0, 380.0, 0.5, 1.6)
-				st["air"] = true
-				st["tp"] = densest(560.0))
-			at(1.5, func():
-				var tp: Vector2 = st["tp"]
-				st["air"] = false
-				move_to(tp)
-				m.player.visible = true
-				var p: Vector2 = m.player.position
-				m.pfx.ring(p, 20.0, 380.0, col(4), 0.6, 9.0)
-				ring_burst("wind", 24, 30.0, 620.0, 0.6, 2.0)
-				boom(p, 320.0, 14.0)
-				hit(p, 320.0, 4.2, 760.0))
+			_plan_flying()
 		"psychic":
-			# Enemigos confundidos que se atacan entre si
-			dur = 3.6
-			for k in range(6):
-				at(0.2 + float(k) * 0.4, func():
-					var r: float = 560.0
-					m.pfx.ring(c, 20.0, r, col(2 + (k % 2)), 0.6, 5.0)
-					for e in near(c, r):
-						m._apply_cc(e, "conf", 1.6)
-						hit_one(e, 0.28, 0.0))
-			at(2.9, func():
-				boom(c, 330.0, 6.0)
-				for e in near(c, 560.0):
-					hit_one(e, 0.9, 0.0, "conf"))
+			_plan_psychic()
 		"bug":
-			# Un enjambre: cada insecto persigue a un enemigo distinto por su cuenta
-			dur = 3.9
-			st["bugs"] = []
-			at(0.2, func():
-				for j in range(16):
-					var a: float = TAU * float(j) / 16.0
-					st["bugs"].append({"p": c + Vector2.from_angle(a) * 40.0, "tgt": null, "ang": a, "seed": randf() * 10.0})
-				for j in range(24):
-					var a2: float = TAU * float(j) / 24.0
-					m.pfx.sp("web", pal, c + Vector2.from_angle(a2) * 50.0, {"v": Vector2.from_angle(a2) * 220.0, "life": 0.7, "scale": 1.4, "spin": 3.0}))
+			_plan_bug()
 		"rock":
-			# Dos avalanchas que cruzan toda la pantalla, una en cada sentido
-			dur = 4.0
-			st["rolls"] = []
-			for r in range(2):
-				at(0.2 + float(r) * 1.9, func():
-					var tgt: Vector2 = densest(560.0)
-					var dv: Vector2 = (tgt - c).normalized()
-					if dv == Vector2.ZERO:
-						dv = Vector2.RIGHT
-					if r == 1 and st.has("dir0"):
-						dv = -st["dir0"]
-					st["dir0"] = dv
-					var perp := Vector2(-dv.y, dv.x)
-					st["rolls"].append({"dir": dv, "perp": perp, "start": c - dv * 520.0, "t0": t, "seen": {}})
-					m.pfx.ring(c, 10.0, 200.0, col(3), 0.5, 5.0))
+			_plan_rock()
 		"ghost":
-			# Drenaje de almas: dano segun la salud del enemigo y curacion para ti
-			dur = 3.8
-			st["heal"] = 0.0
-			for k in range(8):
-				at(0.3 + float(k) * 0.35, func():
-					var p: Vector2 = m.player.position
-					m.pfx.ring(p, 560.0, 40.0, col(3), 0.5, 5.0)
-					var n := 0
-					for e in near(c, 560.0):
-						n += 1
-						var extra: float = e.hp * 0.07
-						zhit(e, dmg * 0.22 + extra, (p - e.position).normalized(), 0.0)
-						if n <= 14:
-							m.pfx.sp("shadow", pal, e.position, {"v": (p - e.position).normalized() * 520.0, "life": 0.5, "scale": 1.6})
-						if st["heal"] < 0.18:
-							st["heal"] += 0.006
-							heal(0.006))
-			at(3.2, func():
-				heal_text(float(st["heal"]))
-				boom(c, 360.0, 8.0)
-				hit(c, 560.0, 1.1, 0.0))
+			_plan_ghost()
 		"dragon":
-			# Cuatro rayos dracónicos giratorios mientras eres invencible
-			dur = 3.8
+			_plan_dragon()
 		"dark":
-			# La oscuridad se cierra: un circulo que se contrae y termina en una implosion
-			dur = 3.6
-			at(0.2, func(): st["ring"] = 580.0)
-			at(2.8, func():
-				st["ring"] = -1.0
-				var p: Vector2 = m.player.position
-				m.pfx.ring(p, 400.0, 10.0, col(4), 0.5, 12.0)
-				boom(p, 300.0, 12.0)
-				hit(p, 330.0, 3.0, 450.0))
+			_plan_dark()
 		"steel":
-			# Un taladro que perfora en linea recta, cada vez mas fuerte
-			dur = 3.0
-			at(0.2, func():
-				var tgt: Vector2 = densest(560.0)
-				start_dash(900.0, 640.0, tgt))
-			at(2.2, func():
-				var p: Vector2 = m.player.position
-				ring_burst("shard", 24, 30.0, 560.0, 0.5, 2.0)
-				boom(p, 260.0, 10.0)
-				hit(p, 260.0, 2.4, 520.0))
+			_plan_steel()
 		"fairy":
-			# Duermes a todos, te curas y al final devoras sus sueños
-			dur = 3.6
-			st["heal"] = 0.0
-			at(0.2, func():
-				m.pfx.ring(c, 20.0, 620.0, col(3), 0.7, 7.0)
-				for e in near(c, 620.0):
-					m._apply_cc(e, "sleep", 1.5))
-			at(2.9, func():
-				var n := 0
-				for e in near(c, 640.0):
-					if e.sleep_t > 0.0:
-						n += 1
-						if n <= 26:
-							m.pfx.sp("heart", pal, e.position, {"v": (m.player.position - e.position).normalized() * 380.0, "life": 0.6, "scale": 1.8})
-						hit_one(e, 2.0, 80.0)
-				var h: float = minf(0.2, 0.012 * float(n))
-				heal(h)
-				heal_text(h)
-				boom(c, 380.0, 6.0))
+			_plan_fairy()
+
+
+
+func _plan_normal() -> void:
+	# Tres embestidas a toda velocidad contra grupos distintos, atravesando todo
+	dur = 2.9
+	for i in range(3):
+		at(0.15 + float(i) * 0.8, func():
+			var tgt: Vector2 = tpos(520.0)
+			start_dash(470.0, 1250.0, tgt))
+	at(2.5, func():
+		var p: Vector2 = m.player.position
+		boom(p, 260.0, 8.0)
+		m.pfx.ring(p, 30.0, 300.0, Color.WHITE, 0.4, 5.0)
+		hit(p, 260.0, 1.4, 450.0))
+
+
+func _plan_fire() -> void:
+
+	# Fuego fatuo: una corona de bolas de fuego flota alrededor del Pokemon y despues cada una se lanza contra un enemigo
+	dur = 4.2
+	var nw := 24
+	for i in range(nw):
+		at(0.08 + float(i) * 0.05, func():
+			var w := Wisp.new()
+			w.home = m.player
+			w.ang = float(i) * 2.4
+			w.rad = 120.0 + float(i % 3) * 38.0
+			w.t_go = 1.5 + float(i) * 0.09 - (0.08 + float(i) * 0.05)
+			w.position = m.player.position
+			var p: Vector2 = tpos()
+			w.to = p
+			w.cb = func():
+				boom(p, 95.0, 2.0)
+				m.pfx.burst(p, col(3), 12, 200.0)
+				hit(p, 100.0, 1.15, 160.0, "", 0)
+			m.fx.add_child(w)
+			)
+
+
+func _plan_water() -> void:
+	# Un vortice que arrastra a todos hacia el centro y una ola final que los lanza
+	dur = 3.6
+	at(0.1, func():
+		st["vortex"] = true
+		m.pfx.ring(c, 520.0, 60.0, col(3), 0.7, 6.0))
+	at(2.9, func():
+		st["vortex"] = false
+		m.pfx.ring(c, 30.0, 520.0, col(3), 0.7, 9.0)
+		ring_burst("drop", 30, 30.0, 620.0, 0.7, 1.8)
+		boom(c, 360.0, 10.0)
+		hit(c, 400.0, 2.2, 700.0))
+
+
+func _plan_electric() -> void:
+	# Tres cadenas de rayos que saltan de enemigo en enemigo y paralizan
+	dur = 3.6
+	var used := {}
+	for ci in range(3):
+		at(0.2 + float(ci) * 0.25, func():
+			var pool: Array = near(c, 560.0)
+			pool = pool.filter(func(e): return not used.has(e.get_instance_id()))
+			if pool.is_empty():
+				return
+			pool.sort_custom(func(a, b): return a.position.distance_squared_to(c) < b.position.distance_squared_to(c))
+			var first = pool[mini(ci * 3, pool.size() - 1)]
+			var chain: Array = chain_from(first, used, 14, 300.0)
+			var vis: Dictionary = VFX.for_move("thunderbolt", "electric")
+			for j in range(chain.size()):
+				at(t + float(j) * 0.1, func():
+					var e = chain[j]
+					if not is_instance_valid(e) or e.dead:
+						return
+					var to: Vector2 = e.position
+					var from: Vector2 = to + Vector2(0.0, -520.0)
+					if j > 0 and is_instance_valid(chain[j - 1]):
+						from = chain[j - 1].position
+					var dv: Vector2 = to - from
+					m.pfx.beam(from, dv.angle(), dv.length(), 20.0, vis)
+					boom(to, 70.0, 3.0)
+					hit_one(e, 1.1 + 0.1 * float(j), 150.0, "para", 0, 0.0, from)))
+
+
+func _plan_grass() -> void:
+	# Raices inmovilizan, estrangulan y al florecer curan por cada enemigo atrapado
+	dur = 3.6
+	at(0.2, func():
+		st["roots"] = near(c, 600.0)
+		m.pfx.ring(c, 20.0, 600.0, col(3), 0.6, 5.0)
+		for e in st["roots"]:
+			for j in range(5):
+				m.pfx.slash(e.position, TAU * float(j) / 5.0, 44.0, 0.5, VFX.for_move("vine-whip", "grass")))
+	for k in range(3):
+		at(0.9 + float(k) * 0.6, func():
+			for e in st.get("roots", []):
+				if is_instance_valid(e) and not e.dead:
+					hit_one(e, 0.5, 0.0)
+					m.pfx.sp("leaf", pal, e.position, {"v": Vector2(randf_range(-60.0, 60.0), -80.0), "life": 0.6, "scale": 1.6, "spin": 6.0}))
+	at(2.9, func():
+		var n := 0
+		for e in st.get("roots", []):
+			if is_instance_valid(e) and not e.dead:
+				n += 1
+				if n <= 30:
+					boom(e.position, 80.0, 1.5)
+					m.pfx.burst(e.position, col(3), 10, 180.0)
+				hit_one(e, 1.8, 120.0)
+		var h: float = minf(0.25, 0.02 * float(n))
+		heal(h)
+		heal_text(h))
+
+
+func _plan_ice() -> void:
+	# Congela a todos los enemigos y un golpe final los rompe a la vez
+	dur = 3.8
+	at(0.2, func():
+		m.pfx.ring(c, 20.0, 760.0, col(4), 0.7, 10.0)
+		ring_burst("star", 30, 30.0, 700.0, 0.8, 1.5)
+		for e in near(c, 760.0):
+			m._apply_cc(e, "freeze", 2.4))
+	at(2.9, func():
+		m.pfx.ring(c, 20.0, 800.0, Color.WHITE, 0.5, 10.0)
+		var n := 0
+		for e in near(c, 800.0):
+			if e.frozen_t > 0.0:
+				n += 1
+				e.frozen_t = 0.0
+				if n <= 30:
+					boom(e.position, 70.0, 1.0)
+					for j in range(3):
+						m.pfx.sp("shard", pal, e.position, {"v": Vector2.from_angle(randf() * TAU) * 220.0, "life": 0.5, "scale": 2.0, "spin": 6.0})
+				hit_one(e, 2.6, 120.0)
+		m.shake = maxf(m.shake, 10.0))
+
+
+func _plan_fighting() -> void:
+	# Duelo: saltas sobre el enemigo mas fuerte y le das una ronda de golpes con gancho final
+	dur = 3.2
+	at(0.05, func():
+		var best = null
+		var bh: float = -1.0
+		for e in near(c, 560.0):
+			var sc: float = e.max_hp * (10.0 if e.boss else 1.0)
+			if sc > bh:
+				bh = sc
+				best = e
+		st["tgt"] = best
+		if best != null:
+			m.pfx.ring(best.position, 200.0, 30.0, col(3), 0.4, 5.0))
+	for i in range(22):
+		at(0.35 + float(i) * 0.085, func():
+			var e = st.get("tgt")
+			if e == null or not is_instance_valid(e) or e.dead:
+				var l: Array = near(m.player.position, 400.0)
+				e = l[0] if not l.is_empty() else null
+				st["tgt"] = e
+			var p: Vector2 = e.position if e != null else tpos(300.0)
+			m.pfx.sp("impact", pal, p + Vector2.from_angle(randf() * TAU) * 22.0, {"life": 0.18, "scale": 2.6, "fr": 12.0, "fade": false})
+			m.pfx.burst(p, col(3), 6, 160.0)
+			m.shake = maxf(m.shake, 3.0)
+			if e != null:
+				hit_one(e, 0.4, 40.0, "", 0, 0.0, m.player.position))
+	at(2.5, func():
+		var e = st.get("tgt")
+		var p: Vector2 = e.position if (e != null and is_instance_valid(e) and not e.dead) else m.player.position
+		m.pfx.sp("impact", pal, p, {"life": 0.5, "scale": 6.5, "fr": 12.0, "fade": false})
+		boom(p, 220.0, 12.0)
+		if e != null:
+			hit_one(e, 4.0, 650.0, "", 0, 0.0, m.player.position)
+		hit(p, 190.0, 1.0, 500.0))
+
+
+func _plan_poison() -> void:
+	# Charcos acidos entre los enemigos: envenenan mientras estas dentro
+	dur = 4.2
+	st["pools"] = []
+	for i in range(9):
+		at(0.2 + float(i) * 0.28, func():
+			var p: Vector2 = tpos(520.0)
+			st["pools"].append({"p": p, "end": t + 2.5, "next": 0.0})
+			m.pfx.ring(p, 10.0, 115.0, col(3), 0.5, 5.0)
+			m.pfx.burst(p, col(3), 12, 150.0))
+
+
+func _plan_ground() -> void:
+	# Grietas que salen de ti en todas direcciones y aplastan lo que hay sobre ellas
+	dur = 3.4
+	for w in range(3):
+		at(0.2 + float(w) * 0.85, func():
+			var base: float = randf() * TAU
+			var seen := {}
+			for j in range(5):
+				var a: float = base + TAU * float(j) / 5.0
+				m.pfx.beam(c, a, 600.0, 26.0, {"pal": "ground", "beam": ""})
+				for q in range(9):
+					var pp: Vector2 = c + Vector2.from_angle(a) * (50.0 + float(q) * 62.0)
+					m.pfx.sp("rock", pal, pp, {"v": Vector2(randf_range(-30.0, 30.0), randf_range(-230.0, -120.0)), "life": 0.8, "scale": randf_range(1.4, 2.4), "grav": 520.0, "spin": randf_range(-6.0, 6.0)})
+				hit_seg(c, c + Vector2.from_angle(a) * 600.0, 60.0, 2.6, 0.0, "", seen, 0, 0.6)
+			m.shake = maxf(m.shake, 9.0)
+			m.pfx.ring(c, 20.0, 300.0, col(3), 0.4, 6.0))
+
+
+func _plan_flying() -> void:
+	# Desapareces en el cielo y caes en picado sobre el mayor grupo de enemigos
+	dur = 2.8
+	at(0.1, func():
+		m.player.visible = false
+		m.pfx.ring(c, 10.0, 90.0, col(4), 0.4, 5.0)
+		ring_burst("wind", 12, 20.0, 380.0, 0.5, 1.6)
+		st["air"] = true
+		st["tp"] = densest(560.0))
+	at(1.5, func():
+		var tp: Vector2 = st["tp"]
+		st["air"] = false
+		move_to(tp)
+		m.player.visible = true
+		var p: Vector2 = m.player.position
+		m.pfx.ring(p, 20.0, 380.0, col(4), 0.6, 9.0)
+		ring_burst("wind", 24, 30.0, 620.0, 0.6, 2.0)
+		boom(p, 320.0, 14.0)
+		hit(p, 320.0, 4.2, 760.0))
+
+
+func _plan_psychic() -> void:
+	# Enemigos confundidos que se atacan entre si
+	dur = 3.6
+	for k in range(6):
+		at(0.2 + float(k) * 0.4, func():
+			var r: float = 560.0
+			m.pfx.ring(c, 20.0, r, col(2 + (k % 2)), 0.6, 5.0)
+			for e in near(c, r):
+				m._apply_cc(e, "conf", 1.6)
+				hit_one(e, 0.28, 0.0))
+	at(2.9, func():
+		boom(c, 330.0, 6.0)
+		for e in near(c, 560.0):
+			hit_one(e, 0.9, 0.0, "conf"))
+
+
+func _plan_bug() -> void:
+	# Un enjambre: cada insecto persigue a un enemigo distinto por su cuenta
+	dur = 3.9
+	st["bugs"] = []
+	at(0.2, func():
+		for j in range(16):
+			var a: float = TAU * float(j) / 16.0
+			st["bugs"].append({"p": c + Vector2.from_angle(a) * 40.0, "tgt": null, "ang": a, "seed": randf() * 10.0})
+		for j in range(24):
+			var a2: float = TAU * float(j) / 24.0
+			m.pfx.sp("web", pal, c + Vector2.from_angle(a2) * 50.0, {"v": Vector2.from_angle(a2) * 220.0, "life": 0.7, "scale": 1.4, "spin": 3.0}))
+
+
+func _plan_rock() -> void:
+	# Dos avalanchas que cruzan toda la pantalla, una en cada sentido
+	dur = 4.0
+	st["rolls"] = []
+	for r in range(2):
+		at(0.2 + float(r) * 1.9, func():
+			var tgt: Vector2 = densest(560.0)
+			var dv: Vector2 = (tgt - c).normalized()
+			if dv == Vector2.ZERO:
+				dv = Vector2.RIGHT
+			if r == 1 and st.has("dir0"):
+				dv = -st["dir0"]
+			st["dir0"] = dv
+			var perp := Vector2(-dv.y, dv.x)
+			st["rolls"].append({"dir": dv, "perp": perp, "start": c - dv * 520.0, "t0": t, "seen": {}})
+			m.pfx.ring(c, 10.0, 200.0, col(3), 0.5, 5.0))
+
+
+func _plan_ghost() -> void:
+	# Drenaje de almas: dano segun la salud del enemigo y curacion para ti
+	dur = 3.8
+	st["heal"] = 0.0
+	for k in range(8):
+		at(0.3 + float(k) * 0.35, func():
+			var p: Vector2 = m.player.position
+			m.pfx.ring(p, 560.0, 40.0, col(3), 0.5, 5.0)
+			var n := 0
+			for e in near(c, 560.0):
+				n += 1
+				var extra: float = e.hp * 0.07
+				zhit(e, dmg * 0.22 + extra, (p - e.position).normalized(), 0.0)
+				if n <= 14:
+					m.pfx.sp("shadow", pal, e.position, {"v": (p - e.position).normalized() * 520.0, "life": 0.5, "scale": 1.6})
+				if st["heal"] < 0.18:
+					st["heal"] += 0.006
+					heal(0.006))
+	at(3.2, func():
+		heal_text(float(st["heal"]))
+		boom(c, 360.0, 8.0)
+		hit(c, 560.0, 1.1, 0.0))
+
+
+func _plan_dragon() -> void:
+	# Cuatro rayos dracónicos giratorios mientras eres invencible
+	dur = 3.8
+
+
+func _plan_dark() -> void:
+	# La oscuridad se cierra: un circulo que se contrae y termina en una implosion
+	dur = 3.6
+	at(0.2, func(): st["ring"] = 580.0)
+	at(2.8, func():
+		st["ring"] = -1.0
+		var p: Vector2 = m.player.position
+		m.pfx.ring(p, 400.0, 10.0, col(4), 0.5, 12.0)
+		boom(p, 300.0, 12.0)
+		hit(p, 330.0, 3.0, 450.0))
+
+
+func _plan_steel() -> void:
+	# Un taladro que perfora en linea recta, cada vez mas fuerte
+	dur = 3.0
+	at(0.2, func():
+		var tgt: Vector2 = densest(560.0)
+		start_dash(900.0, 640.0, tgt))
+	at(2.2, func():
+		var p: Vector2 = m.player.position
+		ring_burst("shard", 24, 30.0, 560.0, 0.5, 2.0)
+		boom(p, 260.0, 10.0)
+		hit(p, 260.0, 2.4, 520.0))
+
+
+func _plan_fairy() -> void:
+	# Duermes a todos, te curas y al final devoras sus sueños
+	dur = 3.6
+	st["heal"] = 0.0
+	at(0.2, func():
+		m.pfx.ring(c, 20.0, 620.0, col(3), 0.7, 7.0)
+		for e in near(c, 620.0):
+			m._apply_cc(e, "sleep", 1.5))
+	at(2.9, func():
+		var n := 0
+		for e in near(c, 640.0):
+			if e.sleep_t > 0.0:
+				n += 1
+				if n <= 26:
+					m.pfx.sp("heart", pal, e.position, {"v": (m.player.position - e.position).normalized() * 380.0, "life": 0.6, "scale": 1.8})
+				hit_one(e, 2.0, 80.0)
+		var h: float = minf(0.2, 0.012 * float(n))
+		heal(h)
+		heal_text(h)
+		boom(c, 380.0, 6.0))
 
 
 # Efectos continuos (por fotograma) segun el tipo.
+
 func _cont(delta: float) -> void:
 	acc += delta
 	acc2 += delta
 	var p: Vector2 = m.player.position
 	match type:
 		"normal", "steel":
-			var d = st.get("dash")
-			if d != null:
-				d["u"] = float(d["u"]) + delta * float(d["sp"])
-				var u: float = minf(float(d["u"]), 1.0)
-				var prev: Vector2 = m.player.position
-				move_to((d["a"] as Vector2).lerp(d["b"], u))
-				var now: Vector2 = m.player.position
-				var kk: float = 1.5
-				if type == "steel":
-					kk = 0.7 + 1.3 * u
-				if acc2 >= 0.0:
-					# varias pasadas por segundo: cada enemigo puede volver a recibir
-					if type == "steel":
-						if acc >= 0.12:
-							acc = 0.0
-							(d["seen"] as Dictionary).clear()
-						hit_seg(prev, now, 62.0, kk * 0.5, 160.0, "", d["seen"])
-					else:
-						hit_seg(prev, now, 78.0, kk, 280.0, "", d["seen"])
-				var ang: float = ((d["b"] as Vector2) - (d["a"] as Vector2)).angle()
-				if type == "normal":
-					m.pfx.sp("streak", pal, now, {"life": 0.3, "scale": 2.4, "angle": ang, "fade": true})
-					m.pfx.sp("star", pal, now + Vector2.from_angle(randf() * TAU) * 24.0, {"v": Vector2.from_angle(ang + PI) * 120.0, "life": 0.4, "scale": 1.4, "spin": 5.0})
-				else:
-					for j in range(3):
-						var a: float = t * 14.0 + float(j) * TAU / 3.0
-						m.pfx.beam(now, a, 120.0, 22.0, VFX.for_move("flash-cannon", "steel"))
-					m.pfx.burst(now + Vector2.from_angle(ang) * 40.0, col(3), 4, 200.0)
-					m.shake = maxf(m.shake, 3.0)
-				if u >= 1.0:
-					st.erase("dash")
+			_cont_normal(delta, p)
 		"water":
-			if bool(st.get("vortex", false)):
-				for e in near(c, 540.0):
-					var dv: Vector2 = c - e.position
-					var dist: float = dv.length()
-					var tang := Vector2(-dv.y, dv.x).normalized()
-					e.position += (dv.normalized() * 210.0 + tang * 90.0) * delta
-				for i in range(3):
-					var a: float = t * 6.0 + float(i) * TAU / 3.0
-					var r: float = 80.0 + fposmod(t * 160.0 + float(i) * 140.0, 440.0)
-					m.pfx.sp("drop", pal, c + Vector2.from_angle(a - r * 0.004) * r, {"v": Vector2.from_angle(a + PI / 2.0) * 160.0, "life": 0.35, "scale": 1.7})
-				if acc2 >= 0.22:
-					acc2 = 0.0
-					m.pfx.ring(c, 20.0, 130.0, col(3), 0.3, 4.0)
-					hit(c, 140.0, 0.38, 0.0)
-					m.shake = maxf(m.shake, 3.0)
+			_cont_water(delta, p)
 		"ice":
-			if t < 2.9:
-				for i in range(4):
-					var q: Vector2 = p + Vector2(randf_range(-560.0, 560.0), randf_range(-380.0, 300.0))
-					m.pfx.sp("star", pal, q, {"v": Vector2(randf_range(-40.0, 40.0), randf_range(90.0, 170.0)), "life": 0.9, "scale": randf_range(0.8, 1.6), "spin": 3.0})
+			_cont_ice(delta, p)
 		"grass":
-			if t > 0.2 and t < 2.9:
-				for e in st.get("roots", []):
-					if is_instance_valid(e) and not e.dead:
-						e.apply_slow(0.97, 0.25)
-						if randf() < 0.05:
-							m.pfx.sp("leaf", pal, e.position + Vector2(randf_range(-16.0, 16.0), 6.0), {"v": Vector2(0.0, -70.0), "life": 0.5, "scale": 1.4, "spin": 4.0})
+			_cont_grass(delta, p)
 		"fighting":
-			var e = st.get("tgt")
-			if e != null and is_instance_valid(e) and not e.dead and t > 0.1 and t < 2.9:
-				move_to(e.position + Vector2(-48.0, 8.0))
-				e.knock *= 0.5
+			_cont_fighting(delta, p)
 		"poison":
-			var pools: Array = st.get("pools", [])
-			for pl in pools:
-				if t > float(pl["end"]):
-					continue
-				var pp: Vector2 = pl["p"]
-				if randf() < 0.6:
-					m.pfx.sp("bubble", pal, pp + Vector2.from_angle(randf() * TAU) * randf_range(0.0, 100.0), {"v": Vector2(0.0, randf_range(-80.0, -40.0)), "life": 0.7, "scale": randf_range(1.2, 2.4)})
-				pl["next"] = float(pl["next"]) - delta
-				if float(pl["next"]) <= 0.0:
-					pl["next"] = 0.35
-					m.pfx.ring(pp, 20.0, 110.0, col(3), 0.35, 3.0)
-					hit(pp, 110.0, 0.38, 0.0, "", 2, 0.3)
-			if t < 3.4:
-				for i in range(2):
-					m.pfx.sp("drop", pal, p + Vector2(randf_range(-520.0, 520.0), -360.0), {"v": Vector2(0.0, 560.0), "life": 0.65, "scale": 1.2, "fade": false})
+			_cont_poison(delta, p)
 		"ground":
-			if t < 3.0:
-				m.shake = maxf(m.shake, 4.0)
+			_cont_ground(delta, p)
 		"flying":
-			if bool(st.get("air", false)):
-				var tp: Vector2 = st.get("tp", c)
-				m.pfx.sp("shadow", "dark", tp, {"life": 0.08, "scale": 1.0 + minf(2.0, (t - 0.1) * 1.6)})
-				if t > 0.4 and acc2 >= 0.15:
-					acc2 = 0.0
-					m.pfx.ring(tp, 150.0, 40.0, col(4), 0.3, 3.0)
-				for i in range(2):
-					var a: float = t * 9.0 + float(i) * PI
-					m.pfx.sp("wind", pal, c + Vector2.from_angle(a) * 50.0 + Vector2(0.0, -t * 120.0), {"v": Vector2(0.0, -200.0), "life": 0.4, "scale": 1.6, "spin": 6.0})
+			_cont_flying(delta, p)
 		"psychic":
-			if t < 3.0:
-				for i in range(2):
-					var a: float = t * 3.0 + float(i) * PI
-					var r: float = 60.0 + fposmod(t * 120.0 + float(i) * 200.0, 460.0)
-					m.pfx.sp("ring", pal, c + Vector2.from_angle(a + r * 0.01) * r, {"life": 0.5, "scale": 1.6, "spin": 2.0})
+			_cont_psychic(delta, p)
 		"bug":
-			var bugs: Array = st.get("bugs", [])
-			if t < 3.5:
-				for b in bugs:
-					var tg = b["tgt"]
-					if tg == null or not is_instance_valid(tg) or tg.dead:
-						var l: Array = near(b["p"], 800.0)
-						if l.is_empty():
-							b["tgt"] = null
-							b["ang"] = float(b["ang"]) + 3.0 * delta
-							b["p"] = (b["p"] as Vector2) + Vector2.from_angle(float(b["ang"])) * 200.0 * delta
-							continue
-						l.sort_custom(func(x, y): return x.position.distance_squared_to(b["p"]) < y.position.distance_squared_to(b["p"]))
-						tg = l[randi() % mini(3, l.size())]
-						b["tgt"] = tg
-					var bp: Vector2 = b["p"]
-					var dv: Vector2 = tg.position - bp
-					var dist: float = dv.length()
-					var wob := Vector2(-dv.y, dv.x).normalized() * sin(t * 18.0 + float(b["seed"])) * 120.0
-					b["p"] = bp + (dv.normalized() * 600.0 + wob) * delta
-					m.pfx.sp("needle", pal, b["p"], {"life": 0.22, "scale": 1.3, "angle": dv.angle()})
-					if dist < 34.0:
-						m.pfx.burst(tg.position, col(3), 6, 150.0)
-						hit_one(tg, 0.7, 90.0, "", 1, 0.4, bp)
-						b["tgt"] = null
+			_cont_bug(delta, p)
 		"rock":
-			var rolls: Array = st.get("rolls", [])
-			for ro in rolls:
-				var u: float = (t - float(ro["t0"])) / 1.7
-				if u < 0.0 or u > 1.0:
-					continue
-				var dv: Vector2 = ro["dir"]
-				var perp: Vector2 = ro["perp"]
-				var front: Vector2 = (ro["start"] as Vector2) + dv * (1040.0 * u)
-				for i in range(-5, 6):
-					var bp: Vector2 = front + perp * float(i) * 78.0 + dv * sin(float(i) * 1.7) * 18.0
-					m.pfx.sp("rock", pal, bp, {"life": 0.09, "scale": 3.8, "spin": 4.0, "fade": false})
-					if randf() < 0.15:
-						m.pfx.sp("rock", pal, bp, {"v": -dv * 100.0 + Vector2(0.0, -120.0), "life": 0.5, "scale": 1.5, "grav": 420.0, "spin": 5.0})
-					for e in near(bp, 80.0):
-						var id: int = e.get_instance_id()
-						if t - float((ro["seen"] as Dictionary).get(id, -9.0)) > 0.45:
-							(ro["seen"] as Dictionary)[id] = t
-							hit_one(e, 1.3, 380.0, "", 0, 0.0, bp - dv * 60.0)
-				m.shake = maxf(m.shake, 5.0)
+			_cont_rock(delta, p)
 		"ghost":
-			if t < 3.3:
-				for i in range(3):
-					var a: float = randf() * TAU
-					var d: Vector2 = Vector2.from_angle(a)
-					m.pfx.sp("shadow", pal, p + d * 420.0, {"v": -d * 330.0, "life": 1.05, "scale": randf_range(1.2, 2.2)})
+			_cont_ghost(delta, p)
 		"dragon":
-			if t < 3.6:
-				for j in range(4):
-					var a: float = t * 3.4 + float(j) * PI / 2.0
-					if acc2 >= 0.1:
-						m.pfx.beam(p, a, 540.0, 30.0, VFX.for_move("dragon-rage", "dragon"))
-				if acc2 >= 0.1:
-					acc2 = 0.0
-					var seen := {}
-					for j in range(4):
-						var a2: float = t * 3.4 + float(j) * PI / 2.0
-						hit_seg(p, p + Vector2.from_angle(a2) * 540.0, 46.0, 0.75, 140.0, "", seen)
-					m.shake = maxf(m.shake, 3.0)
+			_cont_dragon(delta, p)
 		"dark":
-			var rr: float = float(st.get("ring", -1.0))
-			if rr > 0.0:
-				var k: float = clampf((t - 0.2) / 2.6, 0.0, 1.0)
-				var R: float = lerpf(580.0, 90.0, k)
-				st["R"] = R
-				dim = 0.5 * minf(1.0, (t - 0.2) / 0.4)
-				for i in range(5):
-					var a: float = randf() * TAU
-					m.pfx.sp("crescent", pal, c + Vector2.from_angle(a) * R, {"v": Vector2.from_angle(a + PI * 0.5) * 120.0, "life": 0.35, "scale": 1.8, "angle": a + PI})
-				for e in near(c, R + 80.0):
-					var dd: float = e.position.distance_to(c)
-					if dd > R - 60.0:
-						e.position += (c - e.position).normalized() * 230.0 * delta
-						e.apply_slow(0.5, 0.3)
-				if acc2 >= 0.3:
-					acc2 = 0.0
-					m.pfx.ring(c, R, R - 24.0, col(3), 0.3, 6.0)
-					for e in near(c, R + 70.0):
-						if e.position.distance_to(c) > R - 70.0:
-							hit_one(e, 0.5, 0.0)
-			elif t > 2.8:
-				dim = maxf(0.0, dim - delta * 1.2)
+			_cont_dark(delta, p)
 		"fairy":
-			if t < 3.0:
-				for i in range(3):
-					var q: Vector2 = c + Vector2(randf_range(-420.0, 420.0), randf_range(-320.0, 320.0))
-					m.pfx.sp("star", pal, q + Vector2(0.0, -200.0), {"v": Vector2(0.0, 340.0), "life": 0.6, "scale": randf_range(1.2, 2.2), "spin": 5.0})
-				if t > 0.3 and t < 2.8 and acc2 >= 0.25:
-					acc2 = 0.0
-					heal(0.012)
-					st["heal"] = float(st.get("heal", 0.0)) + 0.012
-					m.pfx.sp("heart", pal, p + Vector2(randf_range(-60.0, 60.0), 0.0), {"v": Vector2(0.0, -80.0), "life": 0.8, "scale": 1.8})
+			_cont_fairy(delta, p)
+
+
+
+func _cont_normal(delta: float, p: Vector2) -> void:
+	var d = st.get("dash")
+	if d != null:
+		d["u"] = float(d["u"]) + delta * float(d["sp"])
+		var u: float = minf(float(d["u"]), 1.0)
+		var prev: Vector2 = m.player.position
+		move_to((d["a"] as Vector2).lerp(d["b"], u))
+		var now: Vector2 = m.player.position
+		var kk: float = 1.5
+		if type == "steel":
+			kk = 0.7 + 1.3 * u
+		if acc2 >= 0.0:
+			# varias pasadas por segundo: cada enemigo puede volver a recibir
+			if type == "steel":
+				if acc >= 0.12:
+					acc = 0.0
+					(d["seen"] as Dictionary).clear()
+				hit_seg(prev, now, 62.0, kk * 0.5, 160.0, "", d["seen"])
+			else:
+				hit_seg(prev, now, 78.0, kk, 280.0, "", d["seen"])
+		var ang: float = ((d["b"] as Vector2) - (d["a"] as Vector2)).angle()
+		if type == "normal":
+			m.pfx.sp("streak", pal, now, {"life": 0.3, "scale": 2.4, "angle": ang, "fade": true})
+			m.pfx.sp("star", pal, now + Vector2.from_angle(randf() * TAU) * 24.0, {"v": Vector2.from_angle(ang + PI) * 120.0, "life": 0.4, "scale": 1.4, "spin": 5.0})
+		else:
+			for j in range(3):
+				var a: float = t * 14.0 + float(j) * TAU / 3.0
+				m.pfx.beam(now, a, 120.0, 22.0, VFX.for_move("flash-cannon", "steel"))
+			m.pfx.burst(now + Vector2.from_angle(ang) * 40.0, col(3), 4, 200.0)
+			m.shake = maxf(m.shake, 3.0)
+		if u >= 1.0:
+			st.erase("dash")
+
+
+func _cont_water(delta: float, p: Vector2) -> void:
+	if bool(st.get("vortex", false)):
+		for e in near(c, 540.0):
+			var dv: Vector2 = c - e.position
+			var dist: float = dv.length()
+			var tang := Vector2(-dv.y, dv.x).normalized()
+			e.position += (dv.normalized() * 210.0 + tang * 90.0) * delta
+		for i in range(3):
+			var a: float = t * 6.0 + float(i) * TAU / 3.0
+			var r: float = 80.0 + fposmod(t * 160.0 + float(i) * 140.0, 440.0)
+			m.pfx.sp("drop", pal, c + Vector2.from_angle(a - r * 0.004) * r, {"v": Vector2.from_angle(a + PI / 2.0) * 160.0, "life": 0.35, "scale": 1.7})
+		if acc2 >= 0.22:
+			acc2 = 0.0
+			m.pfx.ring(c, 20.0, 130.0, col(3), 0.3, 4.0)
+			hit(c, 140.0, 0.38, 0.0)
+			m.shake = maxf(m.shake, 3.0)
+
+
+func _cont_ice(delta: float, p: Vector2) -> void:
+	if t < 2.9:
+		for i in range(4):
+			var q: Vector2 = p + Vector2(randf_range(-560.0, 560.0), randf_range(-380.0, 300.0))
+			m.pfx.sp("star", pal, q, {"v": Vector2(randf_range(-40.0, 40.0), randf_range(90.0, 170.0)), "life": 0.9, "scale": randf_range(0.8, 1.6), "spin": 3.0})
+
+
+func _cont_grass(delta: float, p: Vector2) -> void:
+	if t > 0.2 and t < 2.9:
+		for e in st.get("roots", []):
+			if is_instance_valid(e) and not e.dead:
+				e.apply_slow(0.97, 0.25)
+				if randf() < 0.05:
+					m.pfx.sp("leaf", pal, e.position + Vector2(randf_range(-16.0, 16.0), 6.0), {"v": Vector2(0.0, -70.0), "life": 0.5, "scale": 1.4, "spin": 4.0})
+
+
+func _cont_fighting(delta: float, p: Vector2) -> void:
+	var e = st.get("tgt")
+	if e != null and is_instance_valid(e) and not e.dead and t > 0.1 and t < 2.9:
+		move_to(e.position + Vector2(-48.0, 8.0))
+		e.knock *= 0.5
+
+
+func _cont_poison(delta: float, p: Vector2) -> void:
+	var pools: Array = st.get("pools", [])
+	for pl in pools:
+		if t > float(pl["end"]):
+			continue
+		var pp: Vector2 = pl["p"]
+		if randf() < 0.6:
+			m.pfx.sp("bubble", pal, pp + Vector2.from_angle(randf() * TAU) * randf_range(0.0, 100.0), {"v": Vector2(0.0, randf_range(-80.0, -40.0)), "life": 0.7, "scale": randf_range(1.2, 2.4)})
+		pl["next"] = float(pl["next"]) - delta
+		if float(pl["next"]) <= 0.0:
+			pl["next"] = 0.35
+			m.pfx.ring(pp, 20.0, 110.0, col(3), 0.35, 3.0)
+			hit(pp, 110.0, 0.38, 0.0, "", 2, 0.3)
+	if t < 3.4:
+		for i in range(2):
+			m.pfx.sp("drop", pal, p + Vector2(randf_range(-520.0, 520.0), -360.0), {"v": Vector2(0.0, 560.0), "life": 0.65, "scale": 1.2, "fade": false})
+
+
+func _cont_ground(delta: float, p: Vector2) -> void:
+	if t < 3.0:
+		m.shake = maxf(m.shake, 4.0)
+
+
+func _cont_flying(delta: float, p: Vector2) -> void:
+	if bool(st.get("air", false)):
+		var tp: Vector2 = st.get("tp", c)
+		m.pfx.sp("shadow", "dark", tp, {"life": 0.08, "scale": 1.0 + minf(2.0, (t - 0.1) * 1.6)})
+		if t > 0.4 and acc2 >= 0.15:
+			acc2 = 0.0
+			m.pfx.ring(tp, 150.0, 40.0, col(4), 0.3, 3.0)
+		for i in range(2):
+			var a: float = t * 9.0 + float(i) * PI
+			m.pfx.sp("wind", pal, c + Vector2.from_angle(a) * 50.0 + Vector2(0.0, -t * 120.0), {"v": Vector2(0.0, -200.0), "life": 0.4, "scale": 1.6, "spin": 6.0})
+
+
+func _cont_psychic(delta: float, p: Vector2) -> void:
+	if t < 3.0:
+		for i in range(2):
+			var a: float = t * 3.0 + float(i) * PI
+			var r: float = 60.0 + fposmod(t * 120.0 + float(i) * 200.0, 460.0)
+			m.pfx.sp("ring", pal, c + Vector2.from_angle(a + r * 0.01) * r, {"life": 0.5, "scale": 1.6, "spin": 2.0})
+
+
+func _cont_bug(delta: float, p: Vector2) -> void:
+	var bugs: Array = st.get("bugs", [])
+	if t < 3.5:
+		for b in bugs:
+			var tg = b["tgt"]
+			if tg == null or not is_instance_valid(tg) or tg.dead:
+				var l: Array = near(b["p"], 800.0)
+				if l.is_empty():
+					b["tgt"] = null
+					b["ang"] = float(b["ang"]) + 3.0 * delta
+					b["p"] = (b["p"] as Vector2) + Vector2.from_angle(float(b["ang"])) * 200.0 * delta
+					continue
+				l.sort_custom(func(x, y): return x.position.distance_squared_to(b["p"]) < y.position.distance_squared_to(b["p"]))
+				tg = l[randi() % mini(3, l.size())]
+				b["tgt"] = tg
+			var bp: Vector2 = b["p"]
+			var dv: Vector2 = tg.position - bp
+			var dist: float = dv.length()
+			var wob := Vector2(-dv.y, dv.x).normalized() * sin(t * 18.0 + float(b["seed"])) * 120.0
+			b["p"] = bp + (dv.normalized() * 600.0 + wob) * delta
+			m.pfx.sp("needle", pal, b["p"], {"life": 0.22, "scale": 1.3, "angle": dv.angle()})
+			if dist < 34.0:
+				m.pfx.burst(tg.position, col(3), 6, 150.0)
+				hit_one(tg, 0.7, 90.0, "", 1, 0.4, bp)
+				b["tgt"] = null
+
+
+func _cont_rock(delta: float, p: Vector2) -> void:
+	var rolls: Array = st.get("rolls", [])
+	for ro in rolls:
+		var u: float = (t - float(ro["t0"])) / 1.7
+		if u < 0.0 or u > 1.0:
+			continue
+		var dv: Vector2 = ro["dir"]
+		var perp: Vector2 = ro["perp"]
+		var front: Vector2 = (ro["start"] as Vector2) + dv * (1040.0 * u)
+		for i in range(-5, 6):
+			var bp: Vector2 = front + perp * float(i) * 78.0 + dv * sin(float(i) * 1.7) * 18.0
+			m.pfx.sp("rock", pal, bp, {"life": 0.09, "scale": 3.8, "spin": 4.0, "fade": false})
+			if randf() < 0.15:
+				m.pfx.sp("rock", pal, bp, {"v": -dv * 100.0 + Vector2(0.0, -120.0), "life": 0.5, "scale": 1.5, "grav": 420.0, "spin": 5.0})
+			for e in near(bp, 80.0):
+				var id: int = e.get_instance_id()
+				if t - float((ro["seen"] as Dictionary).get(id, -9.0)) > 0.45:
+					(ro["seen"] as Dictionary)[id] = t
+					hit_one(e, 1.3, 380.0, "", 0, 0.0, bp - dv * 60.0)
+		m.shake = maxf(m.shake, 5.0)
+
+
+func _cont_ghost(delta: float, p: Vector2) -> void:
+	if t < 3.3:
+		for i in range(3):
+			var a: float = randf() * TAU
+			var d: Vector2 = Vector2.from_angle(a)
+			m.pfx.sp("shadow", pal, p + d * 420.0, {"v": -d * 330.0, "life": 1.05, "scale": randf_range(1.2, 2.2)})
+
+
+func _cont_dragon(delta: float, p: Vector2) -> void:
+	if t < 3.6:
+		for j in range(4):
+			var a: float = t * 3.4 + float(j) * PI / 2.0
+			if acc2 >= 0.1:
+				m.pfx.beam(p, a, 540.0, 30.0, VFX.for_move("dragon-rage", "dragon"))
+		if acc2 >= 0.1:
+			acc2 = 0.0
+			var seen := {}
+			for j in range(4):
+				var a2: float = t * 3.4 + float(j) * PI / 2.0
+				hit_seg(p, p + Vector2.from_angle(a2) * 540.0, 46.0, 0.75, 140.0, "", seen)
+			m.shake = maxf(m.shake, 3.0)
+
+
+func _cont_dark(delta: float, p: Vector2) -> void:
+	var rr: float = float(st.get("ring", -1.0))
+	if rr > 0.0:
+		var k: float = clampf((t - 0.2) / 2.6, 0.0, 1.0)
+		var R: float = lerpf(580.0, 90.0, k)
+		st["R"] = R
+		dim = 0.5 * minf(1.0, (t - 0.2) / 0.4)
+		for i in range(5):
+			var a: float = randf() * TAU
+			m.pfx.sp("crescent", pal, c + Vector2.from_angle(a) * R, {"v": Vector2.from_angle(a + PI * 0.5) * 120.0, "life": 0.35, "scale": 1.8, "angle": a + PI})
+		for e in near(c, R + 80.0):
+			var dd_sq: float = e.position.distance_squared_to(c)
+			if dd_sq > (R - 60.0) * (R - 60.0):
+				e.position += (c - e.position).normalized() * 230.0 * delta
+				e.apply_slow(0.5, 0.3)
+		if acc2 >= 0.3:
+			acc2 = 0.0
+			m.pfx.ring(c, R, R - 24.0, col(3), 0.3, 6.0)
+			for e in near(c, R + 70.0):
+				if e.position.distance_squared_to(c) > (R - 70.0) * (R - 70.0):
+					hit_one(e, 0.5, 0.0)
+	elif t > 2.8:
+		dim = maxf(0.0, dim - delta * 1.2)
+
+
+func _cont_fairy(delta: float, p: Vector2) -> void:
+	if t < 3.0:
+		for i in range(3):
+			var q: Vector2 = c + Vector2(randf_range(-420.0, 420.0), randf_range(-320.0, 320.0))
+			m.pfx.sp("star", pal, q + Vector2(0.0, -200.0), {"v": Vector2(0.0, 340.0), "life": 0.6, "scale": randf_range(1.2, 2.2), "spin": 5.0})
+		if t > 0.3 and t < 2.8 and acc2 >= 0.25:
+			acc2 = 0.0
+			heal(0.012)
+			st["heal"] = float(st.get("heal", 0.0)) + 0.012
+			m.pfx.sp("heart", pal, p + Vector2(randf_range(-60.0, 60.0), 0.0), {"v": Vector2(0.0, -80.0), "life": 0.8, "scale": 1.8})

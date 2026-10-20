@@ -12,6 +12,7 @@ static var loaded := false
 static var save_blocked := false
 static var recovered_from_backup := false
 static var last_save_error := ""
+static var _field_warning := ""
 static var dex_list: Array = []
 static var dex_by: Dictionary = {}
 static var smeta: Dictionary = {}
@@ -106,8 +107,8 @@ static func _save_error(message: String) -> void:
 	push_warning("[SaveData] " + message)
 
 
-# Validate the types that the game indexes directly. Missing fields remain compatible with
-# older saves because _merge() fills them from default_data(); unknown fields are preserved.
+# Keep older saves compatible: fill missing fields during merge, and replace only malformed
+# optional field values with their defaults while preserving the rest of the save.
 static func _matches_default_shape(defaults: Dictionary, parsed: Dictionary, path: String = "") -> bool:
 	for key in defaults:
 		if not parsed.has(key):
@@ -116,23 +117,30 @@ static func _matches_default_shape(defaults: Dictionary, parsed: Dictionary, pat
 		var actual = parsed[key]
 		var field := String(key) if path == "" else path + "." + String(key)
 		if expected is Dictionary:
-			if not (actual is Dictionary):
-				_save_error("Invalid save field '%s': expected an object." % field)
-				return false
-			if not _matches_default_shape(expected, actual, field):
-				return false
+			if actual is Dictionary:
+				_matches_default_shape(expected, actual, field)
+			else:
+				_replace_save_field(parsed, key, expected, field)
 		elif expected is Array:
 			if not (actual is Array):
-				_save_error("Invalid save field '%s': expected an array." % field)
-				return false
+				_replace_save_field(parsed, key, expected, field)
 		elif expected is int or expected is float:
 			if not (actual is int or actual is float):
-				_save_error("Invalid save field '%s': expected a number." % field)
-				return false
+				_replace_save_field(parsed, key, expected, field)
 		elif typeof(actual) != typeof(expected):
-			_save_error("Invalid save field '%s': value type does not match the save schema." % field)
-			return false
+			_replace_save_field(parsed, key, expected, field)
 	return true
+
+
+static func _replace_save_field(parsed: Dictionary, key: Variant, expected: Variant, field: String) -> void:
+	var fallback: Variant = expected
+	if expected is Dictionary or expected is Array:
+		fallback = expected.duplicate(true)
+	parsed[key] = fallback
+	var warning := "Save field '%s' has an invalid type; its default value was used." % field
+	_field_warning = warning if _field_warning.is_empty() else _field_warning + "\n" + warning
+	last_save_error = _field_warning
+	push_warning("[SaveData] " + warning)
 
 
 static func _usable_save(parsed, path: String) -> bool:
@@ -168,6 +176,10 @@ static func ensure() -> void:
 	if loaded:
 		return
 	loaded = true
+	save_blocked = false
+	recovered_from_backup = false
+	last_save_error = ""
+	_field_warning = ""
 	load_dex()
 	d = default_data()
 	var parsed = _read_json(PATH)
@@ -233,6 +245,8 @@ static func save() -> bool:
 	if save_blocked:
 		_save_error("Save was not written because existing save data is damaged or from a newer version. Reset it explicitly to replace it.")
 		return false
+	_matches_default_shape(default_data(), d)
+	var field_warning := _field_warning
 	last_save_error = ""
 	d["v"] = SAVE_SCHEMA_VERSION
 	var payload := JSON.stringify(d)
@@ -261,6 +275,7 @@ static func save() -> bool:
 		_save_error("Could not replace the primary save (error %d); the previous save remains available." % rename_error)
 		return false
 	recovered_from_backup = false
+	last_save_error = field_warning
 	return true
 
 
@@ -279,6 +294,8 @@ static func reset_all() -> void:
 	last_run = {}
 	save_blocked = false
 	recovered_from_backup = false
+	last_save_error = ""
+	_field_warning = ""
 	save()
 
 
