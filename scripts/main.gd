@@ -20,6 +20,7 @@ const DSP = preload("res://scripts/display.gd")
 const PAD = preload("res://scripts/pad.gd")
 const PADI = preload("res://scripts/padicons.gd")
 const ARENA = preload("res://scripts/arena.gd")
+const LoadScreen = preload("res://scripts/ui/load_screen.gd")
 const Stick = preload("res://scripts/ui/stick.gd")
 const TW = preload("res://scripts/tileworld.gd")
 const JDM = preload("res://scripts/judgment.gd")
@@ -10023,27 +10024,3 @@ class TeamUi extends Node2D:
 			draw_string(font, c + Vector2(-70.0, 74.0), String(m.team[nx]["name"]), HORIZONTAL_ALIGNMENT_CENTER, 140.0, 16, Color(1, 1, 1, a))
 		if m.swap_cd > 0.0:
 			draw_arc(c, 60.0, -PI / 2.0, -PI / 2.0 + TAU * (m.swap_cd / 3.0), 32, Color(1, 0.4, 0.4, 0.9), 4.0)
-
-
-# Pantalla de carga: fondo oscuro, texto y barra de progreso
-class LoadScreen extends Node2D:
-	var text := ""
-	var prog := 0.0
-
-	func set_prog(v: float) -> void:
-		if absf(v - prog) >= 0.005 or v >= 1.0:
-			prog = v
-			queue_redraw()
-
-	func _draw() -> void:
-		var vp: Vector2 = get_viewport_rect().size
-		draw_rect(Rect2(Vector2.ZERO, vp), Color("#0c1220"))
-		var font := ThemeDB.fallback_font
-		var fs: int = int(clampf(vp.y / 15.0, 18.0, 44.0))
-		draw_string(font, Vector2(0.0, vp.y * 0.5 - fs * 0.4), text, HORIZONTAL_ALIGNMENT_CENTER, vp.x, fs, Color.WHITE)
-		var bw: float = minf(vp.x * 0.6, 460.0)
-		var bh: float = maxf(8.0, vp.y / 50.0)
-		var r := Rect2((vp.x - bw) * 0.5, vp.y * 0.5 + fs * 0.6, bw, bh)
-		draw_rect(r.grow(2.0), Color("#8fa8cc"))
-		draw_rect(r, Color("#16233a"))
-		draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(prog, 0.0, 1.0), r.size.y)), Color("#ffd33d"))
