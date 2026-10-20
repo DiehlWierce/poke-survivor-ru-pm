@@ -658,7 +658,7 @@ func spawn_boss() -> void:
 		var a: float = randf() * TAU
 		var d: float = (ARENA_R - randf_range(3.0, 6.0)) * ts
 		pos = center + Vector2(cos(a), sin(a)) * d
-		if pos.distance_to(m.player.position) > 280.0:
+		if pos.distance_squared_to(m.player.position) > 280.0 * 280.0:
 			break
 	var k: float = pow(2.0, float(boss_n))
 	var ranged: bool = m._has_t(mon["types"], ["psychic", "electric", "ghost", "fairy", "fire", "water", "ice", "dragon"])

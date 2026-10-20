@@ -184,7 +184,7 @@ func rpos(rmax: float, rmin: float = 40.0) -> Vector2:
 func tpos(rmax: float = 460.0) -> Vector2:
 	var l: Array = []
 	for e in m.enemies:
-		if not e.dead and e.position.distance_to(c) < rmax:
+		if not e.dead and e.position.distance_squared_to(c) < rmax * rmax:
 			l.append(e)
 	if l.is_empty():
 		return rpos(rmax * 0.7)
@@ -216,7 +216,8 @@ func hit(p: Vector2, r: float, k: float = 1.0, knock: float = 0.0, cc: String = 
 	for e in m.enemies.duplicate():
 		if e.dead:
 			continue
-		if e.position.distance_to(p) <= r + e.radius * 0.5:
+		var hit_r: float = r + e.radius * 0.5
+		if e.position.distance_squared_to(p) <= hit_r * hit_r:
 			var d: Vector2 = (e.position - p).normalized()
 			zhit(e, dmg * k, d, knock, poison, slow, cc)
 
@@ -246,7 +247,7 @@ func ring_burst(shape: String, n: int, r0: float, speed: float, life: float, scl
 func near(p: Vector2, r: float) -> Array:
 	var l: Array = []
 	for e in m.enemies:
-		if not e.dead and e.position.distance_to(p) <= r:
+		if not e.dead and e.position.distance_squared_to(p) <= r * r:
 			l.append(e)
 	return l
 
@@ -323,13 +324,13 @@ func chain_from(first, used: Dictionary, maxn: int, reach: float) -> Array:
 		out.append(cur)
 		used[cur.get_instance_id()] = true
 		var best = null
-		var bd: float = reach
+		var bd_sq: float = reach * reach
 		for e in m.enemies:
 			if e.dead or used.has(e.get_instance_id()):
 				continue
-			var d: float = e.position.distance_to(cur.position)
-			if d < bd:
-				bd = d
+			var d_sq: float = e.position.distance_squared_to(cur.position)
+			if d_sq < bd_sq:
+				bd_sq = d_sq
 				best = e
 		cur = best
 	return out
@@ -968,15 +969,15 @@ func _cont_dark(delta: float, p: Vector2) -> void:
 			var a: float = randf() * TAU
 			m.pfx.sp("crescent", pal, c + Vector2.from_angle(a) * R, {"v": Vector2.from_angle(a + PI * 0.5) * 120.0, "life": 0.35, "scale": 1.8, "angle": a + PI})
 		for e in near(c, R + 80.0):
-			var dd: float = e.position.distance_to(c)
-			if dd > R - 60.0:
+			var dd_sq: float = e.position.distance_squared_to(c)
+			if dd_sq > (R - 60.0) * (R - 60.0):
 				e.position += (c - e.position).normalized() * 230.0 * delta
 				e.apply_slow(0.5, 0.3)
 		if acc2 >= 0.3:
 			acc2 = 0.0
 			m.pfx.ring(c, R, R - 24.0, col(3), 0.3, 6.0)
 			for e in near(c, R + 70.0):
-				if e.position.distance_to(c) > R - 70.0:
+				if e.position.distance_squared_to(c) > (R - 70.0) * (R - 70.0):
 					hit_one(e, 0.5, 0.0)
 	elif t > 2.8:
 		dim = maxf(0.0, dim - delta * 1.2)
