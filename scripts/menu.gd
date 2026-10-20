@@ -101,6 +101,32 @@ var settings_box: VBoxContainer
 var settings_host: VBoxContainer
 var settings_pages := {}   # pestana -> pagina ya construida
 
+# --- Adaptacion a la pantalla: ventana (720x480 ... 1280x720) y % de vista (60-140 %) ---
+# A 140 % la zona util baja a ~914x514, asi que nada puede asumir 1280x720. Todo se recoloca en
+# get_viewport().size_changed (tambien al mover el deslizador de Ajustes), agrupado en un solo paso por fotograma
+# y sin reconstruir pantallas: solo se tocan margenes, tamanos minimos y columnas.
+var top_bar: HBoxContainer
+var top_sp: Control                 # separador elastico de la barra superior
+var fit_pending := false
+var fit_key := ""                   # zona util + margenes seguros: si no cambia, no se hace nada
+var mode_key := ""                  # modo discreto (estrecho / bajo / ancho): solo si cambia se rehacen paginas
+var lay_gen := 0                    # +1 cada vez que cambia el modo: las paginas guardadas con otro valor se rehacen
+var compact := false                # zona util estrecha (< 1000)
+var short := false                  # zona util baja (< 560)
+var wide := false                   # zona util ancha (>= 1150): 3 columnas donde se pueda
+var scr_m := Vector4(24, 72, 24, 18)  # margenes de las pantallas (izq, arriba, der, abajo)
+var scr_ch := Vector2(48, 90)
+var fit_scrolls: Array = []         # [{sc, v, chrome, center}] ScrollContainers que no pueden pasar de la zona util
+var main_scroll: ScrollContainer
+var main_ui := {}                   # piezas de la pantalla principal que se compactan
+var dex_dp: PanelContainer
+var dex_filters: HFlowContainer
+var dex_scroll: ScrollContainer
+var test_pc: PanelContainer
+var ins_c := Vector4.ZERO            # margenes seguros (se actualizan en _fit_layout)
+var main_prev_min := Vector2(340, 240)
+var pill_sbs: Array = []              # estilos de las pildoras de la barra superior (margenes laterales segun el modo)
+
 
 # ---------------------------------------------------------------
 # Vista previa animada de un Pokemon (hoja Idle, fila 0)
@@ -780,6 +806,7 @@ func _ready() -> void:
 		Aud.setup(self)
 		Aud.music("village")
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_calc_mode()
 	_build_theme()
 	RenderingServer.set_default_clear_color(Color("#16233a"))
 	# fondo: un trozo del mapa que se desplaza solo, con Pokemon caminando
@@ -803,12 +830,9 @@ func _ready() -> void:
 	add_child(shade)
 	# barra superior
 	var top := HBoxContainer.new()
+	top_bar = top
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	var ins: Vector4 = DSP.insets(get_tree())
-	top.offset_left = 16 + ins.x
-	top.offset_right = -16 - ins.z
-	top.offset_top = 10 + ins.y
-	top.offset_bottom = 58
+	top.offset_bottom = 58   # los margenes laterales y de arriba los pone _fit_layout (dependen del % de vista)
 	add_child(top)
 	back_btn = _btn("◀ Volver", func(): _leave(), Vector2(150, 44))
 	top.add_child(back_btn)
@@ -820,9 +844,13 @@ func _ready() -> void:
 	credit_lbl.add_theme_constant_override("outline_size", 6)
 	credit_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	credit_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# en pantallas estrechas el credito cede: se recorta con "..." en vez de empujar los botones fuera (ver _fit_top)
+	credit_lbl.clip_text = true
+	credit_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top.add_child(credit_lbl)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_sp = sp
 	top.add_child(sp)
 	# Barra superior como la del original: monedas, tickets, nombre, sonido y ajustes.
 	coin_pill = _pill()
@@ -835,6 +863,7 @@ func _ready() -> void:
 	name_pill.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	name_pill.add_theme_font_size_override("font_size", 22)
 	name_pill.add_theme_constant_override("h_separation", 10)
+	name_pill.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl = name_pill
 	top.add_child(coin_pill)
 	top.add_child(_gap(8))
@@ -908,6 +937,8 @@ func _ready() -> void:
 	_build_lexicon()
 	_build_settings()
 	_build_news()
+	get_viewport().size_changed.connect(_fit_later)   # Callable de un metodo: se desconecta solo al liberar el menu
+	_fit_layout()
 	if is_overlay:
 		_show("settings")
 		return
@@ -925,6 +956,256 @@ func _ready() -> void:
 			_show_run_summary()
 
 
+# ---------------------------------------------------------------
+# Adaptacion a la pantalla
+# ---------------------------------------------------------------
+# ScrollContainer que sigue al control enfocado: con mando/teclado nada queda fuera de la vista.
+func _new_scroll() -> ScrollContainer:
+	var sc := ScrollContainer.new()
+	sc.follow_focus = true
+	return sc
+
+
+# Modo segun la zona util (rect visible - margenes seguros): estrecho / bajo / ancho.
+func _calc_mode() -> void:
+	var ar: Rect2 = DSP.area(get_tree())
+	var ins: Vector4 = DSP.insets(get_tree())
+	compact = ar.size.x < 1000.0
+	short = ar.size.y < 560.0
+	wide = ar.size.x >= 1150.0
+	var side: float = 16.0 if compact else 24.0
+	var mt: float = 66.0 if short else 72.0
+	var mb: float = 12.0 if short else 18.0
+	scr_m = Vector4(side + ins.x, mt + ins.y, side + ins.z, mb + ins.w)
+	scr_ch = Vector2(side * 2.0, mt + mb)   # lo mismo sin los margenes seguros (DSP.area ya los resta)
+
+
+func _screen_margins(c: Control) -> void:
+	c.add_theme_constant_override("margin_left", int(scr_m.x))
+	c.add_theme_constant_override("margin_top", int(scr_m.y))
+	c.add_theme_constant_override("margin_right", int(scr_m.z))
+	c.add_theme_constant_override("margin_bottom", int(scr_m.w))
+
+
+# Varios size_changed seguidos (arrastrar el deslizador de Ajustes, redimensionar la ventana) se juntan en un paso.
+func _fit_later() -> void:
+	if fit_pending:
+		return
+	fit_pending = true
+	_fit_layout.call_deferred()
+
+
+func _fit_layout() -> void:
+	fit_pending = false
+	if not is_inside_tree() or top_bar == null:
+		return
+	var ar: Rect2 = DSP.area(get_tree())
+	var ins: Vector4 = DSP.insets(get_tree())
+	var key := "%d_%d_%d_%d_%d_%d" % [roundi(ar.size.x), roundi(ar.size.y), roundi(ins.x), roundi(ins.y), roundi(ins.z), roundi(ins.w)]
+	if key != fit_key:
+		fit_key = key
+		_calc_mode()
+		for k in screens:
+			_screen_margins(screens[k])
+		_fit_float(ar, ins)
+		_fit_main(ar)
+		_fit_dex(ar)
+		_fit_test(ar)
+		_fit_top()
+		var mk := "%d%d%d" % [int(compact), int(short), int(wide)]
+		if mk != mode_key:
+			mode_key = mk
+			lay_gen += 1
+			_fit_mode_changed()
+	_fit_scrolls_now()
+
+
+# Si cambia el modo, la pantalla abierta rehace lo que dependa de el (las demas lo hacen al abrirse: _show las reconstruye).
+func _fit_mode_changed() -> void:
+	if not screens.has(cur):
+		return
+	match cur:
+		"up":
+			_refresh_up()
+		"goals":
+			_refresh_goals()
+		"lexicon":
+			_refresh_lexicon()
+		"gacha":
+			_refresh_gacha()
+	gi_dirty = true
+
+
+# Avisos flotantes dentro de la zona segura.
+func _fit_float(ar: Rect2, ins: Vector4) -> void:
+	ins_c = ins
+	var hw: float = minf(300.0, ar.size.x * 0.5 - 8.0)
+	toast_lbl.offset_left = -hw
+	toast_lbl.offset_right = hw
+	toast_lbl.offset_top = -80.0 - ins.w
+	toast_lbl.offset_bottom = -30.0 - ins.w
+	pad_hint.offset_left = 24.0 + ins.x
+	pad_hint.offset_top = -46.0 - ins.w
+	pad_hint.offset_bottom = -6.0 - ins.w
+
+
+# Barra superior: debe caber en la zona util. Si no cabe, primero Novedades se queda en icono, el credito se recorta con "..."
+# (cede el sitio) y por ultimo el nombre se recorta.
+func _fit_top() -> void:
+	if top_bar == null:
+		return
+	var ar: Rect2 = DSP.area(get_tree())
+	var ins: Vector4 = ins_c
+	top_bar.offset_left = 16.0 + ins.x
+	top_bar.offset_right = -16.0 - ins.z
+	top_bar.offset_top = 10.0 + ins.y
+	top_bar.offset_bottom = 58.0 + ins.y
+	var avail: float = ar.size.x - 32.0
+	var on_main: bool = cur == "main" and not is_overlay
+	credit_lbl.visible = on_main and avail >= 600.0
+	credit_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL if credit_lbl.visible else Control.SIZE_FILL
+	top_sp.size_flags_horizontal = Control.SIZE_FILL if credit_lbl.visible else Control.SIZE_EXPAND_FILL
+	news_top.text = L.t("Novedades")
+	news_top.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	news_top.custom_minimum_size.x = 0.0
+	name_pill.clip_text = false
+	name_pill.custom_minimum_size.x = 0.0
+	for psb in pill_sbs:
+		(psb as StyleBoxFlat).content_margin_left = 10.0 if compact else 16.0
+		(psb as StyleBoxFlat).content_margin_right = 10.0 if compact else 16.0
+	var over: float = top_bar.get_combined_minimum_size().x - avail   # el credito (clip_text) no suma: cede solo
+	if over > 0.0:
+		news_top.text = ""
+		news_top.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		news_top.custom_minimum_size.x = 52.0
+		over = top_bar.get_combined_minimum_size().x - avail
+	if over > 0.0:
+		var nat: float = name_pill.get_combined_minimum_size().x
+		name_pill.clip_text = true
+		name_pill.custom_minimum_size.x = maxf(150.0, nat - over)
+
+
+# Pantalla principal: los botones y el retrato se encogen hasta que la columna cabe en la altura util
+# (si aun asi no cupiese, el ScrollContainer de main_scroll la desplaza).
+func _fit_main(ar: Rect2) -> void:
+	if main_ui.is_empty():
+		return
+	var ah: float = ar.size.y - scr_ch.y
+	var right: VBoxContainer = main_ui["right"]
+	var mv: VBoxContainer = main_ui["mv"]
+	var stats: Label = main_ui["stats"]
+	right.custom_minimum_size.x = 380.0 if ar.size.x >= 840.0 else maxf(250.0, ar.size.x * 0.40)
+	var big: bool = ah >= 640.0
+	var mid: bool = ah >= 470.0
+	(main_ui["title"] as Label).add_theme_font_size_override("font_size", 56 if big else (44 if mid else 36))
+	(main_ui["sub"] as Label).add_theme_font_size_override("font_size", 22 if mid else 18)
+	(main_ui["info"] as Label).add_theme_font_size_override("font_size", 26 if big else (22 if mid else 18))
+	stats.add_theme_font_size_override("font_size", 18 if mid else 15)
+	main_card.custom_minimum_size = Vector2(360, 260) if big else (Vector2(300, 190) if mid else Vector2(250, 140))
+	main_prev_min = Vector2(340, 240) if big else (Vector2(280, 170) if mid else Vector2(230, 120))
+	if is_instance_valid(main_prev):
+		main_prev.custom_minimum_size = main_prev_min
+	var btns: Array = main_ui["btns"]
+	# primero con las estadisticas debajo de los botones; si asi no cabe, en la columna izquierda
+	var sp2: Control = main_ui["sp2"]
+	for tgt in [right, main_ui["left"]]:
+		if sp2.get_parent() != tgt:
+			sp2.reparent(tgt, false)
+		var fits := false
+		for bh in [58, 52, 46, 42, 38, 34]:
+			mv.add_theme_constant_override("separation", 10 if bh >= 52 else 6)
+			for b in btns:
+				(b as Button).custom_minimum_size.y = bh
+				(b as Button).add_theme_font_size_override("font_size", clampi(roundi(bh * 0.45), 17, 26))
+				# el icono de 36 px fija el alto minimo del boton (52): al compactar se escala al alto disponible
+				(b as Button).expand_icon = bh < 58
+				(b as Button).add_theme_constant_override("icon_max_width", 40 if bh >= 58 else bh - 10)
+			if _row_min_y(main_ui["row"]) <= ah:
+				fits = true
+				break
+		if fits:
+			break
+
+
+# Alto minimo de la fila principal (la mayor de sus columnas).
+func _row_min_y(row: Control) -> float:
+	return row.get_combined_minimum_size().y
+
+
+func _fit_test(ar: Rect2) -> void:
+	if test_pc != null:
+		test_pc.custom_minimum_size.x = minf(820.0, ar.size.x - scr_ch.x)
+
+
+# Coleccion: el panel de detalle se estrecha y las columnas de la cuadricula se ajustan al ancho (6 / 4 / 3 / 2).
+func _fit_dex(ar: Rect2) -> void:
+	if dex_dp == null:
+		return
+	var dpw: float = 360.0 if not compact else 270.0
+	dex_dp.custom_minimum_size.x = dpw
+	var bar: float = dex_scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var rw: float = ar.size.x - scr_ch.x - dpw - 10.0 - bar
+	var cols := 2
+	for c in [6, 4, 3]:
+		if float(c) * 118.0 + float(c - 1) * 6.0 <= rw:
+			cols = c
+			break
+	dex_grid.columns = cols
+	var fh: int = 34 if short else 40
+	for b in dex_filters.get_children():
+		(b as Control).custom_minimum_size.y = fh
+
+
+# ScrollContainer cuyo tamano minimo no puede pasar de la zona util (se recalcula en cada cambio de tamano).
+# center: CenterContainer a pantalla completa que se ajusta a la zona segura (cuadros flotantes).
+func _fit_reg(sc: ScrollContainer, v: Control, chrome: Vector2, screen_level: bool, center: Control = null) -> void:
+	fit_scrolls.append({"sc": sc, "v": v, "chrome": chrome, "screen": screen_level, "center": center})
+	v.minimum_size_changed.connect(_fit_later)
+	_fit_later()
+
+
+# Variante: un ScrollContainer de tamano "ideal" cap que se encoge hasta lo que quede de zona util (chrome = lo que va alrededor).
+func _fit_cap(sc: ScrollContainer, cap: Vector2, chrome: Vector2, center: Control = null) -> void:
+	fit_scrolls.append({"sc": sc, "v": sc, "chrome": chrome, "cap": cap, "screen": false, "center": center})
+	_fit_later()
+
+
+func _fit_scrolls_now() -> void:
+	var i: int = fit_scrolls.size() - 1
+	while i >= 0:
+		var e: Dictionary = fit_scrolls[i]
+		var sc = e["sc"]
+		var v = e["v"]
+		if not is_instance_valid(sc) or not is_instance_valid(v):
+			fit_scrolls.remove_at(i)
+		elif e.has("cap"):
+			if is_instance_valid(e["center"]):
+				DSP.fit_to_safe(get_tree(), e["center"])
+			var avc: Vector2 = DSP.area(get_tree(), 6.0).size - (e["chrome"] as Vector2)
+			var cap: Vector2 = e["cap"]
+			(sc as ScrollContainer).custom_minimum_size = Vector2(minf(cap.x, avc.x), minf(cap.y, maxf(120.0, avc.y)))
+		else:
+			var ch: Vector2 = e["chrome"]
+			if bool(e["screen"]):
+				ch += scr_ch
+			elif is_instance_valid(e["center"]):
+				DSP.fit_to_safe(get_tree(), e["center"])
+			DSP.fit_scroll(get_tree(), sc, v, ch, 0.0 if bool(e["screen"]) else 6.0)
+		i -= 1
+
+
+# Cuadro flotante sobre gacha_result / un ColorRect: el contenido v va en un ScrollContainer que no pasa de la zona util.
+func _pop_wrap(center: Control, pc: PanelContainer, v: Control) -> void:
+	var sc := _new_scroll()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pc.add_child(sc)
+	sc.add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb: StyleBox = pc.get_theme_stylebox("panel")
+	_fit_reg(sc, v, sb.get_minimum_size() + Vector2(8, 8), false, center)
+	_fit_scrolls_now()
+
+
 func _gap(w: float) -> Control:
 	var g := Control.new()
 	g.custom_minimum_size = Vector2(w, 0)
@@ -940,6 +1221,7 @@ func _pill() -> PanelContainer:
 	sbx.content_margin_top = 6
 	sbx.content_margin_bottom = 6
 	pc.add_theme_stylebox_override("panel", sbx)
+	pill_sbs.append(sbx)
 	pc.custom_minimum_size = Vector2(0, 44)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
@@ -1149,6 +1431,14 @@ func _follow(c: Control) -> void:
 		p = p.get_parent()
 	if p != null:
 		(p as ScrollContainer).call_deferred("ensure_control_visible", c)
+		_follow_late(p as ScrollContainer, c)
+
+
+# Las paginas recien puestas terminan de repartir el alto (textos con salto de linea) un fotograma despues: se repite una vez.
+func _follow_late(sc: ScrollContainer, c: Control) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(sc) and is_instance_valid(c) and c.is_inside_tree() and c.has_focus():
+		sc.ensure_control_visible(c)
 
 
 func _panel(parent: Node) -> VBoxContainer:
@@ -1171,11 +1461,7 @@ func _label(text: String, size: int = 22, col: Color = Color.WHITE) -> Label:
 func _screen(name: String) -> Control:
 	var c := MarginContainer.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var ins: Vector4 = DSP.insets(get_tree())
-	c.add_theme_constant_override("margin_left", 24 + int(ins.x))
-	c.add_theme_constant_override("margin_right", 24 + int(ins.z))
-	c.add_theme_constant_override("margin_top", 72 + int(ins.y))
-	c.add_theme_constant_override("margin_bottom", 18 + int(ins.w))
+	_screen_margins(c)
 	c.visible = false
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(c)
@@ -1208,7 +1494,6 @@ func _show(name: String) -> void:
 	for k in screens:
 		screens[k].visible = k == name
 	back_btn.visible = name != "main" and name != "test"
-	credit_lbl.visible = name == "main"
 	shade.color.a = 0.30 if name == "main" else 0.62
 	for pn in [coin_pill, tix_pill, name_pill, news_top, mute_top, set_top]:
 		pn.visible = name != "test"
@@ -1261,6 +1546,13 @@ func _gf(c: Control) -> void:
 func _do_focus(c: Control) -> void:
 	if is_instance_valid(c) and c.is_inside_tree() and c.is_visible_in_tree():
 		c.grab_focus()
+		_refocus_scroll.call_deferred(c)   # el contenido recien construido puede dejar el scroll mal colocado
+
+
+func _refocus_scroll(c: Control) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(c) and c.is_visible_in_tree() and get_viewport().gui_get_focus_owner() == c:
+		_follow(c)
 
 
 func _update_top() -> void:
@@ -1272,6 +1564,7 @@ func _update_top() -> void:
 	var muted: bool = bool(SV.d["settings"].get("mute", false))
 	var mn: String = "mute" if muted else "sound"
 	mute_top.icon = IC.tex(mn, IC.scale_for(mn, 26))
+	_fit_top()
 
 
 func toast(msg: String) -> void:
@@ -1341,7 +1634,8 @@ func _process(delta: float) -> void:
 	if ach_t > 0.0:
 		ach_t -= delta
 		ach_pop.modulate.a = clampf(minf(ach_t, 2.8 - ach_t + 0.001) * 4.0, 0.0, 1.0)
-		ach_pop.position.x = (get_viewport_rect().size.x - ach_pop.size.x) * 0.5
+		var apx: float = (get_viewport_rect().size.x - ach_pop.size.x) * 0.5
+		ach_pop.position.x = clampf(apx, ins_c.x + 8.0, maxf(ins_c.x + 8.0, get_viewport_rect().size.x - ach_pop.size.x - ins_c.z - 8.0))
 		if ach_t <= 0.0:
 			ach_pop.visible = false
 	elif not PG.toasts.is_empty() and not is_overlay:
@@ -1737,8 +2031,14 @@ func _type_text(dex: int) -> String:
 # ---------------------------------------------------------------
 func _build_main() -> void:
 	var s: Control = _screen("main")
+	# la fila va en un ScrollContainer: _fit_main la encoge para que quepa, y si aun asi no cabe se desplaza
+	main_scroll = _new_scroll()
+	main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	s.add_child(main_scroll)
 	var row := HBoxContainer.new()
-	s.add_child(row)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_scroll.add_child(row)
 	# columna izquierda: titulo + Pokemon
 	var left := VBoxContainer.new()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1752,6 +2052,8 @@ func _build_main() -> void:
 	var sub := _label("MYSTERY DUNGEON", 22, Color.WHITE)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left.add_child(sub)
+	main_ui["title"] = title
+	main_ui["sub"] = sub
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", _sb(Color("#0f1a34"), Color("#ff9a4d"), 4, 10))
 	card.custom_minimum_size = Vector2(360, 260)
@@ -1761,6 +2063,7 @@ func _build_main() -> void:
 	main_info = _label("", 26)
 	main_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left.add_child(main_info)
+	main_ui["info"] = main_info
 	# columna derecha: menu
 	var right := VBoxContainer.new()
 	right.custom_minimum_size = Vector2(380, 0)
@@ -1769,6 +2072,12 @@ func _build_main() -> void:
 	right.add_child(p)
 	var mv := VBoxContainer.new()
 	p.add_child(mv)
+	main_ui["row"] = row
+	main_ui["right"] = right
+	main_ui["left"] = left
+	main_ui["mv"] = mv
+	var mbtns: Array = []
+	main_ui["btns"] = mbtns
 	var entries := [["Jugar", "play", "flag"], ["Pokémon", "dex", "ball"], ["Mejoras", "up", "up"], ["Gacha", "gacha", "ballLux"], ["Misiones y logros", "goals", "trophy"], ["Léxico", "lexicon", "book"], ["Ajustes", "settings", "gear"]]
 	var first := true
 	for e in entries:
@@ -1780,6 +2089,7 @@ func _build_main() -> void:
 		b.add_theme_constant_override("h_separation", 14)
 		b.add_theme_font_size_override("font_size", 26)
 		mv.add_child(b)
+		mbtns.append(b)
 		if first:
 			first = false
 			main_play_btn = b
@@ -1789,6 +2099,8 @@ func _build_main() -> void:
 	var sp2 := PanelContainer.new()
 	right.add_child(sp2)
 	sp2.add_child(main_stats)
+	main_ui["stats"] = main_stats
+	main_ui["sp2"] = sp2
 var main_play_btn: Button
 
 
@@ -1834,7 +2146,7 @@ func _build_modes() -> void:
 	v.add_theme_constant_override("separation", 8)
 	pc.add_child(v)
 	v.add_child(_label("Elige un modo", 34, C_GOLD))
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(sc)
@@ -1908,7 +2220,7 @@ func _refresh_modes() -> void:
 	var tw: Dictionary = SV.d.get("tower", {})
 	var tbest: int = int(tw.get("best", 0))
 	var rel: int = SV.tower_relics()
-	_mode_card(L.t("Torre de pisos"), L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6.") % [tbest, rel], func(): _start_mode("tower"), "m_tower")
+	_mode_card(L.t("Torre de pisos"), _fmt_d(L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6."), [tbest, rel]), func(): _start_mode("tower"), "m_tower")
 	var tstarts: Array = [1]
 	var tcl: Dictionary = tw.get("claimed", {})
 	for k in range(5, TOWER_FLOORS_M, 5):
@@ -1991,7 +2303,7 @@ func _refresh_main() -> void:
 	if is_instance_valid(main_prev):
 		main_prev.queue_free()
 	main_prev = Preview.new()
-	main_prev.custom_minimum_size = Vector2(340, 240)
+	main_prev.custom_minimum_size = main_prev_min
 	main_card.add_child(main_prev)
 	main_prev.setup(dex, shn, 6.0)
 	main_info.text = "%s · %s" % [_name_of(dex), _type_text(dex)]
@@ -2040,7 +2352,7 @@ func _show_run_summary() -> void:
 	c.add_child(pc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 3)
-	pc.add_child(v)
+	_pop_wrap(c, pc, v)
 	var title := _label("Has caído…" if bool(r.get("dead", true)) else "Partida terminada", 38, Color.WHITE)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
@@ -2123,7 +2435,7 @@ func _show_run_summary() -> void:
 	mg.add_theme_constant_override("h_separation", 18)
 	mg.add_theme_constant_override("v_separation", 3)
 	if mlist.size() > 5:
-		var msc := ScrollContainer.new()
+		var msc := _new_scroll()
 		msc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		msc.custom_minimum_size = Vector2(0, 170)
 		mg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2228,8 +2540,15 @@ func _build_test() -> void:
 	var pc := PanelContainer.new()
 	pc.custom_minimum_size = Vector2(820, 0)
 	c.add_child(pc)
+	test_pc = pc
 	test_box = VBoxContainer.new()
-	pc.add_child(test_box)
+	test_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# preguntas y resultado pueden ser mas altos que la zona util: el contenido va en un scroll
+	var tsc := _new_scroll()
+	tsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pc.add_child(tsc)
+	tsc.add_child(test_box)
+	_fit_reg(tsc, test_box, pc.get_theme_stylebox("panel").get_minimum_size(), true)
 
 
 func _refresh_test() -> void:
@@ -2371,14 +2690,21 @@ func _build_dex() -> void:
 	var dp := PanelContainer.new()
 	dp.custom_minimum_size = Vector2(360, 0)
 	row.add_child(dp)
+	dex_dp = dp
 	dex_detail = VBoxContainer.new()
-	dp.add_child(dex_detail)
+	dex_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# la ficha puede ser mas alta que la zona util: va en un scroll (con mando, el foco desplaza)
+	var dsc := _new_scroll()
+	dsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dp.add_child(dsc)
+	dsc.add_child(dex_detail)
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(right)
 	var filters := HFlowContainer.new()
 	filters.add_theme_constant_override("h_separation", 6)
 	right.add_child(filters)
+	dex_filters = filters
 	var names := ["Todas"]
 	for i in range(9):
 		names.append("%d · %s" % [i + 1, L.t(SV.REGIONS[i])])
@@ -2393,10 +2719,15 @@ func _build_dex() -> void:
 	own.toggled.connect(func(on: bool): dex_only_owned = on; dex_page = 0; _refresh_dex())
 	filters.add_child(own)
 	dex_grid = GridContainer.new()
-	dex_grid.columns = 6
+	dex_grid.columns = 6   # _fit_dex lo ajusta al ancho disponible
 	dex_grid.add_theme_constant_override("h_separation", 6)
 	dex_grid.add_theme_constant_override("v_separation", 6)
-	right.add_child(dex_grid)
+	dex_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dex_scroll = _new_scroll()
+	dex_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dex_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(dex_scroll)
+	dex_scroll.add_child(dex_grid)
 	var nav := HBoxContainer.new()
 	nav.alignment = BoxContainer.ALIGNMENT_CENTER
 	right.add_child(nav)
@@ -2559,7 +2890,7 @@ func _build_up() -> void:
 	var v := VBoxContainer.new()
 	pc.add_child(v)
 	v.add_child(_label("Mejoras permanentes", 32, C_GOLD))
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(sc)
@@ -2648,8 +2979,9 @@ func _refresh_up() -> void:
 	prev_b.set_meta("fk", "upprev")
 	orow.add_child(prev_b)
 	var par0: String = L.t(" (compañero)") if up_dex == int(SV.d["selected"]) else ""
-	var pick_b := _btn(L.t("%s%s · %d niveles") % [_name_of(up_dex), par0, SV.up_total(up_dex)] + "  ▾", _open_up_picker, Vector2(360, 56))
+	var pick_b := _btn(L.t("%s%s · %d niveles") % [_name_of(up_dex), par0, SV.up_total(up_dex)] + "  ▾", _open_up_picker, Vector2(120 if compact else 360, 56))
 	pick_b.set_meta("fk", "uppick")
+	pick_b.clip_text = true   # el nombre largo se recorta en vez de ensanchar la pantalla
 	pick_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pick_b.add_theme_font_size_override("font_size", 22)
 	orow.add_child(pick_b)
@@ -2661,7 +2993,11 @@ func _refresh_up() -> void:
 		next_b.disabled = true
 	if up_dex != int(SV.d["selected"]):
 		var pb := _btn("Usar de compañero", func(): SV.d["selected"] = up_dex; SV.save(); toast(L.t("Compañero: %s") % _name_of(up_dex)); _refresh_up(), Vector2(0, 56))
-		orow.add_child(pb)
+		# en pantallas estrechas va debajo (a 140 % no cabe junto al selector)
+		if compact:
+			hv.add_child(pb)
+		else:
+			orow.add_child(pb)
 	# --- tarjetas de mejoras
 	var grid := GridContainer.new()
 	grid.columns = 3 if get_viewport_rect().size.x >= 1150.0 else 2
@@ -2837,16 +3173,25 @@ func _bind_panel() -> Control:
 	ids.append(SV.start_move_of(up_dex))
 	ids.sort_custom(func(a, b): return L.t(String(MD.MOVES[a]["name"])) < L.t(String(MD.MOVES[b]["name"])))
 	var cur: Array = SV.bind_list(up_dex)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	# 4 desplegables: en una fila, o 2x2 si la zona util es estrecha (cambia solo en _fit_layout)
+	var row := GridContainer.new()
+	row.columns = 4 if compact else 8
+	row.add_theme_constant_override("h_separation", 10)
+	row.add_theme_constant_override("v_separation", 8)
 	v.add_child(row)
 	for i in range(4):
 		var num := _label(str(i + 1), 22, C_GOLD)
 		row.add_child(num)
 		var ob := OptionButton.new()
-		ob.custom_minimum_size = Vector2(150, 46)
+		ob.custom_minimum_size = Vector2(110, 46)
+		ob.fit_to_longest_item = false   # si no, el ancho minimo es el del movimiento con el nombre mas largo
+		ob.clip_text = true
 		ob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		ob.focus_mode = Control.FOCUS_ALL
+		# lista del desplegable comoda con mando/dedo: filas altas, letra grande, y no mas alta que la pantalla
+		var pop: PopupMenu = ob.get_popup()
+		pop.add_theme_constant_override("v_separation", 12)
+		pop.add_theme_font_size_override("font_size", 20)
 		ob.add_item(L.t("Libre"), 0)
 		var sel := 0
 		for k in range(ids.size()):
@@ -2899,7 +3244,7 @@ func _open_up_picker() -> void:
 
 
 func _pk_filter_row(parent: Control, items: Array, cur_val, on_pick: Callable, prefix: String) -> void:
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.custom_minimum_size = Vector2(0, 58)
 	sc.get_h_scroll_bar().custom_minimum_size.y = 12
@@ -2969,7 +3314,7 @@ func _build_up_picker() -> void:
 	for tk in MD.TYPE_NAME.keys():
 		tys.append({"v": String(tk), "t": L.t(String(MD.TYPE_NAME[tk])), "c": String(MD.TYPE_COLOR.get(tk, "#ffffff"))})
 	_pk_filter_row(v, tys, pk_type, func(x): pk_type = String(x); _build_up_picker(), "t")
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.get_v_scroll_bar().custom_minimum_size.x = 30
@@ -3051,7 +3396,7 @@ func _buy(id: String) -> void:
 # ---------------------------------------------------------------
 func _build_gacha() -> void:
 	var s: Control = _screen("gacha")
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	s.add_child(sc)
 	gacha_box = VBoxContainer.new()
@@ -3124,7 +3469,7 @@ func _refresh_gacha() -> void:
 	for ch in gacha_content.get_children():
 		gacha_content.remove_child(ch)
 	var ent: Dictionary = gacha_pages.get(gacha_region, {})
-	if ent.is_empty() or String(ent["fp"]) != fp or not is_instance_valid(ent["page"]):
+	if ent.is_empty() or String(ent["fp"]) != fp or not is_instance_valid(ent["page"]) or int(ent.get("gen", -1)) != lay_gen:
 		if not ent.is_empty() and is_instance_valid(ent["page"]):
 			(ent["page"] as Node).queue_free()
 		ent = _build_gacha_page(fp)
@@ -3257,7 +3602,7 @@ func _build_gacha_page(fp: String) -> Dictionary:
 	ov.add_child(_label(L.t("· A las %d tiradas sin legendario en un banner, la siguiente lo es.") % SV.PITY_5, 16, Color("#c8d6ee")))
 	ov.add_child(_label(L.t("· Los repetidos dan Pokémonedas. Los shiny no se repiten."), 16, Color("#c8d6ee")))
 	ov.add_child(_label(L.t("· Los tickets se consiguen jugando: algunos Pokémon los sueltan al caer, y los jefes y los cofres a veces dan tickets ×10."), 16, Color("#c8d6ee")))
-	return {"page": pg, "fp": fp, "first": first}
+	return {"page": pg, "fp": fp, "first": first, "gen": lay_gen}
 
 
 func _nw(parent: Node, l: Label) -> void:
@@ -3306,7 +3651,7 @@ func _show_pulls(results: Array) -> void:
 	var pc := PanelContainer.new()
 	c.add_child(pc)
 	var v := VBoxContainer.new()
-	pc.add_child(v)
+	_pop_wrap(c, pc, v)
 	v.add_child(_label("¡Resultado!", 32, C_GOLD))
 	var grid := GridContainer.new()
 	grid.columns = 5 if results.size() > 1 else 1
@@ -3352,7 +3697,13 @@ func _show_pulls(results: Array) -> void:
 # ---------------------------------------------------------------
 var ach_cat := "coleccion"
 var goals_btn: Button
-var goals_tabs: HBoxContainer
+var goals_tabs: HFlowContainer
+
+
+# Pestana de una fila de 5 (HFlowContainer): ancho comodo para el mando; si no caben en una fila pasan a la siguiente, sin recortar el texto.
+func _tab_fit(tb: Button) -> void:
+	tb.custom_minimum_size = Vector2(150, 46)
+	tb.add_theme_constant_override("h_separation", 6)
 
 
 func _build_goals() -> void:
@@ -3361,11 +3712,12 @@ func _build_goals() -> void:
 	s.add_child(pc)
 	var v := VBoxContainer.new()
 	pc.add_child(v)
-	goals_tabs = HBoxContainer.new()
+	goals_tabs = HFlowContainer.new()
 	v.add_child(goals_tabs)
 	for t in [["m", "Misiones"], ["a", "Logros"], ["z", "Cristales Z"], ["p", "Perfil"], ["r", "Récords"]]:
 		var k: String = String(t[0])
-		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(); _tab_scroll_top(); _focus_content(), Vector2(200, 46))
+		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(); _tab_scroll_top(); _focus_content(), Vector2(60, 46))
+		_tab_fit(tb)
 		if k == "a":
 			tb.icon = IC.btn_tex("medal1", 28)
 			tb.expand_icon = false
@@ -3373,7 +3725,7 @@ func _build_goals() -> void:
 			tb.icon = IC.btn_tex("zc:ice", 28)
 			tb.expand_icon = false
 		goals_tabs.add_child(tb)
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(sc)
@@ -3387,7 +3739,7 @@ func _build_goals() -> void:
 # Lexico: objetos, movimientos y estados alterados
 # ---------------------------------------------------------------
 var lex_tab := "i"
-var lex_tabs: HBoxContainer
+var lex_tabs: HFlowContainer
 var lex_box: VBoxContainer
 const LEX_STATUS := [
 	["freeze", "Congelado", "El enemigo no se mueve ni ataca y recibe un 25% más de daño. Los jefes lo resisten."],
@@ -3406,13 +3758,14 @@ func _build_lexicon() -> void:
 	s.add_child(pc)
 	var v := VBoxContainer.new()
 	pc.add_child(v)
-	lex_tabs = HBoxContainer.new()
+	lex_tabs = HFlowContainer.new()
 	v.add_child(lex_tabs)
 	for t in [["i", "Objetos"], ["m", "Movimientos"], ["s", "Estados"], ["a", "Habilidades"], ["z", "Z y Dynamax"]]:
 		var k: String = String(t[0])
-		var tb := _btn(String(t[1]), func(): lex_tab = k; _refresh_lexicon(); _tab_scroll_top(); _focus_content(), Vector2(200, 46))
+		var tb := _btn(String(t[1]), func(): lex_tab = k; _refresh_lexicon(); _tab_scroll_top(); _focus_content(), Vector2(60, 46))
+		_tab_fit(tb)
 		lex_tabs.add_child(tb)
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(sc)
@@ -3477,10 +3830,14 @@ func _refresh_lexicon() -> void:
 	for ch in lex_box.get_children():
 		lex_box.remove_child(ch)
 	var page: VBoxContainer = lex_pages.get(lex_tab)
+	if page != null and is_instance_valid(page) and int(page.get_meta("gen", -1)) != lay_gen:
+		page.queue_free()   # se construyo con otro modo de pantalla (columnas): se rehace
+		page = null
 	if page == null or not is_instance_valid(page):
 		page = VBoxContainer.new()
 		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		page.add_theme_constant_override("separation", 8)
+		page.set_meta("gen", lay_gen)
 		lex_tgt = page
 		_lex_fill()
 		lex_pages[lex_tab] = page
@@ -3990,10 +4347,11 @@ func _fav_picker(slot: int) -> void:
 	v.add_theme_constant_override("separation", 10)
 	pc.add_child(v)
 	v.add_child(_label("Elige un favorito", 30, C_GOLD))
-	var sc := ScrollContainer.new()
+	var sc := _new_scroll()
 	sc.custom_minimum_size = Vector2(760, 360)
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(sc)
+	_fit_cap(sc, Vector2(760, 360), pc.get_theme_stylebox("panel").get_minimum_size() + Vector2(8, 150), c)
 	var grid := GridContainer.new()
 	grid.columns = 5
 	grid.add_theme_constant_override("h_separation", 8)
@@ -4057,7 +4415,7 @@ func _show_card() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	v.custom_minimum_size = Vector2(620, 0)
-	pc.add_child(v)
+	_pop_wrap(c, pc, v)
 	var nm := _label(_nick(), 40, C_GOLD)
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(nm)
@@ -4216,7 +4574,7 @@ func _build_settings() -> void:
 	for i in range(SET_TABS.size()):
 		var ti: int = i
 		set_tabs_row.add_child(_btn(L.t(SET_TABS[i]), func(): _settings_pick(ti), Vector2(0, 46)))
-	var ssc := ScrollContainer.new()
+	var ssc := _new_scroll()
 	ssc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	ssc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(ssc)
@@ -4242,7 +4600,7 @@ func _build_news() -> void:
 	tt.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hd.add_child(tt)
 	hd.add_child(_btn("Cerrar", func(): _leave(), Vector2(130, 44)))
-	news_scroll = ScrollContainer.new()
+	news_scroll = _new_scroll()
 	news_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	news_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(news_scroll)
@@ -4370,6 +4728,7 @@ func _view_row() -> void:
 	upd.call()
 	sl.value_changed.connect(func(v: float):
 		DSP.set_pct(get_tree(), int(v))
+		_fit_later()
 		upd.call())
 	rs.pressed.connect(func():
 		sl.value = 100.0)
@@ -4507,8 +4866,12 @@ func _settings_content() -> void:
 		settings_pages.erase(3)
 	var page: VBoxContainer = settings_pages.get(set_tab)
 	focus_first = null
+	if page != null and is_instance_valid(page) and int(page.get_meta("gen", -1)) != lay_gen:
+		page.queue_free()
+		page = null
 	if page == null or not is_instance_valid(page):
 		page = VBoxContainer.new()
+		page.set_meta("gen", lay_gen)
 		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		page.add_theme_constant_override("separation", 8)
 		settings_box = page
