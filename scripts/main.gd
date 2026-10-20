@@ -4406,16 +4406,8 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 			e.dead = true
 			e.fade = 0.2
 			return
-	# Duende del tesoro: huye de ti en zigzag.
 	if e.behavior == "thief":
-		e.zig += delta
-		var ang: float = (-dirv).angle() + sin(e.zig * 2.2) * 0.7
-		var kk: float = 1.0 if dist < THIEF_NEAR else THIEF_FAR_K
-		e.position += (Vector2.from_angle(ang) * spd * kk + e.knock) * delta
-		e.position = _collide(e.position, e.radius * 0.5)
-		e.knock *= kn_decay
-		e.face_angle(ang)
-		e.loop_anim("Walk", 1.4)
+		_thief_step(e, delta, kn_decay, dirv, dist, spd)
 		return
 	if e.behavior == "runner":
 		# Va a donde vas a estar.
@@ -4514,25 +4506,42 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 	# Contacto con el jugador (combat.js): cada 0,55 s por enemigo.
 	var rr: float = e.radius + player.radius
 	if dist <= rr and e.touch_cd <= 0.0 and e.behavior != "thief":
-		e.touch_cd = CONTACT_CD
-		e.strike(to.angle())
-		_hurt_player(e.dmg, e.atk_type)
-		e.knock = -dirv * CONTACT_KNOCK
-		if _has_item("rockyhelmet"):
-			_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
-		if _has_item("eternalice"):
-			e.apply_slow(0.3, 2.0)
-		if not ab_fx.is_empty():
-			if ab_fx.has("thorns"):
-				_damage_enemy(e, 12.0 + float(player.level) * 3.0, Color("#9aa6b5"), -dirv, 60.0)
-			if ab_fx.has("contact") and not e.dead and randf() < _abn("contact_p"):
-				var ck: String = String(ab_fx["contact"])
-				if ck == "burn":
-					e.apply_burn(1)
-				elif ck == "poison":
-					e.apply_poison(1)
-				else:
-					_apply_cc(e, ck)
+		_enemy_contact(e, to, dirv)
+
+
+# Duende del tesoro: huye de ti en zigzag.
+func _thief_step(e: Enemy, delta: float, kn_decay: float, dirv: Vector2, dist: float, spd: float) -> void:
+	e.zig += delta
+	var ang: float = (-dirv).angle() + sin(e.zig * 2.2) * 0.7
+	var kk: float = 1.0 if dist < THIEF_NEAR else THIEF_FAR_K
+	e.position += (Vector2.from_angle(ang) * spd * kk + e.knock) * delta
+	e.position = _collide(e.position, e.radius * 0.5)
+	e.knock *= kn_decay
+	e.face_angle(ang)
+	e.loop_anim("Walk", 1.4)
+
+
+# Contacto con el jugador (combat.js): golpe, retroceso y efectos de objetos y habilidad.
+func _enemy_contact(e: Enemy, to: Vector2, dirv: Vector2) -> void:
+	e.touch_cd = CONTACT_CD
+	e.strike(to.angle())
+	_hurt_player(e.dmg, e.atk_type)
+	e.knock = -dirv * CONTACT_KNOCK
+	if _has_item("rockyhelmet"):
+		_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
+	if _has_item("eternalice"):
+		e.apply_slow(0.3, 2.0)
+	if not ab_fx.is_empty():
+		if ab_fx.has("thorns"):
+			_damage_enemy(e, 12.0 + float(player.level) * 3.0, Color("#9aa6b5"), -dirv, 60.0)
+		if ab_fx.has("contact") and not e.dead and randf() < _abn("contact_p"):
+			var ck: String = String(ab_fx["contact"])
+			if ck == "burn":
+				e.apply_burn(1)
+			elif ck == "poison":
+				e.apply_poison(1)
+			else:
+				_apply_cc(e, ck)
 
 
 func _shot_dmg(e: Enemy) -> float:
