@@ -1254,6 +1254,36 @@ func _process_body(delta: float, pt: int) -> void:
 		_biome_warm()
 	if not _ld_keep.is_empty() and run_time > 20.0:
 		_ld_keep.clear()   # las texturas calentadas ya las tienen los actores vivos o se pueden volver a cargar
+	_tick_pause_ui()
+	_tick_toast(delta)
+	_tick_quality(delta)
+	_trim_fx()
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
+	if player.dead:
+		_tick_death(delta)
+	elif z_state == "cine" and not paused:
+		_z_cine(delta)
+	elif jd.cinematic() and not paused:
+		jd.cine_tick(delta)
+	elif not choosing and not paused:
+		pt = _tick_run(delta, pt)
+	_tick_hud(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_HUD, pt)
+	_update_active_fx(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
+		if (Actor.tick % 30) == 0:
+			Prof.n_enemies = enemies.size()
+			Prof.n_bullets = bullets.size()
+			Prof.n_ebullets = ebullets.size()
+			Prof.n_orbs = orbs.size()
+			Prof.n_fx = fx.get_child_count()
+	Actor.tick_visuals(delta)
+
+
+func _tick_pause_ui() -> void:
 	hud.paused = paused
 	if not settings_open:
 		var want_ui: bool = paused and not player.dead
@@ -1262,6 +1292,9 @@ func _process_body(delta: float, pt: int) -> void:
 				pause_ui.open()
 			else:
 				pause_ui.close()
+
+
+func _tick_toast(delta: float) -> void:
 	if hud.toast_t > 0.0:
 		hud.toast_t -= delta
 	elif not PG.toasts.is_empty():
@@ -1270,6 +1303,9 @@ func _process_body(delta: float, pt: int) -> void:
 			"sub": (L.t(String(tt["sub"])) % String(tt["subarg"]) if String(tt["subarg"]) != "" else L.t(String(tt["sub"]))) if String(tt["sub"]) != "" else ""}
 		hud.toast_t = 2.8
 		Aud.sfx(String(tt.get("snd", "legend")))
+
+
+func _tick_quality(delta: float) -> void:
 	if quality == 0:
 		# Auto: baja los efectos si el juego va a tirones.
 		if Engine.get_frames_per_second() < 40 and run_time > 5.0:
@@ -1279,6 +1315,9 @@ func _process_body(delta: float, pt: int) -> void:
 				q_bad_t = 0.0
 		else:
 			q_bad_t = 0.0
+
+
+func _trim_fx() -> void:
 	var fcap := _fx_cap()
 	if fx.get_child_count() > fcap:
 		var over: int = fx.get_child_count() - fcap
@@ -1289,110 +1328,115 @@ func _process_body(delta: float, pt: int) -> void:
 			if ch is Fx and not ch.is_queued_for_deletion():
 				ch.queue_free()
 				over -= 1
+
+
+# Jugador caido: camara lenta, animacion de desmayo y cierre de la partida por etapas.
+func _tick_death(delta: float) -> void:
+	Actor.frozen = true
+	death_t += delta
+	# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
+	if death_done_t < 0.0:
+		var fa: bool = player.anim == "Faint" and player.frame >= (player._am("Faint")["d"] as Array).size() - 1
+		if player.anim != "Faint" or fa or death_t > 6.0:
+			death_done_t = 0.0
+	else:
+		death_done_t += delta
+	if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
+		Engine.time_scale = 1.0
+	if fin_stage >= 0:
+		if not run_saved:
+			Aud.music("")
+			Aud.sfx("gameover")
+		_finish_step()   # una etapa por fotograma: sin un tiron de ~150 ms en la consola al morir
+
+
+# Un fotograma de partida en marcha (sin cartas ni pausa); devuelve el marcador de Prof.
+func _tick_run(delta: float, pt: int) -> int:
+	run_time += delta
+	if mode == "rifts" and run_time >= RIFTS_LIMIT and arena == null and not timeup:
+		timeup = true
+		hud.timeup = true
+		hud.rifts_n = run_rifts
+		player.dead = true
+		player.active = false
+		_clear_orbit_orbs()
+		for e in enemies:
+			e.active = false
+		Aud.sfx("bossDown")
+	if _has_mod("nohealing"):
+		if player.max_hp > nh_max:
+			nh_last += player.max_hp - nh_max
+			nh_max = player.max_hp
+		if player.hp > nh_last:
+			player.hp = nh_last
+		else:
+			nh_last = player.hp
+	Aud.music(jd.music() if jd.active() else "rift" if arena != null else ("boss" if _boss_alive() else ["forest", "cave", "volcano"][biome_idx % 3]))
+	if down:
+		_update_down(delta)
+	else:
+		_update_player(delta)
+	_update_partner(delta)
+	_z_poll()
+	_cooldowns(delta)
+	_adapt(delta)
+	if z_state == "fx":
+		_z_fx(delta)
+	if dyn != null:
+		dyn_flash += delta
+		if player.dead or down:
+			dyn.stop()
+		elif dyn.active:
+			dyn.tick(delta)
 	if Prof.on:
-		pt = Prof.lap(Prof.S_FX, pt)
-	if player.dead:
-		Actor.frozen = true
-		death_t += delta
-		# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
-		if death_done_t < 0.0:
-			var fa: bool = player.anim == "Faint" and player.frame >= (player._am("Faint")["d"] as Array).size() - 1
-			if player.anim != "Faint" or fa or death_t > 6.0:
-				death_done_t = 0.0
-		else:
-			death_done_t += delta
-		if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
-			Engine.time_scale = 1.0
-		if fin_stage >= 0:
-			if not run_saved:
-				Aud.music("")
-				Aud.sfx("gameover")
-			_finish_step()   # una etapa por fotograma: sin un tiron de ~150 ms en la consola al morir
-	elif z_state == "cine" and not paused:
-		_z_cine(delta)
-	elif jd.cinematic() and not paused:
-		jd.cine_tick(delta)
-	elif not choosing and not paused:
-		run_time += delta
-		if mode == "rifts" and run_time >= RIFTS_LIMIT and arena == null and not timeup:
-			timeup = true
-			hud.timeup = true
-			hud.rifts_n = run_rifts
-			player.dead = true
-			player.active = false
-			_clear_orbit_orbs()
-			for e in enemies:
-				e.active = false
-			Aud.sfx("bossDown")
-		if _has_mod("nohealing"):
-			if player.max_hp > nh_max:
-				nh_last += player.max_hp - nh_max
-				nh_max = player.max_hp
-			if player.hp > nh_last:
-				player.hp = nh_last
-			else:
-				nh_last = player.hp
-		Aud.music(jd.music() if jd.active() else "rift" if arena != null else ("boss" if _boss_alive() else ["forest", "cave", "volcano"][biome_idx % 3]))
-		if down:
-			_update_down(delta)
-		else:
-			_update_player(delta)
-		_update_partner(delta)
-		_z_poll()
-		_cooldowns(delta)
-		_adapt(delta)
-		if z_state == "fx":
-			_z_fx(delta)
-		if dyn != null:
-			dyn_flash += delta
-			if player.dead or down:
-				dyn.stop()
-			elif dyn.active:
-				dyn.tick(delta)
+		pt = Prof.lap(Prof.S_PLAYER, pt)
+	if arena == null:
+		_update_world(delta)
+		_update_biome()
 		if Prof.on:
-			pt = Prof.lap(Prof.S_PLAYER, pt)
-		if arena == null:
-			_update_world(delta)
-			_update_biome()
-			if Prof.on:
-				pt = Prof.lap(Prof.S_WORLD, pt)
-			_update_spawner(delta)
-			if Prof.on:
-				pt = Prof.lap(Prof.S_SPAWN, pt)
-			_update_rift(delta)
+			pt = Prof.lap(Prof.S_WORLD, pt)
+		_update_spawner(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_SPAWN, pt)
+		_update_rift(delta)
+		jd.update(delta)
+		if run_time >= JDM.ARC_AT and not jd.done and pending_levels == 0 and mode != "rush" and mode != "tower":
+			jd.begin()
+	else:
+		_update_arena(delta)
+		if jd.active():
 			jd.update(delta)
-			if run_time >= JDM.ARC_AT and not jd.done and pending_levels == 0 and mode != "rush" and mode != "tower":
-				jd.begin()
-		else:
-			_update_arena(delta)
-			if jd.active():
-				jd.update(delta)
-		_update_weather(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_PLAYER, pt)
-		_update_enemies(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_ENEMIES, pt)
-		_update_hazards(delta)
-		_update_ebullets(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_HAZ_EB, pt)
-		_update_fields(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_FIELDS, pt)
-		_update_bullets(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_BULLETS, pt)
-		_update_orbs(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_ORBS, pt)
-		_cleanup_enemies()
-		if Prof.on:
-			pt = Prof.lap(Prof.S_CLEAN, pt)
-		if pending_levels > 0 and not choosing:
-			_open_cards()
-		elif bonds > 0 and not choosing and (arena == null or _arena_bond_ready()):
-			_offer_bond(true)
+	_update_weather(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_PLAYER, pt)
+	_update_enemies(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_ENEMIES, pt)
+	_update_hazards(delta)
+	_update_ebullets(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_HAZ_EB, pt)
+	_update_fields(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FIELDS, pt)
+	_update_bullets(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_BULLETS, pt)
+	_update_orbs(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_ORBS, pt)
+	_cleanup_enemies()
+	if Prof.on:
+		pt = Prof.lap(Prof.S_CLEAN, pt)
+	if pending_levels > 0 and not choosing:
+		_open_cards()
+	elif bonds > 0 and not choosing and (arena == null or _arena_bond_ready()):
+		_offer_bond(true)
+	return pt
+
+
+# Camara y datos del HUD.
+func _tick_hud(delta: float) -> void:
 	ground.center = player.position
 	cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake * (1.0 if shake_on else 0.0)
 	shake = maxf(0.0, shake - 30.0 * delta)
@@ -1466,18 +1510,6 @@ func _process_body(delta: float, pt: int) -> void:
 	wx.kind = wx_kind
 	wx.level = _wx_level()
 	_refresh_slots()
-	if Prof.on:
-		pt = Prof.lap(Prof.S_HUD, pt)
-	_update_active_fx(delta)
-	if Prof.on:
-		pt = Prof.lap(Prof.S_FX, pt)
-		if (Actor.tick % 30) == 0:
-			Prof.n_enemies = enemies.size()
-			Prof.n_bullets = bullets.size()
-			Prof.n_ebullets = ebullets.size()
-			Prof.n_orbs = orbs.size()
-			Prof.n_fx = fx.get_child_count()
-	Actor.tick_visuals(delta)
 
 
 func _refresh_slots() -> void:
