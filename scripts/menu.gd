@@ -98,7 +98,7 @@ var up_focus_id := ""
 var up_dex := 25
 var ban_open := false
 var tm_open := false
-var main_prev: Control   # RunView
+var main_prev: Control   # Preview
 var main_card: PanelContainer
 var main_info: Label
 var main_stats: Label
@@ -286,142 +286,6 @@ class Preview extends Control:
 		# se dibuja directo (antes: TextureRect + AtlasTexture nuevos en cada fotograma)
 		draw_texture_rect_region(_tx, Rect2(pos, Vector2(w * k, h * k)), Rect2(float(frame) * w, 0.0, w, h), Color(0, 0, 0, 0.9) if dark else Color.WHITE)
 
-
-
-# ---------------------------------------------------------------
-# Retrato de la pantalla principal: el Pokemon elegido corre sobre un suelo que se desplaza (como el fondo vivo del menu original,
-# pero barato para la consola): un solo Sprite2D animado a 10 fotogramas/s, el suelo es un TextureRect en mosaico que solo se mueve
-# (nada se redibuja) y no se procesa nada mientras la pantalla principal no se ve.
-# ---------------------------------------------------------------
-class RunShadow extends Node2D:
-	var w := 40.0
-
-	func _draw() -> void:
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.35))
-		draw_circle(Vector2.ZERO, w, Color(0, 0, 0, 0.3))
-
-
-class RunView extends Control:
-	const FPS := 10.0       # fotogramas de la animacion por segundo
-	const SPEED := 90.0     # px/s a los que pasa el suelo
-	const PROPS := ["tuft_a", "tuft_b", "flower_pink", "tuft_a", "flower_yellow", "tuft_b", "pebble"]
-	var dex := -1
-	var shiny := false
-	var scale_k := 6.0
-	var spr: Sprite2D
-	var shadow: RunShadow
-	var ground: TextureRect
-	var deco: Array = []     # Sprite2D del suelo (hierbas y flores) que pasan con el
-	var am: Dictionary = {}  # animacion Walk: w, h, n, r, ax, ay
-	var frame := 0
-	var acc := 0.0
-	var scroll := 0.0
-	var _k := 1.0
-
-	func _init() -> void:
-		clip_contents = true
-		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		ground = TextureRect.new()
-		ground.texture = load("res://assets/world/ground_grass.png")
-		ground.stretch_mode = TextureRect.STRETCH_TILE
-		ground.scale = Vector2(2, 2)
-		ground.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(ground)
-		for i in range(PROPS.size()):
-			var d := Sprite2D.new()
-			d.texture = load("res://assets/world/%s.png" % PROPS[i])
-			d.centered = false
-			d.scale = Vector2(2, 2)
-			d.set_meta("fx", float(i) / float(PROPS.size()))
-			d.set_meta("fy", 0.1 + 0.8 * fposmod(float(i) * 0.618, 1.0))
-			add_child(d)
-			deco.append(d)
-		shadow = RunShadow.new()
-		add_child(shadow)
-		spr = Sprite2D.new()
-		spr.centered = false
-		spr.region_enabled = true
-		add_child(spr)
-		visibility_changed.connect(func(): set_process(is_visible_in_tree()))
-		set_process(false)
-
-	func setup(d: int, shn: bool = false, k: float = 6.0, _drk: bool = false) -> void:
-		scale_k = k
-		if d == dex and shn == shiny:
-			return
-		dex = d
-		shiny = shn
-		var sm: Dictionary = SV.smeta.get(str(d), {})
-		var meta: Dictionary = sm.get("a", {})
-		var nm := "Walk" if meta.has("Walk") else ("Idle" if meta.has("Idle") else "")
-		am = {}
-		spr.visible = false
-		if nm != "":
-			am = meta[nm]
-			var tx: Texture2D = Preview.tex_of(d, nm, shn)
-			if tx != null:
-				spr.texture = tx
-				spr.offset = Vector2(-float(am["ax"]), -float(am["ay"]))
-				spr.visible = true
-		frame = 0
-		acc = 0.0
-		_region()
-		_layout()
-		set_process(is_visible_in_tree())
-
-	func _region() -> void:
-		if am.is_empty():
-			return
-		var rows: int = int(am.get("r", 8))
-		var w: float = float(am["w"])
-		var h: float = float(am["h"])
-		spr.region_rect = Rect2(float(frame) * w, float(mini(2, rows - 1)) * h, w, h)   # fila 2: mirando a la derecha
-
-	func _notification(what: int) -> void:
-		if what == NOTIFICATION_RESIZED:
-			_layout()
-
-	func _layout() -> void:
-		if size.x < 8.0 or size.y < 8.0:
-			return
-		var hz: float = size.y * 0.52   # horizonte
-		ground.position = Vector2(0, hz)
-		ground.size = Vector2(size.x / 2.0 + 128.0, (size.y - hz) / 2.0 + 2.0)
-		for d in deco:
-			var sp := d as Sprite2D
-			sp.set_meta("y", hz + (size.y - hz - 24.0) * float(sp.get_meta("fy")))
-			sp.position = Vector2(float(sp.get_meta("fx")) * (size.x + 60.0), float(sp.get_meta("y")))
-		var feet := Vector2(size.x * 0.5, size.y * 0.86)
-		if not am.is_empty():
-			_k = minf(scale_k, minf(size.x / float(am["w"]), size.y * 0.8 / float(am["h"])))
-			spr.scale = Vector2(_k, _k)
-			shadow.w = float(am["w"]) * _k * 0.26
-		spr.position = feet
-		shadow.position = feet
-		queue_redraw()
-
-	func _draw() -> void:
-		var hz: float = size.y * 0.52
-		draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(size.x, 0), Vector2(size.x, hz), Vector2(0, hz)]), PackedColorArray([Color("#3d6fb8"), Color("#3d6fb8"), Color("#9fd0f0"), Color("#9fd0f0")]))
-
-	func _process(delta: float) -> void:
-		scroll += SPEED * delta
-		ground.position.x = -fmod(scroll, 128.0)
-		var span: float = size.x + 60.0
-		for d in deco:
-			var sp := d as Sprite2D
-			var x: float = sp.position.x - SPEED * delta
-			if x < -40.0:
-				x += span
-			sp.position.x = x
-		if am.is_empty():
-			return
-		acc += delta
-		if acc >= 1.0 / FPS:
-			acc = fmod(acc, 1.0 / FPS)
-			frame = (frame + 1) % int(am["n"])
-			_region()
 
 
 # ---------------------------------------------------------------
@@ -635,6 +499,21 @@ class MenuWorld extends Node2D:
 	var cur_chunk := Vector2i(99999, 99999)
 	var gen_q: Array = []
 	var biome_i := 0
+	# Consola: el mismo mundo vivo que en el menu original, con el coste acotado. Antes (400b7544) se quito del todo:
+	# start() generaba 9 trozos y horneaba 9 texturas de golpe (en la consola, segundos a ~7 fps) y cada trozo nuevo
+	# era un tiron de ~150 ms. Ahora el terreno de cada trozo (el ruido, lo caro) se calcula en un hilo sobre una copia
+	# de tileworld, el suelo lo hornea el hilo de tileworld, el trozo se genera en el hilo principal ya sin ruido (~1/10)
+	# y el fondo aparece con un fundido cuando lo visible esta listo: abrir el menu no espera al fondo.
+	const LITE_MONS := 12      # Pokemon a la vez en la consola (el original: los 20)
+	const LITE_FADE := 0.5     # s del fundido de entrada
+	const LITE_AMB_HZ := 30.0  # las particulas de ambiente se redibujan a 30 Hz
+	var lite: bool = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
+	var warm: Node2D = null    # copia de tileworld fuera del arbol: calcula el terreno de un trozo en un hilo
+	var warm_key := Vector2i(99999, 99999)
+	var warm_tid := -1
+	var shown := true          # consola: false hasta que lo visible esta generado y horneado
+	var fade := 1.0
+	var amb_acc := 0.0
 
 	# Particulas de ambiente en pantalla: luciernagas, motas de cueva y ascuas de volcan.
 	class Ambient extends Node2D:
@@ -699,14 +578,32 @@ class MenuWorld extends Node2D:
 		gen.menu_mode = true
 		MAINS.Prop.tw = tw
 		vs = get_viewport_rect().size
-		_update_chunks(true)
-		tw.flush_bake()
-		for i in range(pool.size()):
-			_spawn_mon(true)
+		if lite:
+			warm = TW.new()
+			warm.seed_v = tw.seed_v
+			warm.liq_base = tw.liq_base
+			warm.liq_grow = tw.liq_grow
+			warm.wall_grow = tw.wall_grow
+			shown = false
+			fade = 0.0
+			modulate.a = 0.0
+			tw.set_process(false)   # hasta que se vea: el suelo lo hornea solo el hilo (sin horneado sincrono en el principal)
+			_update_chunks()
+		else:
+			_update_chunks(true)
+			tw.flush_bake()
+			for i in range(pool.size()):
+				_spawn_mon(true)
 		amb = Ambient.new()
+		amb.modulate.a = modulate.a
 		get_parent().add_child(amb)
 		get_parent().move_child(amb, get_index() + 1)
 		tree_exiting.connect(func():
+			if warm_tid >= 0:
+				WorkerThreadPool.wait_for_task_completion(warm_tid)
+				warm_tid = -1
+			if is_instance_valid(warm):
+				warm.free()
 			if is_instance_valid(gen):
 				gen.free())
 
@@ -725,6 +622,9 @@ class MenuWorld extends Node2D:
 			for key in gen.chunks.keys():
 				if absi(key.x - c.x) > 3 or absi(key.y - c.y) > 3:
 					gen._free_chunk(key)
+		if lite:
+			_lite_gen()
+			return
 		# los trozos nuevos se crean de uno en uno (sin tirones); al empezar, todos de golpe
 		var made := 0
 		while not gen_q.is_empty():
@@ -735,6 +635,48 @@ class MenuWorld extends Node2D:
 			# al empezar solo los 9 de alrededor; el resto llega de uno en uno
 			if not first or made >= 9:
 				break
+
+	# Consola: un trozo por paso. El terreno (22x22 casillas: el trozo y 3 de margen, lo que lee _gen_chunk) se calcula en
+	# un hilo sobre la copia "warm"; al terminar pasa a la cache de tileworld y el trozo se genera aqui ya sin ruido.
+	func _lite_gen() -> void:
+		if warm_tid >= 0:
+			if not WorkerThreadPool.is_task_completed(warm_tid):
+				return
+			WorkerThreadPool.wait_for_task_completion(warm_tid)
+			warm_tid = -1
+			tw.terr.merge(warm.terr, true)
+			warm.terr.clear()
+			if warm.raw_c.size() > 6000:
+				warm.raw_c.clear()
+			if gen_q.has(warm_key) and not gen.chunks.has(warm_key):
+				gen.chunks[warm_key] = gen._gen_chunk(warm_key.x, warm_key.y)
+				gen_q.erase(warm_key)
+			return   # un trozo por fotograma como mucho
+		while not gen_q.is_empty():
+			var nk: Vector2i = gen_q[0]
+			if gen.chunks.has(nk):
+				gen_q.pop_front()
+				continue
+			warm_key = nk
+			warm_tid = WorkerThreadPool.add_task(_warm_run.bind(nk), false, "menu_terrain")
+			break
+
+	func _warm_run(key: Vector2i) -> void:
+		var bx: int = key.x * TW.N - 3
+		var by: int = key.y * TW.N - 3
+		for j in range(TW.N + 6):
+			for i in range(TW.N + 6):
+				warm.terrain(bx + i, by + j)
+
+	# Lo que se ve ya tiene objetos y suelo horneado.
+	func _view_ready() -> bool:
+		var r := Rect2(cam - vs * 0.5, vs)
+		for ky in range(floori(r.position.y / TW.CW), floori((r.end.y - 0.01) / TW.CW) + 1):
+			for kx in range(floori(r.position.x / TW.CW), floori((r.end.x - 0.01) / TW.CW) + 1):
+				var k := Vector2i(kx, ky)
+				if not gen.chunks.has(k) or not tw.chunks.has(k) or tw.chunks[k]["tex"] == null:
+					return false
+		return true
 
 	# Sitio libre: sin pared, agua ni lava alrededor.
 	func _free_spot(pos: Vector2) -> bool:
@@ -806,6 +748,19 @@ class MenuWorld extends Node2D:
 		cam += drift * 26.0 * delta
 		position = vs * 0.5 - cam
 		_update_chunks()
+		if not shown:
+			tw._bake_tick()   # solo hilo: arranca tareas y recoge una textura por fotograma
+			if not _view_ready():
+				return
+			shown = true
+			tw.set_process(true)
+		if fade < 1.0:
+			fade = minf(1.0, fade + delta / LITE_FADE)
+			modulate.a = fade
+			if amb != null:
+				amb.modulate.a = fade
+		if lite and mons.size() < LITE_MONS and fade < 1.0:
+			_spawn_mon(true)   # durante el fundido, de uno en uno: aparecen con el mundo
 		for m in mons.duplicate():
 			var pushed: Vector2 = tw.collide(m.position, 12.0)   # no atraviesan paredes (como en el juego original)
 			if pushed.distance_to(m.position) > 0.5:
@@ -827,12 +782,18 @@ class MenuWorld extends Node2D:
 			if absf(m.position.x - cam.x) > vs.x * 0.5 + 520.0 or absf(m.position.y - cam.y) > vs.y * 0.5 + 420.0:
 				mons.erase(m)
 				m.queue_free()
-				_spawn_mon(false)
+				if not lite or mons.size() < LITE_MONS:
+					_spawn_mon(false)
 		# ambiente: bosque -> cueva de cristal -> volcan, como el original: el mismo mapa con los recursos de cada bioma
 		var bi: int = int(floor(t / PERIOD)) % 3
 		if bi != biome_i:
 			biome_i = bi
 			tw.set_biome(bi)
+		if lite:
+			amb_acc += delta
+			if amb_acc < 1.0 / LITE_AMB_HZ:
+				return
+			amb_acc = 0.0
 		if amb != null:
 			var pv := [0.0, 0.0, 0.0]
 			var kf: float = tw.fade_t * tw.fade_t * (3.0 - 2.0 * tw.fade_t)
@@ -998,9 +959,9 @@ func _ready() -> void:
 	_calc_mode()
 	_build_theme()
 	RenderingServer.set_default_clear_color(Color("#16233a"))
-	# fondo: un trozo del mapa que se desplaza solo, con Pokemon caminando
-	# En la consola el fondo vivo del menu (mundo generado + 20 Pokemon paseando) costaba segundos de 7 fps: fondo liso.
-	if not is_overlay and not (OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()):
+	# fondo: un trozo del mapa que se desplaza solo, con Pokemon caminando (como el menu original, tambien en la consola:
+	# alli MenuWorld va en modo "lite", ver la clase)
+	if not is_overlay:
 		var world := MenuWorld.new()
 		world.z_index = -4000   # el fondo siempre queda detras de toda la interfaz
 		add_child(world)
@@ -3038,7 +2999,7 @@ func _refresh_main() -> void:
 		SV.d["selected"] = dex
 	var shn: bool = bool(SV.d["shiny_on"]) and SV.owns(dex) and bool(SV.d["owned"][str(dex)]["shiny"])
 	if not is_instance_valid(main_prev):   # el retrato se crea una vez; si el Pokemon no cambia, setup no hace nada
-		main_prev = RunView.new()
+		main_prev = Preview.new()   # como en el original: el fondo vivo vuelve a estar tambien en la consola
 		main_prev.custom_minimum_size = main_prev_min
 		main_card.add_child(main_prev)
 	main_prev.setup(dex, shn, 6.0)

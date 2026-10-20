@@ -779,7 +779,9 @@ func _view_update(delta: float) -> void:
 	var vp := get_viewport()
 	if vp == null:
 		return
-	var r: Rect2 = vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, vp.get_visible_rect().size)
+	# transformacion propia hasta la pantalla (camara + padres): en el fondo del menu el mundo se mueve con el nodo padre, sin
+	# camara, y con la del viewport la "vista" quedaba en el origen: horneaba trozos que no se ven y no los de la camara.
+	var r: Rect2 = get_global_transform_with_canvas().affine_inverse() * Rect2(Vector2.ZERO, vp.get_visible_rect().size)
 	if not (r.size.x > 1.0 and r.size.y > 1.0 and r.size.x < 20000.0 and is_finite(r.position.x) and is_finite(r.position.y)):
 		return
 	vis_r = r
