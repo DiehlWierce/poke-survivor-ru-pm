@@ -75,6 +75,8 @@ known_ca_errors=$((known_ca_errors + ca))
 rm -f "$PG_LOG"
 echo "== savecheck (искусственные + реальные только на чтение) =="
 run_check "savecheck" "$GODOT_BIN" --headless --path "$ROOT" --script res://tools/savecheck.gd -- --real-root "$REAL_SAVE_ROOT" || true
+echo "== savenotice (плашка о сохранении в меню) =="
+run_check "savenotice" "$GODOT_BIN" --headless --path "$ROOT" --script res://tools/savenotice.gd || true
 echo "== summary =="
 echo "known resources still in use at exit: $known_resource_errors"
 echo "known macOS CA lookup diagnostics (present at baseline): $known_ca_errors"

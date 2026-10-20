@@ -107,6 +107,8 @@ var test_idx := 0
 var test_scores := {}
 var test_result_dex := 0
 var reset_armed := false
+var save_notice: PanelContainer = null   # aviso fijo si el guardado esta bloqueado (SV.save_blocked)
+static var _save_toast_done := false     # el aviso de copia/campos restaurados sale una sola vez por ejecucion
 var settings_box: VBoxContainer
 var settings_host: VBoxContainer
 var settings_pages := {}   # pestana -> pagina ya construida
@@ -1105,6 +1107,7 @@ func _ready() -> void:
 	# Solo la pantalla principal se construye ahora; las demas, la primera vez que se abren (_ensure): volver al menu tras cada partida cuesta menos.
 	if not is_overlay:   # los Ajustes dentro de la partida no usan la pantalla principal
 		_build_main()
+	_build_save_notice()
 	NAVG.veto = _nav_veto
 	get_viewport().size_changed.connect(_fit_later)   # Callable de un metodo: se desconecta solo al liberar el menu
 	_fit_layout()
@@ -1234,6 +1237,10 @@ func _fit_top() -> void:
 	top_bar.offset_right = -16.0 - ins.z
 	top_bar.offset_top = 10.0 + ins.y
 	top_bar.offset_bottom = 58.0 + ins.y
+	if save_notice != null:
+		save_notice.offset_left = 16.0 + ins.x
+		save_notice.offset_right = -16.0 - ins.z
+		save_notice.offset_top = 62.0 + ins.y
 	var avail: float = ar.size.x - 32.0
 	top_sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	news_top.text = L.t("Novedades")
@@ -1961,6 +1968,32 @@ func _update_top() -> void:
 	var mn: String = "mute" if muted else "sound"
 	mute_top.icon = IC.tex(mn, IC.scale_for(mn, 26))
 	_fit_top()
+
+
+# Problemas con el guardado (B5): si esta bloqueado, aviso fijo (sin foco, no atrapa el mando) con el motivo y por donde se
+# borra; si se cargo la copia o se restauraron campos, un aviso breve, una sola vez.
+func _build_save_notice() -> void:
+	if is_overlay:
+		return
+	if SV.save_blocked:
+		var why: String = SV.last_save_error.get_slice("\n", 0).strip_edges()
+		if why.length() > 90:
+			why = why.substr(0, 87) + "..."
+		var txt: String = L.t("¡Tu progreso no se guarda!") + "\n" + L.t("El archivo de guardado está dañado o es de una versión más nueva. Para empezar de cero:") + " " + L.t("Ajustes") + " › " + L.t("Zona peligrosa") + " › " + L.t("Borrar todo el progreso")
+		if why != "":
+			txt += "\n" + L.t("Motivo") + ": " + why
+		save_notice = PanelContainer.new()
+		save_notice.set_anchors_preset(Control.PRESET_TOP_WIDE)
+		save_notice.add_theme_stylebox_override("panel", _sb(Color(0.45, 0.1, 0.15, 0.94), Color("#ff7a85"), 2, 8))
+		save_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		save_notice.z_index = 48
+		var lb := _label(txt, 14 if (compact or short) else 16, Color.WHITE)
+		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		save_notice.add_child(lb)
+		add_child(save_notice)
+	elif not _save_toast_done and (SV.recovered_from_backup or SV.last_save_error != ""):
+		_save_toast_done = true
+		toast(L.t("Se ha cargado la copia de seguridad de tu partida.") if SV.recovered_from_backup else L.t("Se han restaurado algunos datos dañados de tu partida."))
 
 
 func toast(msg: String) -> void:
