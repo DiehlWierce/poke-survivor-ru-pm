@@ -3101,16 +3101,6 @@ func _sm(dex: int) -> Dictionary:
 	return _smeta[str(dex)]
 
 
-# Hash determinista (util.js) con enteros de 32 bits.
-func _hash(x: int, y: int, seed_v: int) -> float:
-	var h: int = ((x & 0xFFFFFFFF) * 374761393) & 0xFFFFFFFF
-	h = h ^ (((y & 0xFFFFFFFF) * 668265263) & 0xFFFFFFFF)
-	h = h ^ (((seed_v & 0xFFFFFFFF) * 2246822519) & 0xFFFFFFFF)
-	h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
-	h = h ^ (h >> 16)
-	return float(h & 0xFFFFFFFF) / 4294967296.0
-
-
 func _pick_n(arr: Array, n: int) -> Array:
 	var c: Array = arr.duplicate()
 	c.shuffle()
@@ -3147,7 +3137,7 @@ func _behavior_of(p: Dictionary) -> String:
 func _behavior_calc(p: Dictionary) -> String:
 	var dex: int = int(p["dex"])
 	var t: Array = p["types"]
-	var h: float = _hash(dex, 7, 11)
+	var h: float = ARENA.hsh(dex, 7, 11)
 	if HEAL_SET.has(dex):
 		return "healer"
 	if SHIELD_SET.has(dex):
@@ -4623,7 +4613,7 @@ func _kill_enemy(e: Enemy) -> void:
 # --- jefes: 4 ataques (Pisoton + Embestida o Salto, y 2 de lejos segun tipo) ---
 func _boss_init(e: Enemy) -> void:
 	var t: Array = e.types
-	var melee := ["slam", "dash" if _hash(e.dex, 3, 7) < 0.5 else "leap"]
+	var melee := ["slam", "dash" if ARENA.hsh(e.dex, 3, 7) < 0.5 else "leap"]
 	var pref: String = "volley"
 	if _has_t(t, ["fire", "ground", "poison", "rock", "grass"]):
 		pref = "rain"
@@ -4633,7 +4623,7 @@ func _boss_init(e: Enemy) -> void:
 		pref = "nova"
 	var others: Array = ["rain", "beam", "nova", "volley"]
 	others.erase(pref)
-	var ranged: Array = [pref, others[int(_hash(e.dex, 5, 9) * 3.0) % 3]]
+	var ranged: Array = [pref, others[int(ARENA.hsh(e.dex, 5, 9) * 3.0) % 3]]
 	var far: bool = e.behavior == "ranged"
 	e.ai = {"melee": melee, "ranged": ranged, "far_like": 0.65 if far else 0.35, "mode": "far" if far else "close",
 		"mode_t": randf_range(6.0, 8.0), "cd": 1.6, "cast": null, "fury": false, "side": 1.0 if randf() < 0.5 else -1.0}
