@@ -19,6 +19,8 @@ const LANGS := [
 	["zh_HK", "廣東話（粵語）"],
 ]
 const DEFAULT := "en"
+const SV = preload("res://scripts/save_data.gd")
+const PX = preload("res://scripts/pxfont.gd")
 
 static var tr: Translation = null
 static var added := false
@@ -33,7 +35,6 @@ static func codes() -> Array:
 
 
 static func lang() -> String:
-	var SV = load("res://scripts/save_data.gd")
 	SV.ensure()
 	var c := String(SV.d["settings"].get("lang", DEFAULT))
 	return c if c in codes() else DEFAULT
@@ -73,7 +74,6 @@ static func apply() -> void:
 		TranslationServer.add_translation(tr)
 		added = true
 	TranslationServer.set_locale("en")
-	var PX = load("res://scripts/pxfont.gd")
 	PX.set_lang(code)
 
 
