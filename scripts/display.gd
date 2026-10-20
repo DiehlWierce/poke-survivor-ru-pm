@@ -89,3 +89,12 @@ static func fit_scroll(tree: SceneTree, sc: ScrollContainer, content: Control, c
 	sc.follow_focus = true
 	sc.custom_minimum_size = Vector2(minf(need.x + (bar if vscroll else 0.0), avail.x), minf(need.y, avail.y))
 	return vscroll
+
+
+# Numero de columnas de una cuadricula de tarjetas segun el ancho disponible: tantas como quepan con `min_w` de ancho
+# por tarjeta y `gap` entre ellas (minimo 1, maximo `max_cols`).
+static func cols(avail_w: float, min_w: float, gap: float, max_cols: int = 4) -> int:
+	for c in range(max_cols, 1, -1):
+		if float(c) * min_w + float(c - 1) * gap <= avail_w:
+			return c
+	return 1

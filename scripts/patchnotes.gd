@@ -9,6 +9,32 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.1.0",
+		"date": "2026-10-20",
+		"title": "Poke Survivors para PortMaster 3.1: pantalla de carga, interfaz a escala y más fluidez",
+		"new": [
+			"Versión para consolas con PortMaster (720x480, mando): nueva pantalla de carga con generación del mundo por partes.",
+			"Escala de la interfaz 60 / 100 / 140 % en Ajustes; también se aplica a la pausa y a las tragaperras del gacha.",
+			"Mando: L1 y R1 cambian de pestaña en los menús.",
+			"Terreno calculado en un hilo aparte para evitar tirones (se puede desactivar con el archivo bakethread.txt).",
+			"Límite de 30 fps por defecto en consola; se cambia con el archivo maxfps.txt.",
+			"Registro de rendimiento perf_log.txt para diagnosticar tirones.",
+			"Créditos: añadido DiehlWierce (port para PortMaster y pruebas) en Acerca de y en la pantalla principal.",
+		],
+		"changes": [
+			"Los enemigos rezagados se recolocan por delante, en la dirección de avance, para que la multitud no se quede atrás.",
+			"Con mucha multitud, las gemas de experiencia se funden en una sola (la experiencia total se conserva).",
+			"Las cifras de daño se agrupan cuando hay muchas a la vez.",
+			"Los menús ya no se reconstruyen sin necesidad: abren más rápido.",
+			"Todas las pantallas se adaptan a pantallas pequeñas (720x480, 640x480): selección de modo, resumen, ajustes y ventanas emergentes.",
+		],
+		"fixes": [
+			"Arreglo: formato de la carta de Torre.",
+			"Arreglo: el terreno ya no deja huecos vacíos al correr deprisa.",
+			"Arreglo: los botones del mando funcionan en PortMaster (gptokeyb).",
+		],
+	},
+	{
 		"ver": "4.0.0",
 		"date": "2026-10-15",
 		"title": "Poke Survivors 4.0: movimientos Z, Dynamax y dificultad adaptativa",

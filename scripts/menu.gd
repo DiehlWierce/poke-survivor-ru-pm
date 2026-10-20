@@ -51,7 +51,7 @@ var ach_box: HBoxContainer
 var ach_t := 0.0
 var toast_t := 0.0
 var back_btn: Button
-var credit_lbl: Label
+var main_credit: VBoxContainer   # credito (autor del port de Android y del port a PortMaster) bajo el retrato de la pantalla principal
 var pad_hint: HBoxContainer
 var pad_hint_key := ""
 var shade: ColorRect
@@ -836,18 +836,6 @@ func _ready() -> void:
 	add_child(top)
 	back_btn = _btn("◀ Volver", func(): _leave(), Vector2(150, 44))
 	top.add_child(back_btn)
-	credit_lbl = Label.new()
-	credit_lbl.text = L.t("Un port hecho por JayElDragon")
-	credit_lbl.add_theme_font_size_override("font_size", 20)
-	credit_lbl.add_theme_color_override("font_color", Color("#ffe9a8"))
-	credit_lbl.add_theme_color_override("font_outline_color", Color.BLACK)
-	credit_lbl.add_theme_constant_override("outline_size", 6)
-	credit_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	credit_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# en pantallas estrechas el credito cede: se recorta con "..." en vez de empujar los botones fuera (ver _fit_top)
-	credit_lbl.clip_text = true
-	credit_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	top.add_child(credit_lbl)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_sp = sp
@@ -1009,6 +997,7 @@ func _fit_layout() -> void:
 			_screen_margins(screens[k])
 		_fit_float(ar, ins)
 		_fit_main(ar)
+		_fit_main_late.call_deferred()
 		_fit_dex(ar)
 		_fit_test(ar)
 		_fit_top()
@@ -1017,6 +1006,8 @@ func _fit_layout() -> void:
 			mode_key = mk
 			lay_gen += 1
 			_fit_mode_changed()
+		elif cur == "modes" and modes_cols_now != _modes_cols():
+			_refresh_modes()   # cambia el numero de columnas de la lista de modos
 	_fit_scrolls_now()
 
 
@@ -1033,6 +1024,8 @@ func _fit_mode_changed() -> void:
 			_refresh_lexicon()
 		"gacha":
 			_refresh_gacha()
+		"modes":
+			_refresh_modes()
 	gi_dirty = true
 
 
@@ -1049,8 +1042,8 @@ func _fit_float(ar: Rect2, ins: Vector4) -> void:
 	pad_hint.offset_bottom = -6.0 - ins.w
 
 
-# Barra superior: debe caber en la zona util. Si no cabe, primero Novedades se queda en icono, el credito se recorta con "..."
-# (cede el sitio) y por ultimo el nombre se recorta.
+# Barra superior: debe caber en la zona util. Si no cabe, primero Novedades se queda en icono
+# y por ultimo el nombre se recorta.
 func _fit_top() -> void:
 	if top_bar == null:
 		return
@@ -1061,19 +1054,20 @@ func _fit_top() -> void:
 	top_bar.offset_top = 10.0 + ins.y
 	top_bar.offset_bottom = 58.0 + ins.y
 	var avail: float = ar.size.x - 32.0
-	var on_main: bool = cur == "main" and not is_overlay
-	credit_lbl.visible = on_main and avail >= 600.0
-	credit_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL if credit_lbl.visible else Control.SIZE_FILL
-	top_sp.size_flags_horizontal = Control.SIZE_FILL if credit_lbl.visible else Control.SIZE_EXPAND_FILL
+	top_sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	news_top.text = L.t("Novedades")
 	news_top.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	news_top.custom_minimum_size.x = 0.0
+	# el nombre se recorta con "..." (OVERRUN_TRIM_ELLIPSIS), asi que su ancho minimo hay que ponerlo a mano: icono + nombre
 	name_pill.clip_text = false
-	name_pill.custom_minimum_size.x = 0.0
+	var nfont: Font = name_pill.get_theme_font("font")
+	var nsz: int = name_pill.get_theme_font_size("font_size")
+	var nsb: StyleBox = name_pill.get_theme_stylebox("normal")
+	name_pill.custom_minimum_size.x = ceilf(nfont.get_string_size(name_pill.text, HORIZONTAL_ALIGNMENT_LEFT, -1, nsz).x + 26.0 + 10.0 + nsb.get_minimum_size().x) + 4.0
 	for psb in pill_sbs:
 		(psb as StyleBoxFlat).content_margin_left = 10.0 if compact else 16.0
 		(psb as StyleBoxFlat).content_margin_right = 10.0 if compact else 16.0
-	var over: float = top_bar.get_combined_minimum_size().x - avail   # el credito (clip_text) no suma: cede solo
+	var over: float = top_bar.get_combined_minimum_size().x - avail
 	if over > 0.0:
 		news_top.text = ""
 		news_top.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1082,7 +1076,7 @@ func _fit_top() -> void:
 	if over > 0.0:
 		var nat: float = name_pill.get_combined_minimum_size().x
 		name_pill.clip_text = true
-		name_pill.custom_minimum_size.x = maxf(150.0, nat - over)
+		name_pill.custom_minimum_size.x = maxf(100.0, nat - over)
 
 
 # Pantalla principal: los botones y el retrato se encogen hasta que la columna cabe en la altura util
@@ -1108,12 +1102,26 @@ func _fit_main(ar: Rect2) -> void:
 	var btns: Array = main_ui["btns"]
 	# primero con las estadisticas debajo de los botones; si asi no cabe, en la columna izquierda
 	var sp2: Control = main_ui["sp2"]
+	var cfs: int = 16 if mid else 13
+	for cl2 in main_credit.get_children():
+		(cl2 as Label).add_theme_font_size_override("font_size", cfs)
+	# primero con credito y botones de >= 44; si no cabe, sin credito; y como ultimo recurso se compactan mas los botones
+	var done := false
+	for cred in [true, false]:
+		main_credit.visible = cred
+		if _fit_main_pass(btns, right, mv, sp2, ah, [58, 52, 48, 44]):
+			done = true
+			break
+	if not done:
+		_fit_main_pass(btns, right, mv, sp2, ah, [42, 38, 34])
+
+
+func _fit_main_pass(btns: Array, right: Control, mv: Control, sp2: Control, ah: float, heights: Array) -> bool:
 	for tgt in [right, main_ui["left"]]:
 		if sp2.get_parent() != tgt:
 			sp2.reparent(tgt, false)
-		var fits := false
-		for bh in [58, 52, 46, 42, 38, 34]:
-			mv.add_theme_constant_override("separation", 10 if bh >= 52 else 6)
+		for bh in heights:
+			mv.add_theme_constant_override("separation", 10 if bh >= 52 else (6 if bh >= 48 else 3))
 			for b in btns:
 				(b as Button).custom_minimum_size.y = bh
 				(b as Button).add_theme_font_size_override("font_size", clampi(roundi(bh * 0.45), 17, 26))
@@ -1121,10 +1129,16 @@ func _fit_main(ar: Rect2) -> void:
 				(b as Button).expand_icon = bh < 58
 				(b as Button).add_theme_constant_override("icon_max_width", 40 if bh >= 58 else bh - 10)
 			if _row_min_y(main_ui["row"]) <= ah:
-				fits = true
-				break
-		if fits:
-			break
+				return true
+	return false
+
+
+# Los textos con salto de linea (autowrap) solo dan su alto real cuando ya tienen ancho: se repite el ajuste un par de fotogramas despues.
+func _fit_main_late() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_inside_tree() and not main_ui.is_empty():
+		_fit_main(DSP.area(get_tree()))
 
 
 # Alto minimo de la fila principal (la mayor de sus columnas).
@@ -1151,7 +1165,7 @@ func _fit_dex(ar: Rect2) -> void:
 			cols = c
 			break
 	dex_grid.columns = cols
-	var fh: int = 34 if short else 40
+	var fh: int = 44
 	for b in dex_filters.get_children():
 		(b as Control).custom_minimum_size.y = fh
 
@@ -1373,12 +1387,17 @@ func _card_sb() -> StyleBoxFlat:
 
 
 # Fila [icono] texto
-func _icon_label(icon: String, text: String, size: int = 22, col: Color = Color.WHITE, isz: float = 24.0) -> HBoxContainer:
+func _icon_label(icon: String, text: String, size: int = 22, col: Color = Color.WHITE, isz: float = 24.0, wrap: bool = false) -> HBoxContainer:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
-	h.add_child(IC.rect(icon, isz))
+	var ir := IC.rect(icon, isz)
+	ir.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if wrap else Control.SIZE_FILL
+	h.add_child(ir)
 	var l := _label(text, size, col)
-	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	# wrap: el texto largo (otros idiomas) salta de linea en vez de ensanchar el panel
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
+	if wrap:
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(l)
 	return h
 
@@ -2064,6 +2083,21 @@ func _build_main() -> void:
 	main_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left.add_child(main_info)
 	main_ui["info"] = main_info
+	# credito: autor del port de Android (JayElDragon) y, debajo, del port a PortMaster (DiehlWierce); se oculta si no cabe (ver _fit_main)
+	main_credit = VBoxContainer.new()
+	main_credit.add_theme_constant_override("separation", 0)
+	main_credit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	left.add_child(main_credit)
+	for ct in ["Un port hecho por JayElDragon", "Port para PortMaster: DiehlWierce"]:
+		var cl := _label(L.t(ct), 16, Color("#ffe9a8"))
+		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cl.add_theme_color_override("font_outline_color", Color.BLACK)
+		cl.add_theme_constant_override("outline_size", 5)
+		cl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cl.autowrap_mode = TextServer.AUTOWRAP_OFF   # una linea fija (el alto no depende del ancho): si falta sitio se recorta con "..."
+		cl.clip_text = true
+		cl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		main_credit.add_child(cl)
 	# columna derecha: menu
 	var right := VBoxContainer.new()
 	right.custom_minimum_size = Vector2(380, 0)
@@ -2156,50 +2190,96 @@ func _build_modes() -> void:
 	sc.add_child(modes_box)
 
 
+# Ancho util para el contenido de una pantalla a pantalla completa (zona util - margenes de la pantalla - panel y barra de scroll).
+func _content_w() -> float:
+	return DSP.area(get_tree()).size.x - scr_ch.x - 64.0
+
+
+# Columnas de la lista de modos segun el ancho util: 1 en 640x480 a 140 %, 2 en ~914 de ancho, 3 a partir de ~1260.
+func _modes_cols() -> int:
+	return DSP.cols(_content_w(), 400.0, 12.0, 3)
+
+
+# Tarjeta de modo (sin colgarla): icono + titulo + descripcion; mas compacta en pantallas estrechas.
 func _mode_card(title: String, desc: String, cb: Callable, icon: String = "") -> Button:
 	var b := Button.new()
+	var isz: int = 48 if compact else 64
 	if icon != "":
-		b.icon = IC.btn_tex(icon, 64)
+		b.icon = IC.btn_tex(icon, isz)
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_constant_override("h_separation", 16)
-		b.add_theme_constant_override("icon_max_width", 64)
+		b.add_theme_constant_override("h_separation", 12 if compact else 16)
+		b.add_theme_constant_override("icon_max_width", isz)
 	b.text = title + "\n" + desc
-	b.custom_minimum_size = Vector2(0, 92)
+	b.custom_minimum_size = Vector2(0, 76 if compact else 92)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	b.focus_mode = Control.FOCUS_ALL
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	b.add_theme_font_size_override("font_size", 20)
+	b.add_theme_font_size_override("font_size", 18 if compact else 20)
 	b.pressed.connect(cb)
 	b.pressed.connect(func(): Aud.sfx("click"))
 	b.focus_entered.connect(func(): Aud.sfx("hover"))
-	modes_box.add_child(b)
 	return b
+
+
+# Boton auxiliar de un modo (elegir compañero, cambiar tipo...) debajo de su tarjeta.
+func _mode_aux(text: String, cb: Callable) -> Button:
+	var b := _btn(text, cb, Vector2(0, 48))
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.clip_text = true
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	return b
+
+
+# Un modo = tarjeta + (opcional) su boton auxiliar; las celdas se reparten en la cuadricula de modes_grid.
+func _mode_cell(grid: GridContainer, card: Button, aux: Button = null) -> void:
+	var cell := VBoxContainer.new()
+	cell.add_theme_constant_override("separation", 4)
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cell.add_child(card)
+	if aux != null:
+		cell.add_child(aux)
+	grid.add_child(cell)
+
+
+func _modes_grid(cols: int) -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = cols
+	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	g.add_theme_constant_override("h_separation", 12)
+	g.add_theme_constant_override("v_separation", 12)
+	modes_box.add_child(g)
+	return g
+
+
+var modes_cols_now := 0
 
 
 func _refresh_modes() -> void:
 	_clear(modes_box)
+	var mcols: int = _modes_cols()
+	modes_cols_now = mcols
+	var mg: GridContainer = _modes_grid(mcols)
 	SV.run_mods = Array(SV.d.get("mods", []))
 	var first: Button = _mode_card(L.t("Partida normal"), L.t("La experiencia de siempre, igual que el juego original."), func(): _start_mode("normal"), "flag")
+	_mode_cell(mg, first)
 	var ds: int = SV.daily_seed()
 	var dd: Dictionary = SV.d.get("daily", {})
 	var best: int = int(dd.get("best", 0)) if int(dd.get("date", 0)) == ds else 0
 	var dm: String = SV.daily_mod(ds)
 	var dtxt: String = L.t("Hoy: %s con la regla «%s» (misma para todos). +25%% de monedas.") % [_name_of(SV.daily_dex(ds)), L.t(String(MOD_INFO[dm][0]))]
 	dtxt += "  " + (L.t("Tu mejor tiempo de hoy: %s") % ("%d:%02d" % [best / 60, best % 60]) if best > 0 else L.t("Aún no lo has jugado hoy."))
-	_mode_card(L.t("Desafío diario"), dtxt, func(): _start_mode("daily"), "m_daily")
+	_mode_cell(mg, _mode_card(L.t("Desafío diario"), dtxt, func(): _start_mode("daily"), "m_daily"))
 	var rb: int = int(SV.d.get("rush_best", 0))
-	_mode_card(L.t("Rush de Jefes"), L.t("Solo jefes y legendarios, uno tras otro, cada vez más fuertes. Récord: %d jefes.") % rb, func(): _start_mode("rush"), "m_rush")
+	_mode_cell(mg, _mode_card(L.t("Rush de Jefes"), L.t("Solo jefes y legendarios, uno tras otro, cada vez más fuertes. Récord: %d jefes.") % rb, func(): _start_mode("rush"), "m_rush"))
 	var pd: int = SV.party_dex
-	_mode_card(L.t("Modo Fiesta"), L.t("Cualquier Pokémon, no puedes morir y no se guarda progreso. Pokémon: %s") % _name_of(pd), func(): _start_mode("party"), "m_party")
-	var pb := Button.new()
-	pb.text = L.t("Elegir Pokémon de la fiesta")
-	pb.custom_minimum_size = Vector2(0, 52)
-	pb.focus_mode = Control.FOCUS_ALL
-	pb.pressed.connect(func():
+	var pb: Button = _mode_aux(L.t("Elegir Pokémon de la fiesta"), func():
 		dex_pick_party = true
 		toast(L.t("Toca un Pokémon para la fiesta"))
 		_show("dex"))
-	modes_box.add_child(pb)
+	_mode_cell(mg, _mode_card(L.t("Modo Fiesta"), L.t("Cualquier Pokémon, no puedes morir y no se guarda progreso. Pokémon: %s") % _name_of(pd), func(): _start_mode("party"), "m_party"), pb)
 	var cdx: int = int(SV.d.get("coop_dex", 0))
 	if cdx <= 0 or not SV.dex_by.has(cdx):
 		cdx = 133
@@ -2207,20 +2287,14 @@ func _refresh_modes() -> void:
 			if int(x) != int(SV.d["selected"]):
 				cdx = int(x)
 				break
-	_mode_card(L.t("Modo Cooperativo"), L.t("Un segundo Pokémon te acompaña y ataca solo. Si conectas un segundo mando, el jugador 2 lo mueve con su stick izquierdo. Comparte tus mejoras. -20%% de monedas. Compañero: %s") % _name_of(cdx), func(): _start_mode("coop"), "m_coop")
-	var cb2 := Button.new()
-	cb2.text = L.t("Elegir compañero")
-	cb2.custom_minimum_size = Vector2(0, 52)
-	cb2.focus_mode = Control.FOCUS_ALL
-	cb2.pressed.connect(func():
+	var cb2: Button = _mode_aux(L.t("Elegir compañero"), func():
 		dex_pick_coop = true
 		toast(L.t("Toca el Pokémon que será tu compañero"))
 		_show("dex"))
-	modes_box.add_child(cb2)
+	_mode_cell(mg, _mode_card(L.t("Modo Cooperativo"), L.t("Un segundo Pokémon te acompaña y ataca solo. Si conectas un segundo mando, el jugador 2 lo mueve con su stick izquierdo. Comparte tus mejoras. -20%% de monedas. Compañero: %s") % _name_of(cdx), func(): _start_mode("coop"), "m_coop"), cb2)
 	var tw: Dictionary = SV.d.get("tower", {})
 	var tbest: int = int(tw.get("best", 0))
 	var rel: int = SV.tower_relics()
-	_mode_card(L.t("Torre de pisos"), _fmt_d(L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6."), [tbest, rel]), func(): _start_mode("tower"), "m_tower")
 	var tstarts: Array = [1]
 	var tcl: Dictionary = tw.get("claimed", {})
 	for k in range(5, TOWER_FLOORS_M, 5):
@@ -2230,58 +2304,50 @@ func _refresh_modes() -> void:
 	if not tstarts.has(tcur):
 		tcur = 1
 		SV.d["tower_start"] = 1
+	var tsb: Button = null
 	if tstarts.size() > 1:
-		var tsb := Button.new()
-		tsb.text = L.t("Piso inicial: %d") % tcur
-		tsb.custom_minimum_size = Vector2(0, 52)
-		tsb.focus_mode = Control.FOCUS_ALL
-		tsb.pressed.connect(func():
+		tsb = _mode_aux(L.t("Piso inicial: %d") % tcur, func():
 			var i: int = tstarts.find(int(SV.d.get("tower_start", 1)))
 			SV.d["tower_start"] = int(tstarts[(i + 1) % tstarts.size()])
 			SV.save()
 			_refresh_modes())
-		modes_box.add_child(tsb)
+	_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6."), [tbest, rel]), func(): _start_mode("tower"), "m_tower"), tsb)
 	var rbest: int = int(SV.d.get("rifts_best", 0))
-	_mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock")
+	_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock"))
 	var ty: String = String(SV.d.get("mode_type", "fire"))
 	if not TYPE_IDS.has(ty):
 		ty = "fire"
-	_mode_card(L.t("Supervivencia por tipo"), L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % L.t(String(MD.TYPE_NAME[ty])), func(): _start_mode("type"), "m_type")
-	var tb := Button.new()
-	tb.text = L.t("Cambiar tipo: %s") % L.t(String(MD.TYPE_NAME[ty]))
-	tb.custom_minimum_size = Vector2(0, 52)
-	tb.focus_mode = Control.FOCUS_ALL
-	tb.pressed.connect(func():
+	var tb: Button = _mode_aux(L.t("Cambiar tipo: %s") % L.t(String(MD.TYPE_NAME[ty])), func():
 		SV.d["mode_type"] = String(TYPE_IDS[(TYPE_IDS.find(ty) + 1) % TYPE_IDS.size()])
 		SV.save()
 		_refresh_modes())
-	modes_box.add_child(tb)
+	_mode_cell(mg, _mode_card(L.t("Supervivencia por tipo"), L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % L.t(String(MD.TYPE_NAME[ty])), func(): _start_mode("type"), "m_type"), tb)
 	var tl: Array = SV.team_list()
 	var names: Array = []
 	for x in tl:
 		names.append(_name_of(int(x)))
 	if SV.owned_count() >= 2:
-		_mode_card(L.t("Modo Equipo"), L.t("Lleva hasta 3 Pokémon y cámbialos en plena partida (botón táctil de la derecha, tocando su ficha, R3 o Tab). Si uno cae, entra el siguiente; los de banca se recuperan. Equipo: %s") % ", ".join(names), func(): _start_mode("team"), "m_team")
-		var eb := Button.new()
-		eb.text = L.t("Elegir equipo (hasta 3)")
-		eb.custom_minimum_size = Vector2(0, 52)
-		eb.focus_mode = Control.FOCUS_ALL
-		eb.pressed.connect(func():
+		var eb: Button = _mode_aux(L.t("Elegir equipo (hasta 3)"), func():
 			dex_pick_team = true
 			SV.d["team"] = []
 			toast(L.t("Toca hasta 3 Pokémon tuyos para el equipo"))
 			_show("dex"))
-		modes_box.add_child(eb)
+		_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Lleva hasta 3 Pokémon y cámbialos en plena partida (botón táctil de la derecha, tocando su ficha, R3 o Tab). Si uno cae, entra el siguiente; los de banca se recuperan. Equipo: %s") % ", ".join(names), func(): _start_mode("team"), "m_team"), eb)
 	else:
-		_mode_card(L.t("Modo Equipo"), L.t("Necesitas al menos 2 Pokémon para formar un equipo."), func(): toast(L.t("Consigue otro Pokémon primero")), "m_team")
-	modes_box.add_child(_label(L.t("Modificadores (todos los modos menos Diario y Fiesta): +25% de monedas por cada uno activo"), 22, C_GOLD))
+		_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Necesitas al menos 2 Pokémon para formar un equipo."), func(): toast(L.t("Consigue otro Pokémon primero")), "m_team"))
+	var mh := _label(L.t("Modificadores (todos los modos menos Diario y Fiesta): +25% de monedas por cada uno activo"), 22, C_GOLD)
+	modes_box.add_child(mh)
+	var mm: GridContainer = _modes_grid(mcols)
 	for id in SV.MOD_IDS:
 		var cb := CheckButton.new()
 		cb.text = L.t(String(MOD_INFO[id][0])) + " — " + L.t(String(MOD_INFO[id][1]))
 		cb.focus_mode = Control.FOCUS_ALL
 		cb.icon = IC.btn_tex(String(MOD_ICON[id]), 32)
 		cb.add_theme_constant_override("icon_max_width", 32)
-		cb.add_theme_font_size_override("font_size", 20)
+		cb.add_theme_font_size_override("font_size", 18 if compact else 20)
+		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb.custom_minimum_size = Vector2(0, 48)
 		cb.button_pressed = SV.run_mods.has(id)
 		cb.toggled.connect(func(on: bool):
 			if on and not SV.run_mods.has(id):
@@ -2290,7 +2356,7 @@ func _refresh_modes() -> void:
 				SV.run_mods.erase(id)
 			SV.d["mods"] = SV.run_mods.duplicate()
 			SV.save())
-		modes_box.add_child(cb)
+		mm.add_child(cb)
 	focus_first = first
 
 
@@ -2775,6 +2841,8 @@ func _refresh_dex() -> void:
 		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		b.text = ("#%d %s" % [dx, L.t(String(p["name"]))]) if (owned or dex_pick_party) else "#%d ???" % dx
 		b.add_theme_font_size_override("font_size", 13)
+		b.clip_text = true   # el nombre largo (otros idiomas) se recorta con "..." en vez de ensanchar la columna
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		if not owned and not dex_pick_party:
 			for k in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
 				b.add_theme_color_override(k, Color(0, 0, 0, 0.85))
@@ -2855,7 +2923,7 @@ func _dex_detail() -> void:
 		dex_detail.add_child(_label(L.t("Movimiento Z: bloqueado (derrota %d Pokémon de su tipo)") % ZM.NEED, 15, Color("#8a96b0")))
 	else:
 		var zcur: String = SV.zm_type_for(dx)
-		dex_detail.add_child(_icon_label("zc:" + zcur, L.t("Movimiento Z: %s") % L.t(String(ZM.DEF[zcur]["name"])), 18, Color("#ffb86b"), 32.0))
+		dex_detail.add_child(_icon_label("zc:" + zcur, L.t("Movimiento Z: %s") % L.t(String(ZM.DEF[zcur]["name"])), 18, Color("#ffb86b"), 32.0, true))
 		if zl.size() > 1:
 			dex_detail.add_child(_btn(L.t("Cambiar movimiento Z"), func():
 				var nx: String = String(zl[(zl.find(zcur) + 1) % zl.size()])
@@ -2863,7 +2931,7 @@ func _dex_detail() -> void:
 				SV.save()
 				_dex_detail(), Vector2(0, 46)))
 	var mv: String = SV.start_move_of(dx)
-	dex_detail.add_child(_icon_label("move:" + mv, L.t("Movimiento inicial: %s") % L.t(String(MD.MOVES[mv]["name"])), 18, Color("#c8d6ee"), 32.0))
+	dex_detail.add_child(_icon_label("move:" + mv, L.t("Movimiento inicial: %s") % L.t(String(MD.MOVES[mv]["name"])), 18, Color("#c8d6ee"), 32.0, true))
 	dex_detail.add_child(_label(L.t("Rareza: %s · Tenido x%d") % [L.t(SV.RARITY_NAME[clampi(int(p["rarity"]) - 1, 0, 4)]), int(SV.d["owned"][str(dx)]["n"])], 16, Color("#9fb4f0")))
 	if shiny_owned:
 		var cb := CheckButton.new()
@@ -3000,7 +3068,7 @@ func _refresh_up() -> void:
 			orow.add_child(pb)
 	# --- tarjetas de mejoras
 	var grid := GridContainer.new()
-	grid.columns = 3 if get_viewport_rect().size.x >= 1150.0 else 2
+	grid.columns = maxi(2, DSP.cols(_content_w(), 340.0, 10.0, 3))
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 12)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -3285,10 +3353,11 @@ func _build_up_picker() -> void:
 	pan.anchor_right = 0.94
 	pan.anchor_top = 0.05
 	pan.anchor_bottom = 0.95
-	pan.offset_left = 0
-	pan.offset_right = 0
-	pan.offset_top = 0
-	pan.offset_bottom = 0
+	var pins: Vector4 = DSP.insets(get_tree())   # margenes seguros (notch / esquinas)
+	pan.offset_left = pins.x
+	pan.offset_right = -pins.z
+	pan.offset_top = pins.y
+	pan.offset_bottom = -pins.w
 	root.add_child(pan)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
@@ -3320,7 +3389,7 @@ func _build_up_picker() -> void:
 	sc.get_v_scroll_bar().custom_minimum_size.x = 30
 	v.add_child(sc)
 	var grid := GridContainer.new()
-	grid.columns = 3 if get_viewport_rect().size.x >= 1150.0 else 2
+	grid.columns = maxi(2, DSP.cols(_content_w() * 0.88, 340.0, 10.0, 3))
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
@@ -3682,7 +3751,7 @@ func _show_pulls(results: Array) -> void:
 		cell.add_child(rl)
 	if SV.last_crystal != "":
 		var zc: String = SV.last_crystal
-		var zrow := _icon_label("zc:" + zc, L.t("¡Cristal Z encontrado! Desbloqueas: %s") % L.t(String(ZM.DEF[zc]["name"])), 20, Color("#ffd23f"), 40.0)
+		var zrow := _icon_label("zc:" + zc, L.t("¡Cristal Z encontrado! Desbloqueas: %s") % L.t(String(ZM.DEF[zc]["name"])), 20, Color("#ffd23f"), 40.0, true)
 		zrow.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.add_child(zrow)
 		Aud.sfx("legend")
@@ -3861,7 +3930,7 @@ func _fmt_d(tpl: String, vals: Array) -> String:
 
 
 func _lex_fill() -> void:
-	var cols: int = 2 if get_viewport_rect().size.x >= 900.0 else 1
+	var cols: int = DSP.cols(_content_w(), 420.0, 10.0, 3)
 	if lex_tab == "i":
 		var found: Dictionary = SV.d.get("itemsFound", {})
 		lex_tgt.add_child(_label(L.t("Objetos: %d / %d encontrados") % [found.size(), TD.ITEMS.size()], 24, C_GOLD))
@@ -4067,7 +4136,7 @@ func _goals_ach() -> Button:
 		if first == null:
 			first = cb
 	var grid := GridContainer.new()
-	grid.columns = 3
+	grid.columns = DSP.cols(_content_w(), 360.0, 10.0, 3)   # segun el ancho util (2 a 140 % en 720x480)
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -4125,7 +4194,7 @@ func _goals_zcrystals() -> Button:
 	var hint := _label(L.t("Cumple la misión de un tipo para desbloquear su movimiento Z. También se desbloquea derrotando a 250 Pokémon de ese tipo o con un cristal del gacha."), 16, Color("#b9cbf0"))
 	goals_box.add_child(hint)
 	var grid := GridContainer.new()
-	grid.columns = 3
+	grid.columns = DSP.cols(_content_w(), 360.0, 10.0, 3)   # segun el ancho util (2 a 140 % en 720x480)
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -4233,7 +4302,7 @@ func _nick() -> String:
 
 func _goals_profile() -> Button:
 	goals_box.add_child(_label("Así te ve el juego: tu tarjeta de entrenador.", 20, Color("#c8d6ee")))
-	var row := HBoxContainer.new()
+	var row: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()   # estrecho: la tarjeta va debajo de los datos
 	row.add_theme_constant_override("separation", 24)
 	goals_box.add_child(row)
 	var left := VBoxContainer.new()
@@ -4550,6 +4619,7 @@ var last_act := ""
 var import_armed := false
 const SET_TABS := ["Sonido", "Gráficos", "Controles", "Cuenta", "Acerca de"]
 const REPO_URL := "https://github.com/JayElDragon/poke-survivor"
+const REPO_URL_PM := "https://github.com/DiehlWierce/poke-survivor-ru-pm"
 
 
 func _build_settings() -> void:
@@ -5095,12 +5165,15 @@ func _set_about() -> void:
 	var by := _label("Port de Android por JayElDragon", 30)
 	by.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_box.add_child(by)
-	var ver := _label(L.t("Versión") + " " + UPD.APP_VERSION + " · Android", 20, Color("#c8d6ee"))
+	var pmb := _label(L.t("Port para PortMaster: DiehlWierce"), 26, C_GOLD)
+	pmb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	settings_box.add_child(pmb)
+	var ver := _label(L.t("Versión") + " " + UPD.APP_VERSION + " · PortMaster", 20, Color("#c8d6ee"))
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_box.add_child(ver)
 	settings_box.add_child(_label("Juego de fans gratis y sin ánimo de lucro: sin anuncios ni compras. Pokémon y sus personajes pertenecen a Nintendo, Creatures y GAME FREAK; este proyecto no está afiliado con ellos.", 20, Color("#c8d6ee")))
 	_sec("Créditos")
-	for line in ["• Juego original (web): JPTER78.", "• Port de Android: JayElDragon.", "• Sprites: PMD SpriteCollab y sus artistas (CC BY-NC 4.0).", "• Datos Pokémon: PokéAPI.", "• Fuente: Pixelify Sans (OFL)."]:
+	for line in ["• Juego original (web): JPTER78.", "• Port de Android: JayElDragon.", "• Port para PortMaster y pruebas: DiehlWierce.", "• Sprites: PMD SpriteCollab y sus artistas (CC BY-NC 4.0).", "• Datos Pokémon: PokéAPI.", "• Fuente: Pixelify Sans (OFL)."]:
 		settings_box.add_child(_label(line, 20))
 	var hb := HFlowContainer.new()
 	hb.add_theme_constant_override("h_separation", 10)
@@ -5109,4 +5182,5 @@ func _set_about() -> void:
 	var dxb := _btn("Pokédex", func(): _show("dex"), Vector2(0, 50))
 	hb.add_child(dxb)
 	hb.add_child(_btn("Mi repositorio en GitHub", func(): OS.shell_open(REPO_URL), Vector2(0, 50)))
+	hb.add_child(_btn("Port para PortMaster en GitHub", func(): OS.shell_open(REPO_URL_PM), Vector2(0, 50)))
 	focus_first = dxb
