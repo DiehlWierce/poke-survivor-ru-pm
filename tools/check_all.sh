@@ -5,6 +5,8 @@ cd "$ROOT"
 GODOT_BIN="${GODOT_BIN:-godot}"
 EXPECTED_PG_HASH=3914984115
 EXPECTED_TOAST_HASH=2461697248
+REAL_HOME="${HOME:-}"
+REAL_SAVE_ROOT="$REAL_HOME/Library/Application Support/Godot/app_userdata"
 TMP_HOME="$(mktemp -d "${TMPDIR:-/tmp}/poke-check-home.XXXXXX")" || exit 1
 LOG_DIR="$TMP_HOME/Library/Application Support/Godot/app_userdata/Pokémon Survivors/logs"
 mkdir -p "$LOG_DIR"
@@ -71,6 +73,8 @@ known_resource_errors=$((known_resource_errors + known))
 ca="$(grep -Ec 'get_system_ca_certificates \(platform/macos/os_macos.mm:1035\)' "$PG_LOG" || true)"
 known_ca_errors=$((known_ca_errors + ca))
 rm -f "$PG_LOG"
+echo "== savecheck (искусственные + реальные только на чтение) =="
+run_check "savecheck" "$GODOT_BIN" --headless --path "$ROOT" --script res://tools/savecheck.gd -- --real-root "$REAL_SAVE_ROOT" || true
 echo "== summary =="
 echo "known resources still in use at exit: $known_resource_errors"
 echo "known macOS CA lookup diagnostics (present at baseline): $known_ca_errors"
