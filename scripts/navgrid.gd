@@ -41,6 +41,55 @@ static func move(vp: Viewport, event: InputEvent, items: Array) -> bool:
 		return false   # el deslizador / selector usa izquierda-derecha para si mismo
 	if items.size() < 2 or not items.has(f):
 		return false
+	# Dentro de un ScrollContainer arriba/abajo recorren primero su propio contenido: los controles desplazados fuera de la
+	# vista tienen y global por encima de la barra superior / pestanas y antes el foco saltaba alli, saltandose la lista.
+	# Solo desde el primer (ultimo) elemento, y con el scroll ya en su tope, se sale del contenedor.
+	var sc: ScrollContainer = scroll_of(f)
+	var inner: Array = []
+	if sc != null:
+		for c in items:
+			if c == f or sc.is_ancestor_of(c):
+				inner.append(c)
+	var target: Control = null
+	if inner.size() >= 2:
+		target = _pick(f, dir, inner)
+		if target == null and dir.x != 0:
+			target = _pick(f, dir, items)   # fila de un solo control: izquierda / derecha pueden ir a la columna de al lado
+	elif sc == null:
+		target = _pick(f, dir, items)
+	if target == null and sc != null and dir.y != 0:
+		var bar: ScrollBar = sc.get_v_scroll_bar()
+		var v: int = sc.scroll_vertical
+		if (dir.y < 0 and v > 0) or (dir.y > 0 and float(v) < bar.max_value - bar.page - 0.5):
+			return false   # aun queda contenido (texto) por ese lado: lo desplaza quien llama, el foco no sale
+		var outer: Array = [f]
+		for c in items:
+			if not sc.is_ancestor_of(c):
+				outer.append(c)
+		target = _pick(f, dir, outer)
+	elif target == null and sc != null and inner.size() < 2:
+		target = _pick(f, dir, items)
+	if target == null or target == f:
+		return false
+	if dir.y != 0 and veto.is_valid() and bool(veto.call(f, target, dir.y)):
+		return true
+	target.grab_focus()
+	sticky_for = target
+	var tsc: ScrollContainer = scroll_of(target)
+	if tsc != null:
+		tsc.ensure_control_visible(target)   # el scroll sigue al foco ya en este fotograma
+	return true
+
+
+static func scroll_of(c: Node) -> ScrollContainer:
+	var p: Node = c.get_parent()
+	while p != null and not (p is ScrollContainer):
+		p = p.get_parent()
+	return p as ScrollContainer
+
+
+# Vecino de f en la direccion dir dentro de items (filas por y global, columna recordada en sticky_x); null si no hay.
+static func _pick(f: Control, dir: Vector2i, items: Array) -> Control:
 	items = items.duplicate()
 	items.sort_custom(func(a: Control, b: Control) -> bool:
 		var ac: Vector2 = a.get_global_rect().get_center()
@@ -70,30 +119,24 @@ static func move(vp: Viewport, event: InputEvent, items: Array) -> bool:
 			ci = idx
 			break
 	if ri < 0:
-		return false
+		return null
 	if sticky_for != f:
 		sticky_x = f.get_global_rect().get_center().x
 	var target: Control = null
 	if dir.x != 0:
 		var row: Array = rows[ri]
 		if row.size() < 2:
-			return false
+			return null
 		target = row[posmod(ci + dir.x, row.size())]
 		sticky_x = target.get_global_rect().get_center().x
 	else:
 		var nr: int = ri + dir.y
 		if nr < 0 or nr >= rows.size():
-			return false
+			return null
 		var best := INF
 		for c in rows[nr]:
 			var dx: float = absf((c as Control).get_global_rect().get_center().x - sticky_x)
 			if dx < best:
 				best = dx
 				target = c
-	if target == null or target == f:
-		return false
-	if dir.y != 0 and veto.is_valid() and bool(veto.call(f, target, dir.y)):
-		return true
-	target.grab_focus()
-	sticky_for = target
-	return true
+	return target

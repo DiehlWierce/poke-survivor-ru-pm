@@ -340,6 +340,16 @@ func _input(event: InputEvent) -> void:
 		return
 	if NAVG.move(get_viewport(), event, NAVG.focusables(self)):
 		get_viewport().set_input_as_handled()
+		return
+	# Primer / ultimo control pero aun queda contenido por ese lado: se desplaza (el foco se queda)
+	var down: bool = event.is_action_pressed("ui_down", true)
+	if down or event.is_action_pressed("ui_up", true):
+		var f: Control = get_viewport().gui_get_focus_owner()
+		if f != null and sc.is_ancestor_of(f):
+			var v: int = sc.scroll_vertical
+			sc.scroll_vertical = v + int(maxf(60.0, sc.size.y / 3.0)) * (1 if down else -1)
+			if sc.scroll_vertical != v:
+				get_viewport().set_input_as_handled()
 
 
 func open() -> void:
