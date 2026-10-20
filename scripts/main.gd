@@ -8211,8 +8211,13 @@ class Slots extends Node2D:
 			draw_string(font, r.position + Vector2(5.0, 15.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color("#8fa8cc"))
 			var nm_t: String = L.t(String(it["name"]))
 			var nm_fs: int = 11
-			while nm_fs > 7 and font.get_string_size(nm_t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
+			while nm_fs > 8 and font.get_string_size(nm_t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
 				nm_fs -= 1
+			if font.get_string_size(nm_t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
+				var nb: String = nm_t   # ni a 8 px cabe: se recorta con "…"
+				while nb.length() > 1 and font.get_string_size(nb + "…", HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
+					nb = nb.substr(0, nb.length() - 1)
+				nm_t = nb.strip_edges() + "…"
 			draw_string(font, r.position + Vector2(2.0, 55.0), nm_t, HORIZONTAL_ALIGNMENT_CENTER, SZ - 4.0, nm_fs, Color.WHITE)
 			var mx: int = int(it["max"])
 			var lv: int = int(it["lvl"])
@@ -8325,7 +8330,47 @@ class Cards extends Node2D:
 		_top = top_lim + maxf(0.0, (avail - (head + _h + tail)) * 0.6)
 		_btn_y = _top + head + _h + 12.0
 		_bw = clampf((_vp.x - _ins.x - _ins.z - 60.0) * 0.5, 120.0, 230.0)
+		_fit_text()
 		queue_redraw()
+
+	# Tamano de letra de cada carta (etiqueta, titulo, descripcion): se reduce lo justo para que el texto quepa en la
+	# carta (titulo en 2 lineas, descripcion en las que deje la altura) sin cortarse ni salirse. Se calcula al abrir y
+	# en size_changed, no en cada _draw. Cada elemento: {tag, tag_fs, title_fs, desc_fs, d_lines}.
+	var _fit: Array = []
+
+	func _lines_of(font: Font, txt: String, w: float, fs: int) -> Vector2:
+		# se mide con 8 px de holgura: con el escalado de la vista la letra se rasteriza algo distinta y una linea al borde puede pasar a dos
+		var sz: Vector2 = font.get_multiline_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, w - 8.0, fs, -1, TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND)
+		return Vector2(roundf(sz.y / font.get_height(fs)), sz.x)   # x = lineas, y = ancho de la linea mas larga
+
+	func _fit_ml(font: Font, txt: String, w: float, fs0: int, fs_min: int, lines_for: Callable) -> int:
+		var fs: int = fs0
+		while fs > fs_min:
+			var ln: Vector2 = _lines_of(font, txt, w, fs)
+			if int(ln.x) <= int(lines_for.call(fs)) and ln.y <= w - 8.0 + 0.5:
+				return fs
+			fs -= 1
+		return fs_min
+
+	func _fit_text() -> void:
+		_fit = []
+		var font := ThemeDB.fallback_font
+		var rs: Array = _rects()
+		var d_y: float = 196.0 - (294.0 - _h) * 0.5
+		for i in range(items.size()):
+			var it: Dictionary = items[i]
+			var w: float = (rs[i] as Rect2).size.x
+			var tag: String = L.t(String(it["tag"]))
+			var tfs := 16
+			while tfs > 10 and font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tfs).x > w - 40.0:
+				tfs -= 1
+			while tag.length() > 2 and font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tfs).x > w - 40.0:
+				tag = tag.substr(0, tag.length() - 2).strip_edges() + "…"
+			var ttl_fs: int = _fit_ml(font, L.t(String(it["title"])), w - 24.0, 24, 14, func(_f: int) -> int: return 2)
+			var h_card: float = _h
+			var dsc_fs: int = _fit_ml(font, L.t(String(it["desc"])), w - 32.0, 18, 11, func(f: int) -> int: return int((h_card - 6.0 - d_y - 0.25 * float(f)) / font.get_height(f)) + 1)
+			var dl: int = maxi(2, int((h_card - 6.0 - d_y - 0.25 * float(dsc_fs)) / font.get_height(dsc_fs)) + 1)
+			_fit.append({"tag": tag, "tag_fs": tfs, "title_fs": ttl_fs, "desc_fs": dsc_fs, "d_lines": dl})
 
 	func _btn_rects() -> Array:
 		return [Rect2(_cx - 20.0 - _bw, _btn_y, _bw, 50.0), Rect2(_cx + 20.0, _btn_y, _bw, 50.0)]
@@ -8469,10 +8514,12 @@ class Cards extends Node2D:
 		var sh: float = 294.0 - _h
 		var t_y: float = 134.0 - sh * 0.25
 		var d_y: float = 196.0 - sh * 0.5
-		var d_lines: int = clampi(int((_h - d_y + 8.0) / 21.0), 2, 5)
+		if _fit.size() != items.size():
+			_fit_text()
 		for i in range(rs.size()):
 			var r: Rect2 = rs[i]
 			var it: Dictionary = items[i]
+			var ft: Dictionary = _fit[i]
 			var tag_col: Color = it["color"]
 			var chosen_now: bool = i == sel
 			var border: Color = tag_col
@@ -8491,15 +8538,15 @@ class Cards extends Node2D:
 				draw_circle(Vector2(r.end.x - 40.0, r.end.y - 34.0), 15.0, Color("#a8281c"))
 				draw_circle(Vector2(r.end.x - 40.0, r.end.y - 34.0), 9.0, Color("#c0392b"))
 			draw_rect(Rect2(r.position, Vector2(r.size.x, 32.0)), Color(tag_col.r, tag_col.g, tag_col.b, 0.35))
-			draw_string(font, r.position + Vector2(10.0, 22.0), L.t(String(it["tag"])), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 40.0, 16, Color("#2b1a00") if legend else Color.WHITE)
+			draw_string(font, r.position + Vector2(10.0, 22.0), String(ft["tag"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 40.0, int(ft["tag_fs"]), Color("#2b1a00") if legend else Color.WHITE)
 			draw_string(font, r.position + Vector2(r.size.x - 24.0, 22.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#8fa8cc"))
 			var ic_c: Vector2 = r.position + Vector2(r.size.x * 0.5, 72.0 - sh * 0.1)
 			var ic_bg := Rect2(ic_c - Vector2(34.0, 34.0), Vector2(68.0, 68.0))
 			draw_rect(ic_bg, Color(0.1, 0.06, 0.0, 0.82) if legend else Color(tag_col.r, tag_col.g, tag_col.b, 0.22))
 			draw_rect(ic_bg, Color(tag_col.r, tag_col.g, tag_col.b, 0.7), false, 2.0)
 			IC.draw_in(self, String(it.get("icon", "star")), ic_c, 52.0)
-			draw_multiline_string(font, r.position + Vector2(12.0, t_y), L.t(String(it["title"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 24.0, 24, 2, Color("#4a2f12") if paper else (Color("#2b1a00") if legend else Color.WHITE))
-			draw_multiline_string(font, r.position + Vector2(16.0, d_y), L.t(String(it["desc"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 32.0, 18, d_lines, Color("#5a3d1c") if paper else (Color("#3a2600") if legend else Color("#c8d6ee")))
+			draw_multiline_string(font, r.position + Vector2(12.0, t_y), L.t(String(it["title"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 24.0, int(ft["title_fs"]), 2, Color("#4a2f12") if paper else (Color("#2b1a00") if legend else Color.WHITE))
+			draw_multiline_string(font, r.position + Vector2(16.0, d_y), L.t(String(it["desc"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 32.0, int(ft["desc_fs"]), int(ft["d_lines"]), Color("#5a3d1c") if paper else (Color("#3a2600") if legend else Color("#c8d6ee")))
 		if extras:
 			var brs: Array = _btn_rects()
 			if rerolls > 0:
@@ -9058,6 +9105,9 @@ class Hud extends Node2D:
 	var _rd := Rect2()                   # boton Dynamax
 	var _rt := Rect2()                   # boton de cambio de equipo
 	var _rp := Rect2()                   # boton de pausa
+	var _y_chip := 140.0                 # fila de los poderes/objeto (baja si el cartel de arriba es largo)
+	var _y_dyn := 58.0                   # barra de tiempo de Dynamax
+	var _y_down := 58.0                  # cartel "Espectando"
 	var _side_l := 270.0                 # ancho que ocupan a la izquierda la vida y el nombre (el texto central no lo pisa)
 
 	func _ready() -> void:
@@ -9119,10 +9169,14 @@ class Hud extends Node2D:
 
 	# Poderes activos (mejoras de altar, buffs) y objeto: en el centro, bajo el reloj.
 	func _chip(font: Font, vp: Vector2, y: float, txt: String, col: Color, icon: Texture2D, icon_name: String) -> void:
-		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20).x
 		var iw: float = 34.0 if (icon != null or icon_name != "") else 0.0
+		var bd: Vector2 = _band(y - 24.0, y + 14.0)
+		var fit: Array = _fit_txt(font, txt, 20, maxf(60.0, bd.y - bd.x - iw - 26.0), 12)
+		txt = String(fit[0])
+		var fsz: int = int(fit[1])
+		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsz).x
 		var w: float = tw + iw + 26.0
-		var x0: float = (vp.x - w) * 0.5
+		var x0: float = clampf((vp.x - w) * 0.5, bd.x, maxf(bd.x, bd.y - w))
 		draw_rect(Rect2(x0, y - 24.0, w, 38.0), Color(0.03, 0.06, 0.16, 0.62))
 		draw_rect(Rect2(x0, y - 24.0, w, 38.0), Color(col.r, col.g, col.b, 0.8), false, 2.0)
 		var tx: float = x0 + 13.0
@@ -9134,10 +9188,51 @@ class Hud extends Node2D:
 		elif icon_name != "":
 			IC.draw_in(self, icon_name, Vector2(tx + 14.0, y - 5.0), 26.0)
 			tx += iw
-		draw_string(font, Vector2(tx, y + 2.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, col)
+		draw_string(font, Vector2(tx, y + 2.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsz, col)
+
+	# Texto que cabe en `avail` px: se encoge hasta fs_min y, si aun asi no cabe, se recorta con "…". Devuelve [texto, tamano].
+	func _fit_txt(font: Font, txt: String, fs: int, avail: float, fs_min: int) -> Array:
+		var f: int = fs
+		var w: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
+		if w > avail:
+			f = maxi(fs_min, int(floor(float(fs) * avail / w)))
+			w = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
+		var base: String = txt
+		while w > avail and base.length() > 1:
+			base = base.substr(0, base.length() - 1)
+			w = font.get_string_size(base + "…", HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
+		return [base if base == txt else base.strip_edges() + "…", f]
+
+	# Hueco horizontal libre (izquierda, derecha) para una fila entre y0 e y1: descuenta lo que ocupan ahi la vida y el
+	# nombre, el nivel, el minimapa, los contadores, la pausa y la lista del equipo (se rellena al principio de cada _draw).
+	var _obst: Array = []
+
+	func _band(y0: float, y1: float) -> Vector2:
+		var xl: float = 8.0 + _ins.x
+		var xr: float = _vp.x - 8.0 - _ins.z
+		for o in _obst:
+			var r: Rect2 = o
+			if r.position.y < y1 and r.end.y > y0:
+				if r.get_center().x < _vp.x * 0.5:
+					xl = maxf(xl, r.end.x + 8.0)
+				else:
+					xr = minf(xr, r.position.x - 8.0)
+		return Vector2(xl, xr)
+
+	# Etiqueta con contorno que se queda dentro de la zona util: anclada por la izquierda, la derecha o el centro en ax.
+	func _pin_label(font: Font, txt: String, fs: int, ax: float, y: float, ha: int, col: Color) -> void:
+		var fit: Array = _fit_txt(font, txt, fs, _vp.x - _ins.x - _ins.z - 16.0, 10)
+		var t: String = String(fit[0])
+		var f: int = int(fit[1])
+		var w: float = font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
+		var x0: float = ax - (w if ha == HORIZONTAL_ALIGNMENT_RIGHT else (0.0 if ha == HORIZONTAL_ALIGNMENT_LEFT else w * 0.5))
+		x0 = clampf(x0, _ins.x + 8.0, _vp.x - _ins.z - 8.0 - w)
+		var yy: float = clampf(y, _ins.y + float(f) + 4.0, _vp.y - _ins.w - 8.0)
+		draw_string_outline(font, Vector2(x0, yy), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, 5, Color(0, 0, 0, 0.85))
+		draw_string(font, Vector2(x0, yy), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, col)
 
 	func draw_powers(font: Font, vp: Vector2) -> void:
-		var y: float = 140.0
+		var y: float = _y_chip
 		if buff_text != "":
 			_chip(font, vp, y, L.t(buff_text), Color("#ffd33d"), WTex.get_t("altar_" + power_id) if power_id != "" else null, "")
 			y += 46.0
@@ -9154,18 +9249,24 @@ class Hud extends Node2D:
 		var pop: float = 1.0 + maxf(0.0, 0.25 - thief_notice) * 1.6
 		var t1: String = L.t("¡%s merodea cerca!") % thief_name
 		var t2: String = L.t("Sigue la flecha dorada: ¡trae un ticket ×10!") if thief_gold else L.t("Sigue la flecha dorada: ¡va cargado de monedas!")
-		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 26).x
-		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16).x
-		var bw: float = minf(vp.x - 24.0, maxf(w1, w2) + 48.0)
-		draw_set_transform(Vector2(vp.x * 0.5, vp.y * 0.2), 0.0, Vector2(pop, pop))
+		# el cartel "salta" hasta x1,4: se limita para que ni asi se salga, y el texto se encoge si hace falta
+		var cap: float = (vp.x - _ins.x - _ins.z - 24.0) / 1.4
+		var fit1: Array = _fit_txt(font, t1, 26, cap - 32.0, 12)
+		var fit2: Array = _fit_txt(font, t2, 16, cap - 32.0, 10)
+		t1 = String(fit1[0])
+		t2 = String(fit2[0])
+		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit1[1])).x
+		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit2[1])).x
+		var bw: float = minf(cap, maxf(w1, w2) + 48.0)
+		draw_set_transform(Vector2((_ins.x + vp.x - _ins.z) * 0.5, maxf(vp.y * 0.2, 136.0 + _ins.y)), 0.0, Vector2(pop, pop))   # bajo la fila de nivel aunque la vista sea baja
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(0.2, 0.14, 0.02, 0.88 * a)
 		sb.border_color = Color(1.0, 0.82, 0.25, a)
 		sb.set_border_width_all(2)
 		sb.set_corner_radius_all(10)
 		draw_style_box(sb, Rect2(-bw * 0.5, -34.0, bw, 68.0))
-		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, 26, Color(1.0, 0.92, 0.55, a))
-		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, 16, Color(1.0, 0.85, 0.45, a))
+		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit1[1]), Color(1.0, 0.92, 0.55, a))
+		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit2[1]), Color(1.0, 0.85, 0.45, a))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# Brujula hacia los duendes del tesoro: flecha en el borde (o sobre su cabeza si ya los ves) con distancia y tiempo.
@@ -9188,17 +9289,13 @@ class Hud extends Node2D:
 				var ca: float = cos(a)
 				var ha := HORIZONTAL_ALIGNMENT_RIGHT if ca > 0.3 else (HORIZONTAL_ALIGNMENT_LEFT if ca < -0.3 else HORIZONTAL_ALIGNMENT_CENTER)
 				var lp: Vector2 = e + Vector2(-ca * 34.0, -sin(a) * 30.0 + 4.0)
-				var lw: float = 260.0
-				var lx: float = lp.x - (lw if ha == HORIZONTAL_ALIGNMENT_RIGHT else (0.0 if ha == HORIZONTAL_ALIGNMENT_LEFT else lw * 0.5))
-				draw_string_outline(font, Vector2(lx, lp.y), label, ha, lw, 16, 5, Color(0, 0, 0, 0.85))
-				draw_string(font, Vector2(lx, lp.y), label, ha, lw, 16, Color("#ffe27a"))
+				_pin_label(font, label, 16, lp.x, lp.y, ha, Color("#ffe27a"))
 			else:
-				var by: float = sp.y - 60.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0
+				var by: float = maxf(sp.y - 60.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0, _ins.y + 104.0)   # la etiqueta no sale por arriba ni pisa el reloj
 				var p := Vector2(sp.x, by)
 				draw_colored_polygon(PackedVector2Array([p + Vector2(-17.0, -14.0), p + Vector2(17.0, -14.0), p + Vector2(0.0, 11.0)]), Color("#3a2606"))
 				draw_colored_polygon(PackedVector2Array([p + Vector2(-14.0, -12.0), p + Vector2(14.0, -12.0), p + Vector2(0.0, 8.0)]), gcol)
-				draw_string_outline(font, p + Vector2(-110.0, -22.0), label, HORIZONTAL_ALIGNMENT_CENTER, 220.0, 15, 5, Color(0, 0, 0, 0.85))
-				draw_string(font, p + Vector2(-110.0, -22.0), label, HORIZONTAL_ALIGNMENT_CENTER, 220.0, 15, Color("#ffe27a"))
+				_pin_label(font, label, 15, p.x, p.y - 22.0, HORIZONTAL_ALIGNMENT_CENTER, Color("#ffe27a"))
 
 	func draw_rift_notice(font: Font, vp: Vector2) -> void:
 		if rift_notice < 0.0:
@@ -9210,10 +9307,16 @@ class Hud extends Node2D:
 		if rift_den:
 			t1 = L.t("¡SE HA ABIERTO UNA GUARIDA DYNAMAX!")
 			t2 = L.t("Sigue la flecha roja: dentro te espera un Pokémon gigante")
-		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 26).x
-		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16).x
-		var bw: float = minf(vp.x - 24.0, maxf(w1, w2) + 48.0)
-		draw_set_transform(Vector2(vp.x * 0.5, vp.y * 0.2), 0.0, Vector2(pop, pop))
+		# el cartel "salta" hasta x1,4: se limita para que ni asi se salga, y el texto se encoge si hace falta
+		var cap: float = (vp.x - _ins.x - _ins.z - 24.0) / 1.4
+		var fit1: Array = _fit_txt(font, t1, 26, cap - 32.0, 12)
+		var fit2: Array = _fit_txt(font, t2, 16, cap - 32.0, 10)
+		t1 = String(fit1[0])
+		t2 = String(fit2[0])
+		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit1[1])).x
+		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit2[1])).x
+		var bw: float = minf(cap, maxf(w1, w2) + 48.0)
+		draw_set_transform(Vector2((_ins.x + vp.x - _ins.z) * 0.5, maxf(vp.y * 0.2, 136.0 + _ins.y)), 0.0, Vector2(pop, pop))   # bajo la fila de nivel aunque la vista sea baja
 		var r := Rect2(-bw * 0.5, -34.0, bw, 68.0)
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(0.102, 0.043, 0.2, 0.88 * a)
@@ -9221,8 +9324,8 @@ class Hud extends Node2D:
 		sb.set_border_width_all(2)
 		sb.set_corner_radius_all(10)
 		draw_style_box(sb, r)
-		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, 26, Color(0.886, 0.816, 1.0, a))
-		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, 16, Color(0.788, 0.69, 1.0, a))
+		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit1[1]), Color(0.886, 0.816, 1.0, a))
+		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit2[1]), Color(0.788, 0.69, 1.0, a))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	func draw_rift(font: Font, vp: Vector2) -> void:
@@ -9250,26 +9353,23 @@ class Hud extends Node2D:
 				var ca: float = cos(a)
 				var ha := HORIZONTAL_ALIGNMENT_RIGHT if ca > 0.3 else (HORIZONTAL_ALIGNMENT_LEFT if ca < -0.3 else HORIZONTAL_ALIGNMENT_CENTER)
 				var lp: Vector2 = e + Vector2(-ca * 34.0, -sin(a) * 30.0 + 4.0)
-				var lw: float = 240.0
-				var lx: float = lp.x - (lw if ha == HORIZONTAL_ALIGNMENT_RIGHT else (0.0 if ha == HORIZONTAL_ALIGNMENT_LEFT else lw * 0.5))
-				draw_string_outline(font, Vector2(lx, lp.y), label, ha, lw, 16, 5, Color(0, 0, 0, 0.85))
-				draw_string(font, Vector2(lx, lp.y), label, ha, lw, 16, tcol)
+				_pin_label(font, label, 16, lp.x, lp.y, ha, tcol)
 			else:
 				# Encima de la grieta: flecha que bota con la cuenta atras
-				var by: float = rift_scr.y - 46.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0
+				var by: float = maxf(rift_scr.y - 46.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0, _ins.y + 104.0)
 				var p := Vector2(rift_scr.x, by)
 				var tri := PackedVector2Array([p + Vector2(-17.0, -14.0), p + Vector2(17.0, -14.0), p + Vector2(0.0, 11.0)])
 				draw_colored_polygon(tri, Color("#1a0b33"))
 				draw_colored_polygon(PackedVector2Array([p + Vector2(-14.0, -12.0), p + Vector2(14.0, -12.0), p + Vector2(0.0, 8.0)]), fcol)
 				var l2: String = "%s %d s" % [lbl, ceili(rift_ttl)]
-				draw_string_outline(font, p + Vector2(-100.0, -22.0), l2, HORIZONTAL_ALIGNMENT_CENTER, 200.0, 15, 5, Color(0, 0, 0, 0.85))
-				draw_string(font, p + Vector2(-100.0, -22.0), l2, HORIZONTAL_ALIGNMENT_CENTER, 200.0, 15, tcol)
+				_pin_label(font, l2, 15, p.x, p.y - 22.0, HORIZONTAL_ALIGNMENT_CENTER, tcol)
 		if legend_frac >= 0.0:
 			var w: float = minf(440.0, vp.x - 360.0)
 			var x0: float = vp.x * 0.5 - w * 0.5
 			draw_rect(Rect2(x0 - 2.0, vp.y - 148.0, w + 4.0, 22.0), Color(0, 0, 0, 0.6))
 			draw_rect(Rect2(x0, vp.y - 146.0, w * clampf(legend_frac, 0.0, 1.0), 18.0), Color("#b06bff"))
-			draw_string(font, Vector2(x0, vp.y - 154.0), legend_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#e6d4ff"))
+			var lg: Array = _fit_txt(font, legend_name, 18, w - 70.0, 11)
+			draw_string(font, Vector2(x0, vp.y - 154.0), String(lg[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(lg[1]), Color("#e6d4ff"))
 			if arena_left >= 0.0:
 				draw_string(font, Vector2(x0, vp.y - 154.0), "%02d:%02d" % [int(arena_left) / 60, int(arena_left) % 60], HORIZONTAL_ALIGNMENT_RIGHT, w, 18, Color("#ffd33d") if arena_left > 20.0 else Color("#ff6b7a"))
 
@@ -9352,12 +9452,13 @@ class Hud extends Node2D:
 			draw_rect(Rect2(0, vp.y - th, vp.x, th), Color(1.0, 0.1, 0.3, a))
 			draw_rect(Rect2(0, 0, th, vp.y), Color(1.0, 0.1, 0.3, a))
 			draw_rect(Rect2(vp.x - th, 0, th, vp.y), Color(1.0, 0.1, 0.3, a))
-			var w: float = minf(360.0, vp.x - 380.0)
-			var x0: float = vp.x * 0.5 - w * 0.5
+			var bd: Vector2 = _band(_y_dyn - 16.0, _y_dyn + 26.0)
+			var w: float = minf(360.0, bd.y - bd.x - 8.0)
+			var x0: float = clampf(vp.x * 0.5 - w * 0.5, bd.x + 4.0, maxf(bd.x + 4.0, bd.y - 4.0 - w))
 			var fr: float = clampf(dyn_left / DYN.DUR, 0.0, 1.0)
-			draw_rect(Rect2(x0 - 2.0, 62.0, w + 4.0, 20.0), Color(0, 0, 0, 0.65))
-			draw_rect(Rect2(x0, 64.0, w * fr, 16.0), tcol if fr > 0.25 else Color("#ffb347"))
-			draw_string(font, Vector2(x0, 58.0), "DYNAMAX  %d s" % ceili(dyn_left), HORIZONTAL_ALIGNMENT_CENTER, w, 16, Color.WHITE)
+			draw_rect(Rect2(x0 - 2.0, _y_dyn + 4.0, w + 4.0, 20.0), Color(0, 0, 0, 0.65))
+			draw_rect(Rect2(x0, _y_dyn + 6.0, w * fr, 16.0), tcol if fr > 0.25 else Color("#ffb347"))
+			draw_string(font, Vector2(x0, _y_dyn), "DYNAMAX  %d s" % ceili(dyn_left), HORIZONTAL_ALIGNMENT_CENTER, w, 16, Color.WHITE)
 		if dyn_flash < 2.7:
 			var fl: float = clampf(1.0 - dyn_flash / 0.25, 0.0, 1.0)
 			if fl > 0.0:
@@ -9517,13 +9618,19 @@ class Hud extends Node2D:
 		var a: float = clampf(minf(toast_t, 2.8 - toast_t + 0.001) * 4.0, 0.0, 1.0)
 		var txt: String = String(toast["text"])
 		var sub: String = String(toast.get("sub", ""))
-		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
+		var cap: float = vp.x - _ins.x - _ins.z - 40.0
+		var f1: Array = _fit_txt(font, txt, 22, cap - 76.0, 12)
+		txt = String(f1[0])
+		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, int(f1[1])).x
+		var f2: Array = [sub, 16]
 		if sub != "":
-			tw = maxf(tw, font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x)
-		var w: float = minf(tw + 100.0, vp.x - 40.0)
+			f2 = _fit_txt(font, sub, 16, cap - 76.0, 10)
+			sub = String(f2[0])
+			tw = maxf(tw, font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, int(f2[1])).x)
+		var w: float = minf(tw + 100.0, cap)
 		var h: float = 64.0 if sub == "" else 82.0
-		var x0: float = vp.x * 0.5 - w * 0.5
-		var y0: float = 64.0
+		var x0: float = (_ins.x + vp.x - _ins.z) * 0.5 - w * 0.5
+		var y0: float = 64.0 + _ins.y
 		var out := StyleBoxFlat.new()
 		out.bg_color = Color(0.043, 0.094, 0.22, a)
 		out.set_corner_radius_all(15)
@@ -9537,18 +9644,20 @@ class Hud extends Node2D:
 		var ic: String = "medal%d" % clampi(int(toast.get("tier", 2)), 1, 3)
 		IC.draw_in(self, ic, Vector2(x0 + 36.0, y0 + h * 0.5), 36.0, Color(1, 1, 1, a))
 		var ty: float = y0 + (h * 0.5 + 8.0 if sub == "" else 34.0)
-		draw_string(font, Vector2(x0 + 66.0, ty), txt, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, 22, Color(1.0, 0.82, 0.25, a))
+		draw_string(font, Vector2(x0 + 66.0, ty), txt, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, int(f1[1]), Color(1.0, 0.82, 0.25, a))
 		if sub != "":
-			draw_string(font, Vector2(x0 + 66.0, y0 + 60.0), sub, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, 16, Color(0.72, 0.8, 0.94, a))
+			draw_string(font, Vector2(x0 + 66.0, y0 + 60.0), sub, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, int(f2[1]), Color(0.72, 0.8, 0.94, a))
 
-	# Texto centrado que se encoge (hasta 11 px) para no pisar lo que hay a los lados; half = semiancho libre.
-	func _ctext(font: Font, y: float, txt: String, fs: int, col: Color, half: float) -> void:
-		var f: int = fs
-		var maxw: float = maxf(120.0, half * 2.0)
-		var w: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1.0, fs).x
-		if w > maxw:
-			f = maxi(11, int(floor(float(fs) * maxw / w)))
-		draw_string(font, Vector2(0.0, y), txt, HORIZONTAL_ALIGNMENT_CENTER, _vp.x, f, col)
+	# Linea de texto centrada en el hueco libre de su fila: si cabe centrada en la pantalla se queda ahi; si no, se
+	# desplaza al hueco y, si aun asi no cabe, se encoge (hasta 11 px) y al final se recorta con "…".
+	func _cline(font: Font, y: float, txt: String, fs: int, col: Color) -> void:
+		var bd: Vector2 = _band(y - float(fs) * 0.8, y + float(fs) * 0.3)
+		var fit: Array = _fit_txt(font, txt, fs, maxf(60.0, bd.y - bd.x), 11)
+		var t: String = String(fit[0])
+		var f: int = int(fit[1])
+		var w: float = font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
+		var x0: float = clampf(_vp.x * 0.5 - w * 0.5, bd.x, maxf(bd.x, bd.y - w))
+		draw_string(font, Vector2(x0, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, col)
 
 	func _draw() -> void:
 		var font := ThemeDB.fallback_font
@@ -9556,9 +9665,56 @@ class Hud extends Node2D:
 			_relayout()
 		var vp: Vector2 = _vp
 		var ins: Vector4 = _ins
+		var oy: float = ins.y
+		# --- Medidas de lo que rodea a las filas centrales: cada fila de texto central se coloca en el hueco libre ---
+		var hp_txt: String = L.t("%s  PS %d/%d") % [poke_name, ceili(hp), ceili(max_hp)]
+		var name_w: float = font.get_string_size(hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var lvl_end: float = 16.0 + ins.x + font.get_string_size(L.t("Nv. %d") % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		if revives > 0:
+			lvl_end = maxf(lvl_end, 70.0 + ins.x + 22.0 * float(revives - 1) + 9.0)
+		if ab_name != "":
+			lvl_end = maxf(lvl_end, 132.0 + ins.x + font.get_string_size(ab_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15).x)
+		var tw: float = font.get_string_size(str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var t10w: float = font.get_string_size(str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var cw: float = font.get_string_size(str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+		var cnt_left: float = vp.x - 16.0 - ins.z - (t10w + 40.0) - (tw + 40.0) - cw - 28.0   # borde izquierdo de los contadores
+		var kills_txt: String = L.t("Derrotados: %d") % kills
+		var kills_fs: int = 20
+		var kfit: Array = _fit_txt(font, kills_txt, 20, 220.0, 12)
+		kills_txt = String(kfit[0])
+		kills_fs = int(kfit[1])
+		var kw: float = font.get_string_size(kills_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, kills_fs).x
+		_obst = [
+			Rect2(16.0 + ins.x, 16.0 + oy, 240.0, 18.0),
+			Rect2(16.0 + ins.x, 40.0 + oy, name_w, 20.0),
+			Rect2(16.0 + ins.x, 62.0 + oy, lvl_end - 16.0 - ins.x, 18.0),
+			Rect2(vp.x - 16.0 - ins.z - kw, 14.0 + oy, kw, 28.0),
+			Rect2(cnt_left, 42.0 + oy, vp.x - 16.0 - ins.z - cnt_left, 28.0),
+			_rp,
+			Rect2(mini_pos, Vector2(200.0, 200.0) * mini_scale),
+		]
+		for tr in team_rects():
+			_obst.append(tr)
+		# pila de filas centrales bajo el reloj: cada fila presente baja a la siguiente
+		var cy: float = 58.0 + oy
+		var y_l2: float = cy
+		if limit > 0.0 or tower_floor > 0 or adapt_pct > 0:
+			cy += 24.0
+		var y_wx: float = cy
+		if weather_text != "":
+			cy += 24.0
+		_y_dyn = cy
+		if dyn_left >= 0.0:
+			cy += 30.0
+		var y_down: float = cy - 2.0
+		if down:
+			cy += 74.0
+		var y_ban: float = maxf(cy + 8.0, 92.0 + oy)
+		_y_chip = 140.0 + oy
+		if banner != "":
+			_y_chip = maxf(_y_chip, y_ban + 48.0)
 		draw_z(font, vp)
 		draw_dyn(font, vp)
-		draw_toast(font, vp)
 		if show_fps:
 			draw_string(font, Vector2(vp.x - 130.0 - ins.z, vp.y - 12.0 - ins.w), "%d FPS" % int(Engine.get_frames_per_second()), HORIZONTAL_ALIGNMENT_RIGHT, 118.0, 20, Color(1, 1, 1, 0.85))
 		var frac: float = clampf(hp / max_hp, 0.0, 1.0)
@@ -9569,63 +9725,65 @@ class Hud extends Node2D:
 			col = Color("#ffd33d")
 		draw_rect(Rect2(0.0, 0.0, vp.x, 8.0), Color(0, 0, 0, 0.55))
 		draw_rect(Rect2(0.0, 0.0, vp.x * clampf(xp / xp_next, 0.0, 1.0), 8.0), Color("#7fe0ff"))
-		draw_rect(Rect2(16.0 + ins.x, 16.0 + ins.y, 240.0, 18.0), Color(0, 0, 0, 0.55))
-		draw_rect(Rect2(18.0 + ins.x, 18.0 + ins.y, 236.0 * frac, 14.0), col)
-		var hp_txt: String = L.t("%s  PS %d/%d") % [poke_name, ceili(hp), ceili(max_hp)]
-		draw_string(font, Vector2(16.0 + ins.x, 54.0 + ins.y), hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
-		draw_string(font, Vector2(16.0 + ins.x, 76.0 + ins.y), L.t("Nv. %d") % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#7fe0ff"))
+		draw_rect(Rect2(16.0 + ins.x, 16.0 + oy, 240.0, 18.0), Color(0, 0, 0, 0.55))
+		draw_rect(Rect2(18.0 + ins.x, 18.0 + oy, 236.0 * frac, 14.0), col)
+		draw_string(font, Vector2(16.0 + ins.x, 54.0 + oy), hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
+		draw_string(font, Vector2(16.0 + ins.x, 76.0 + oy), L.t("Nv. %d") % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#7fe0ff"))
 		if ab_name != "":
-			draw_string(font, Vector2(132.0 + ins.x, 76.0 + ins.y), ab_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color("#ffd98a"))
+			draw_string(font, Vector2(132.0 + ins.x, 76.0 + oy), ab_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color("#ffd98a"))
 		if down:
-			var bw: float = 300.0
-			var bx: float = vp.x * 0.5 - bw * 0.5
-			var by: float = 56.0 + ins.y
+			var bd: Vector2 = _band(y_down - 4.0, y_down + 66.0)
+			var d1: Array = _fit_txt(font, L.t("Espectando: reviveras en %d s") % ceili(down_left), 20, bd.y - bd.x - 24.0, 11)
+			var d2: Array = _fit_txt(font, L.t("Vida de tu compañero"), 16, bd.y - bd.x - 24.0, 10)
+			var dw: float = maxf(font.get_string_size(String(d1[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(d1[1])).x, font.get_string_size(String(d2[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(d2[1])).x)
+			var bw: float = minf(maxf(300.0, dw + 24.0), bd.y - bd.x - 8.0)
+			var bx: float = clampf(vp.x * 0.5 - bw * 0.5, bd.x + 4.0, maxf(bd.x + 4.0, bd.y - 4.0 - bw))
+			var by: float = y_down
 			draw_rect(Rect2(bx - 4.0, by - 4.0, bw + 8.0, 70.0), Color(0, 0, 0, 0.5))
-			draw_string(font, Vector2(bx, by + 16.0), L.t("Espectando: reviveras en %d s") % ceili(down_left), HORIZONTAL_ALIGNMENT_CENTER, bw, 20, Color("#ffd2d8"))
+			draw_string(font, Vector2(bx, by + 16.0), String(d1[0]), HORIZONTAL_ALIGNMENT_CENTER, bw, int(d1[1]), Color("#ffd2d8"))
 			draw_rect(Rect2(bx, by + 28.0, bw, 14.0), Color(0, 0, 0, 0.6))
 			draw_rect(Rect2(bx + 1.0, by + 29.0, (bw - 2.0) * pbar, 12.0), Color("#9ad0ff"))
-			draw_string(font, Vector2(bx, by + 60.0), L.t("Vida de tu compañero"), HORIZONTAL_ALIGNMENT_CENTER, bw, 16, Color("#cfe6ff"))
+			draw_string(font, Vector2(bx, by + 60.0), String(d2[0]), HORIZONTAL_ALIGNMENT_CENTER, bw, int(d2[1]), Color("#cfe6ff"))
 		if show_stats and not stats.is_empty():
-			# bajo el minimapa; si no cabe encima de la barra de huecos, sube lo justo (minimo pegado al minimapa)
+			# bajo el minimapa; si no cabe encima de la barra de huecos, sube lo justo (minimo pegado al minimapa).
+			# El ancho sale del texto mas largo de cada columna (en otros idiomas "Regeneracion" no cabe en 90 px).
 			var sh: float = 18.0 * float(stats.size()) + 6.0
 			var sy: float = minf(stats_y, maxf(mini_pos.y + 200.0 * mini_scale + 4.0, vp.y - 88.0 - ins.w - 6.0 - sh))
 			var sx: float = 16.0 + ins.x
-			draw_rect(Rect2(sx - 4.0, sy - 2.0, 150.0, sh), Color(0, 0, 0, 0.32))
+			var lw_max := 0.0
+			var vw_max := 0.0
 			for row in stats:
-				draw_string(font, Vector2(sx, sy + 13.0), String(row[0]), HORIZONTAL_ALIGNMENT_LEFT, 90.0, 14, Color(1, 1, 1, 0.75))
-				draw_string(font, Vector2(sx + 40.0, sy + 13.0), String(row[1]), HORIZONTAL_ALIGNMENT_RIGHT, 100.0, 14, Color("#ffe58a"))
+				lw_max = maxf(lw_max, font.get_string_size(String(row[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14).x)
+				vw_max = maxf(vw_max, font.get_string_size(String(row[1]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14).x)
+			var pw: float = maxf(150.0, lw_max + vw_max + 24.0)
+			draw_rect(Rect2(sx - 4.0, sy - 2.0, pw, sh), Color(0, 0, 0, 0.32))
+			for row in stats:
+				draw_string(font, Vector2(sx, sy + 13.0), String(row[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, Color(1, 1, 1, 0.75))
+				draw_string(font, Vector2(sx, sy + 13.0), String(row[1]), HORIZONTAL_ALIGNMENT_RIGHT, pw - 12.0, 14, Color("#ffe58a"))
 				sy += 18.0
 		for ri in range(revives):
-			IC.draw_in(self, "revive", Vector2(70.0 + ins.x + float(ri) * 22.0, 71.0 + ins.y), 18.0)
+			IC.draw_in(self, "revive", Vector2(70.0 + ins.x + float(ri) * 22.0, 71.0 + oy), 18.0)
 		draw_powers(font, vp)
 		if not team.is_empty():
 			draw_team(font)
-		# Contadores de la derecha (se miden antes: el texto central se encoge para no pisarlos)
-		var tw: float = font.get_string_size(str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var t10w: float = font.get_string_size(str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var cw: float = font.get_string_size(str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var cnt_left: float = vp.x - 16.0 - ins.z - (t10w + 40.0) - (tw + 40.0) - cw - 28.0   # borde izquierdo de los contadores
-		var name_r: float = 16.0 + ins.x + font.get_string_size(hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x + 12.0
-		# semiancho libre para el texto centrado en la linea de los contadores (y ~58) y en la del cartel (y ~92)
-		var half58: float = vp.x * 0.5 - maxf(maxf(name_r, 16.0 + ins.x + 240.0), vp.x - cnt_left + 8.0)
-		var half92: float = vp.x * 0.5 - maxf(mini_pos.x + 200.0 * mini_scale + 8.0, 100.0 + ins.z)
 		if weather_text != "":
-			_ctext(font, 62.0, L.t(weather_text), 18, Color("#cfe2ff"), half58)
+			_cline(font, y_wx, L.t(weather_text), 18, Color("#cfe2ff"))
 		if banner != "":
-			_ctext(font, 92.0, L.t(banner), 20, Color("#ffffff"), half92)
+			_cline(font, y_ban, L.t(banner), 20, Color("#ffffff"))
 		draw_rift(font, vp)
 		draw_rift_notice(font, vp)
 		draw_thief_notice(font, vp)
 		draw_thieves(font, vp)
+		draw_toast(font, vp)
 		var rx: float = vp.x - 16.0 - ins.z
-		draw_string(font, Vector2(rx - t10w, 62.0), str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#c47bff"))
-		IC.draw_in(self, "ticket10", Vector2(rx - t10w - 16.0, 56.0), 24.0)
+		draw_string(font, Vector2(rx - t10w, 62.0 + oy), str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#c47bff"))
+		IC.draw_in(self, "ticket10", Vector2(rx - t10w - 16.0, 56.0 + oy), 24.0)
 		rx -= t10w + 40.0
-		draw_string(font, Vector2(rx - tw, 62.0), str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
-		IC.draw_in(self, "ticket", Vector2(rx - tw - 16.0, 56.0), 24.0)
+		draw_string(font, Vector2(rx - tw, 62.0 + oy), str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
+		IC.draw_in(self, "ticket", Vector2(rx - tw - 16.0, 56.0 + oy), 24.0)
 		rx -= tw + 40.0
-		draw_string(font, Vector2(rx - cw, 62.0), str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
-		IC.draw_in(self, "coin", Vector2(rx - cw - 16.0, 56.0), 24.0)
+		draw_string(font, Vector2(rx - cw, 62.0 + oy), str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
+		IC.draw_in(self, "coin", Vector2(rx - cw - 16.0, 56.0 + oy), 24.0)
 		var pr: Array = pause_rects()
 		draw_rect(pr[0], Color(0, 0, 0, 0.45))
 		draw_rect(pr[0], Color.WHITE, false, 2.0)
@@ -9635,13 +9793,13 @@ class Hud extends Node2D:
 		if limit > 0.0:
 			var left: float = maxf(0.0, limit - run_time)
 			var lc: String = "%02d:%02d" % [floori(left / 60.0), int(left) % 60]
-			draw_string(font, Vector2(0.0, 36.0), lc, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color("#ff6b7a") if left < 30.0 else Color.WHITE)
-			_ctext(font, 58.0, L.t("Grietas ganadas: %d") % rifts_n, 18, Color("#c9a6ff"), half58)
+			draw_string(font, Vector2(0.0, 36.0 + oy), lc, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color("#ff6b7a") if left < 30.0 else Color.WHITE)
+			_cline(font, y_l2, L.t("Grietas ganadas: %d") % rifts_n, 18, Color("#c9a6ff"))
 		else:
-			draw_string(font, Vector2(0.0, 36.0), L.t(clock), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
+			draw_string(font, Vector2(0.0, 36.0 + oy), L.t(clock), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
 		if adapt_pct > 0 and tower_floor <= 0 and limit <= 0.0:
 			var ac: Color = Color("#8fe39b") if adapt_pct < 100 else (Color("#ffd23f") if adapt_pct == 100 else Color("#ff9a5a"))
-			_ctext(font, 58.0, L.t("Reto: %d%%") % adapt_pct, 16, ac, half58)
+			_cline(font, y_l2, L.t("Reto: %d%%") % adapt_pct, 16, ac)
 		if tower_floor > 0:
 			var sub: String = L.t("Piso %d / %d") % [tower_floor, TOWER_FLOORS]
 			if tower_t >= 0.0:
@@ -9652,8 +9810,8 @@ class Hud extends Node2D:
 				sub += "  ·  " + L.t("Pactos: %d") % tower_risk
 			if reap_pct >= 0.0:
 				sub += "  ·  " + L.t("Sed de victoria +%s%%") % ("%.1f" % reap_pct)
-			_ctext(font, 58.0, sub, 18, Color("#ffd23f"), half58)
-		draw_string(font, Vector2(vp.x - 236.0 - ins.z, 36.0), L.t("Derrotados: %d") % kills, HORIZONTAL_ALIGNMENT_RIGHT, 220.0, 20, Color.WHITE)
+			_cline(font, y_l2, sub, 18, Color("#ffd23f"))
+		draw_string(font, Vector2(vp.x - 16.0 - ins.z - 220.0, 36.0 + oy), kills_txt, HORIZONTAL_ALIGNMENT_RIGHT, 220.0, kills_fs, Color.WHITE)
 		if dead:
 			# Camara lenta: primero se ve caer al Pokemon; despues oscurece y aparece GAME OVER.
 			var fade: float = clampf((death_t - 0.3) / 0.35, 0.0, 1.0)
