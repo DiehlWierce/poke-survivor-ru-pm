@@ -4,6 +4,7 @@ extends Node2D
 # ruido; cada trozo de 16x16 casillas se hornea juntando casillas ya pintadas.
 # Hay 3 biomas y despues las paletas de las 18 arenas; cambian cada 4 minutos.
 
+const MX = preload("res://scripts/util/mathx.gd")
 const AS = preload("res://scripts/arena.gd")
 const T := 16
 const N := 16
@@ -120,7 +121,7 @@ func pal(b: int) -> Dictionary:
 			p[k] = Color(String(d[k]))
 	else:
 		var th: Dictionary = AS.THEMES[theme_keys[b - 3]]
-		p = AS.make_palette(th)
+		p = MX.make_palette(th)
 		p["name"] = th["name"]
 	pals[b] = p
 	return p
@@ -182,16 +183,16 @@ func _floor_pix(C: Dictionary, vx: int, vy: int, detail: int, ci: int):
 		for x in range(T):
 			var gx: int = vx * T + x
 			var gy: int = vy * T + y
-			var band: float = AS.hsh(gx >> 3, gy >> 3, 11) * 0.7 + AS.hsh(gx, gy, 12) * 0.5
+			var band: float = MX.hsh(gx >> 3, gy >> 3, 11) * 0.7 + MX.hsh(gx, gy, 12) * 0.5
 			var col: int = fl[mini(2, int(band * 3.0 / 1.2))]
-			var rr: float = AS.hsh(gx, gy, 13)
+			var rr: float = MX.hsh(gx, gy, 13)
 			if rr < 0.035:
 				col = C["speck"]
 			elif rr > 0.985:
 				col = C["light"]
 			P.set_px(x, y, col)
-	var dx: int = 3 + int(AS.hsh(vx, vy, 15) * 10.0)
-	var dy: int = 4 + int(AS.hsh(vx, vy, 16) * 9.0)
+	var dx: int = 3 + int(MX.hsh(vx, vy, 15) * 10.0)
+	var dy: int = 4 + int(MX.hsh(vx, vy, 16) * 9.0)
 	var lt: int = C["light"]
 	var sp: int = C["speck"]
 	if detail == 1:
@@ -258,17 +259,17 @@ func _wall_img(S: Dictionary, key: int, v: int) -> Image:
 			var col: int
 			if y >= T - face:
 				var fy: int = y - (T - face)
-				var vv: int = 0 if AS.hsh(gx, 0, 21) < 0.5 else 1
+				var vv: int = 0 if MX.hsh(gx, 0, 21) < 0.5 else 1
 				col = faces[1 if (x + vv) % 3 == 0 else 0]
 				if fy == 0:
 					col = C["wallEdge"]
 				elif y == T - 1:
 					col = C["wallFaceDark"]
-				elif AS.hsh(gx, gy, 22) < 0.08:
+				elif MX.hsh(gx, gy, 22) < 0.08:
 					col = C["wallFaceDark"]
 			else:
-				col = tops[int(AS.hsh(gx >> 1, gy >> 1, 23) * 2.2 + AS.hsh(gx, gy, 24) * 0.8) % tops.size()]
-				if AS.hsh(gx, gy, 25) < 0.05:
+				col = tops[int(MX.hsh(gx >> 1, gy >> 1, 23) * 2.2 + MX.hsh(gx, gy, 24) * 0.8) % tops.size()]
+				if MX.hsh(gx, gy, 25) < 0.05:
 					col = C["wallLight"]
 				if not n and y == 0:
 					col = C["wallEdge"]
@@ -312,7 +313,7 @@ func _liq_img(S: Dictionary, key: int, v: int) -> Image:
 			var d: float = _edge_d(x, y, n, s, w, e, nw, ne, sw, se)
 			var gx: int = (700 + v) * T + x
 			var gy: int = (800 + v * 3) * T + y
-			var rr: float = AS.hsh(gx, gy, 31)
+			var rr: float = MX.hsh(gx, gy, 31)
 			var col: int
 			if d < 1.0:
 				col = C["shore"]
@@ -326,9 +327,9 @@ func _liq_img(S: Dictionary, key: int, v: int) -> Image:
 				col = C["liq"] if (d < 8.0 and rr < 0.5) else C["liqDeep"]
 			if d >= 6.0 and d < 99.0 and rr < 0.08:
 				col = C["liq"]
-			if d >= 3.0 and AS.hsh(gx >> 2, gy, 33) < 0.045 and (gx & 3) != 3:
+			if d >= 3.0 and MX.hsh(gx >> 2, gy, 33) < 0.045 and (gx & 3) != 3:
 				col = C["liqLight"]
-			if d >= 3.0 and AS.hsh(gx, gy, 34) < 0.004:
+			if d >= 3.0 and MX.hsh(gx, gy, 34) < 0.004:
 				col = C["foam"]
 			P.set_px(x, y, col)
 	var im: Image = P.img()
@@ -365,21 +366,21 @@ func _dirt_img(S: Dictionary, key: int, v: int) -> Image:
 			var d: float = _edge_d(x, y, n, s, w, e, nw, ne, sw, se)
 			var gx: int = (900 + v) * T + x
 			var gy: int = (950 + v * 3) * T + y
-			if d < 1.0 and AS.hsh(gx, gy, 35) < 0.45:
+			if d < 1.0 and MX.hsh(gx, gy, 35) < 0.45:
 				continue
-			if d >= 1.0 and d < 2.0 and AS.hsh(gx, gy, 36) < 0.18:
+			if d >= 1.0 and d < 2.0 and MX.hsh(gx, gy, 36) < 0.18:
 				continue
-			var band: float = AS.hsh(gx >> 3, gy >> 3, 11) * 0.7 + AS.hsh(gx, gy, 12) * 0.5
+			var band: float = MX.hsh(gx >> 3, gy >> 3, 11) * 0.7 + MX.hsh(gx, gy, 12) * 0.5
 			var col: int = dt[mini(2, int(band * 3.0 / 1.2))]
-			var rr: float = AS.hsh(gx, gy, 13)
+			var rr: float = MX.hsh(gx, gy, 13)
 			if rr < 0.035:
 				col = C["speck"]
 			if d < 1.0 or (not n and y == 0):
 				col = C["speck"]
 			P.set_px(x, y, col)
-	if AS.hsh(v, key, 14) < 0.35:
-		var dx: int = 4 + int(AS.hsh(v, key, 15) * 8.0)
-		var dy: int = 5 + int(AS.hsh(v, key, 16) * 7.0)
+	if MX.hsh(v, key, 14) < 0.35:
+		var dx: int = 4 + int(MX.hsh(v, key, 15) * 8.0)
+		var dy: int = 5 + int(MX.hsh(v, key, 16) * 7.0)
 		P.set_px(dx, dy, C["light"])
 		P.set_px(dx + 1, dy, C["light"])
 		P.set_px(dx, dy + 1, C["speck"])
@@ -421,14 +422,14 @@ func _lake_cells(cx0: int, cy0: int) -> Array:
 		_lk_list = []
 		for cy in range(cy0 - 1, cy0 + 2):
 			for cx in range(cx0 - 1, cx0 + 2):
-				if AS.hsh(cx, cy, seed_v + 500) > LAKE_P:
+				if MX.hsh(cx, cy, seed_v + 500) > LAKE_P:
 					continue
-				var mx: float = (float(cx) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 501)) * LAKE_CELL
-				var my: float = (float(cy) + 0.15 + 0.7 * AS.hsh(cx, cy, seed_v + 502)) * LAKE_CELL
+				var mx: float = (float(cx) + 0.15 + 0.7 * MX.hsh(cx, cy, seed_v + 501)) * LAKE_CELL
+				var my: float = (float(cy) + 0.15 + 0.7 * MX.hsh(cx, cy, seed_v + 502)) * LAKE_CELL
 				if Vector2(mx, my).length() < 15.0:
 					continue
-				var rx: float = 3.4 + 2.6 * AS.hsh(cx, cy, seed_v + 503)
-				var ry: float = 3.0 + 2.2 * AS.hsh(cx, cy, seed_v + 504)
+				var rx: float = 3.4 + 2.6 * MX.hsh(cx, cy, seed_v + 503)
+				var ry: float = 3.0 + 2.2 * MX.hsh(cx, cy, seed_v + 504)
 				_lk_list.append(Vector4(mx, my, rx, ry))
 	return _lk_list
 
@@ -442,7 +443,7 @@ func _lake(tx: int, ty: int) -> bool:
 	for lk in lakes:
 		var dx: float = (px - lk.x) / lk.z
 		var dy: float = (py - lk.y) / lk.w
-		var wob: float = (AS.fbm(px / 5.0, py / 5.0, seed_v + 111) - 0.5) * 1.5 + (AS.fbm(px / 2.2, py / 2.2, seed_v + 113) - 0.5) * 0.5
+		var wob: float = (MX.fbm(px / 5.0, py / 5.0, seed_v + 111) - 0.5) * 1.5 + (MX.fbm(px / 2.2, py / 2.2, seed_v + 113) - 0.5) * 0.5
 		if dx * dx + dy * dy < 1.0 + wob:
 			return true
 	return false
@@ -464,7 +465,7 @@ func _raw_calc(tx: int, ty: int) -> int:
 		var ramp: float = clampf((d - 9.0) / 8.0, 0.0, 1.0)
 		if _lake(tx, ty):
 			return LIQUID
-		if AS.fbm(float(tx) / 8.0, float(ty) / 8.0, seed_v + 202) > 1.0 - wall_grow * ramp:
+		if MX.fbm(float(tx) / 8.0, float(ty) / 8.0, seed_v + 202) > 1.0 - wall_grow * ramp:
 			return WALL
 	return FLOOR
 
@@ -482,7 +483,7 @@ func terrain(tx: int, ty: int) -> int:
 				near_liq = true
 				break
 		# barrancos: tramos de pared de tierra pegados a la orilla (se rompen con ruido para dejar pasos)
-		if near_liq and AS.fbm(float(tx) / 3.5, float(ty) / 3.5, seed_v + 910) > SHORE_WALL:
+		if near_liq and MX.fbm(float(tx) / 3.5, float(ty) / 3.5, seed_v + 910) > SHORE_WALL:
 			res = WALL
 	terr[k] = res
 	return res
@@ -492,7 +493,7 @@ func is_dirt(tx: int, ty: int) -> bool:
 	var k := Vector2i(tx, ty)
 	if dirt.has(k):
 		return dirt[k]
-	var r: bool = terrain(tx, ty) == FLOOR and AS.fbm(float(tx) / 6.0, float(ty) / 6.0, seed_v + 303) > 0.66
+	var r: bool = terrain(tx, ty) == FLOOR and MX.fbm(float(tx) / 6.0, float(ty) / 6.0, seed_v + 303) > 0.66
 	dirt[k] = r
 	return r
 
@@ -666,14 +667,14 @@ func _bake_rows(key: Vector2i, img: Image, liq: Array, j0: int, j1: int) -> void
 			var tile: Image
 			if k == WALL:
 				var key4: int = int(terrain(tx, ty - 1) == WALL) | (int(terrain(tx, ty + 1) == WALL) << 1) | (int(terrain(tx - 1, ty) == WALL) << 2) | (int(terrain(tx + 1, ty) == WALL) << 3)
-				tile = _wall_img(S, key4, int(AS.hsh(tx, ty, 21) * 3.0) % 3)
+				tile = _wall_img(S, key4, int(MX.hsh(tx, ty, 21) * 3.0) % 3)
 			elif k == LIQUID:
 				var m := 0
 				var nb: Array = [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]
 				for q in range(8):
 					if terrain(tx + nb[q].x, ty + nb[q].y) == LIQUID:
 						m |= 1 << q
-				tile = _liq_img(S, m, int(AS.hsh(tx, ty, 32) * 2.0) % 2)
+				tile = _liq_img(S, m, int(MX.hsh(tx, ty, 32) * 2.0) % 2)
 				liq.append(Vector2i(tx, ty))
 			elif is_dirt(tx, ty):
 				var m2 := 0
@@ -681,18 +682,18 @@ func _bake_rows(key: Vector2i, img: Image, liq: Array, j0: int, j1: int) -> void
 				for q in range(8):
 					if is_dirt(tx + nb2[q].x, ty + nb2[q].y):
 						m2 |= 1 << q
-				tile = _dirt_img(S, m2, int(AS.hsh(tx, ty, 37) * 2.0) % 2)
+				tile = _dirt_img(S, m2, int(MX.hsh(tx, ty, 37) * 2.0) % 2)
 			else:
-				var d: float = AS.hsh(tx, ty, 14)
+				var d: float = MX.hsh(tx, ty, 14)
 				var idx: int
 				if d < 0.14:
-					idx = 12 + int(AS.hsh(tx, ty, 15) * 4.0) % 4
+					idx = 12 + int(MX.hsh(tx, ty, 15) * 4.0) % 4
 				elif d < 0.20:
-					idx = 16 + int(AS.hsh(tx, ty, 17) * 6.0) % 6
+					idx = 16 + int(MX.hsh(tx, ty, 17) * 6.0) % 6
 				elif d < 0.25:
-					idx = 22 + int(AS.hsh(tx, ty, 18) * 3.0) % 3
+					idx = 22 + int(MX.hsh(tx, ty, 18) * 3.0) % 3
 				else:
-					idx = int(AS.hsh(tx, ty, 16) * 12.0) % 12
+					idx = int(MX.hsh(tx, ty, 16) * 12.0) % 12
 				tile = _floor_img(S, idx)
 			img.blit_rect(tile, Rect2i(0, 0, T, T), Vector2i(i * T, j * T))
 			if k == FLOOR and terrain(tx, ty - 1) == WALL:
@@ -1126,9 +1127,9 @@ func _draw() -> void:
 		if ld == null:
 			ld = []
 			for tl in liq:
-				ld.append(Vector4(float(tl.x) * TS, float(tl.y) * TS, AS.hsh(tl.x, tl.y, 77) * TAU,
-					floorf(AS.hsh(tl.x, tl.y, 78) * 12.0 + 2.0) * 3.0))
-				ld.append(floorf(AS.hsh(tl.x, tl.y, 79) * 12.0 + 2.0) * 3.0)
+				ld.append(Vector4(float(tl.x) * TS, float(tl.y) * TS, MX.hsh(tl.x, tl.y, 77) * TAU,
+					floorf(MX.hsh(tl.x, tl.y, 78) * 12.0 + 2.0) * 3.0))
+				ld.append(floorf(MX.hsh(tl.x, tl.y, 79) * 12.0 + 2.0) * 3.0)
 			ch["liqd"] = ld
 		var i := 0
 		while i < ld.size():

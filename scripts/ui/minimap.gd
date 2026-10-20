@@ -4,6 +4,7 @@
 # trampas ocultas solo muy cerca, enemigos solo a corta distancia; grietas y jefes
 # siempre, como flecha en el borde.
 extends Node2D
+const MX = preload("res://scripts/util/mathx.gd")
 const ARENA = preload("res://scripts/arena.gd")
 const WTex = preload("res://scripts/game/wtex.gd")
 const Actor = preload("res://scripts/main.gd").Actor
@@ -53,7 +54,7 @@ class MiniRing extends Node2D:
 		draw_string(ThemeDB.fallback_font, Vector2(c.x - 5.0, 20.0), "N", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1, 1, 1, 0.8))
 
 func _tile_color(g, pal: Dictionary, tx: int, ty: int) -> Color:
-	var h: float = ARENA.hsh(tx, ty, 31)
+	var h: float = MX.hsh(tx, ty, 31)
 	var tt: int = g.terrain(tx, ty)
 	var c: Color
 	if tt == 1:

@@ -45,61 +45,23 @@ var _built := false
 
 
 static func hsh(x: int, y: int, s: int) -> float:
-	# Mismo hash de 32 bits que util.js del original (Math.imul).
-	var h: int = ((x * 374761393) & 0xFFFFFFFF) ^ ((y * 668265263) & 0xFFFFFFFF) ^ ((s * 2246822519) & 0xFFFFFFFF)
-	h = (((h ^ (h >> 13)) & 0xFFFFFFFF) * 1274126177) & 0xFFFFFFFF
-	h = h ^ (h >> 16)
-	return float(h) / 4294967296.0
+	return MX.hsh(x, y, s)
 
 
 static func vnoise(x: float, y: float, s: int) -> float:
-	var xi: int = int(floorf(x))
-	var yi: int = int(floorf(y))
-	var xf: float = x - float(xi)
-	var yf: float = y - float(yi)
-	var u: float = xf * xf * (3.0 - 2.0 * xf)
-	var v: float = yf * yf * (3.0 - 2.0 * yf)
-	var a: float = hsh(xi, yi, s)
-	var b: float = hsh(xi + 1, yi, s)
-	var c: float = hsh(xi, yi + 1, s)
-	var d: float = hsh(xi + 1, yi + 1, s)
-	return (a + (b - a) * u) * (1.0 - v) + (c + (d - c) * u) * v
+	return MX.vnoise(x, y, s)
 
 
 static func fbm(x: float, y: float, s: int) -> float:
-	return vnoise(x, y, s) * 0.65 + vnoise(x * 2.13 + 17.0, y * 2.13 - 9.0, s + 1) * 0.35
+	return MX.fbm(x, y, s)
 
 
 static func shade(c: Color, k: float) -> Color:
-	if k >= 0.0:
-		return Color(c.r + (1.0 - c.r) * k, c.g + (1.0 - c.g) * k, c.b + (1.0 - c.b) * k, 1.0)
-	return Color(c.r * (1.0 + k), c.g * (1.0 + k), c.b * (1.0 + k), 1.0)
+	return MX.shade(c, k)
 
 
 static func make_palette(th: Dictionary) -> Dictionary:
-	var f := Color(String(th["floor"]))
-	var w := Color(String(th["wall"]))
-	var lq := Color(String(th["liq"]))
-	var lf := Color(String(th["leaf"]))
-	var tk := Color(String(th["trunk"]))
-	var rk := Color(String(th["rock"]))
-	var gr := Color(String(th["grass"]))
-	var fls: Array = []
-	for h in th["flowers"]:
-		fls.append(Color(String(h)))
-	return {
-		"floor": [f, shade(f, 0.05), shade(f, -0.06)], "dirt": [shade(f, -0.16), shade(f, -0.12), shade(f, -0.2)],
-		"speck": shade(f, -0.25), "light": shade(f, 0.22), "flowers": fls,
-		"wallTop": [w, shade(w, 0.07), shade(w, -0.07)], "wallLight": shade(w, 0.32), "wallEdge": shade(w, -0.7),
-		"wallFace": [shade(w, -0.3), shade(w, -0.38)], "wallFaceDark": shade(w, -0.55), "bg": shade(w, -0.8),
-		"liq": lq, "liqDeep": shade(lq, -0.22),
-		"foam": Color(String(th["foam"])) if th.has("foam") else shade(lq, 0.55),
-		"shore": shade(f, -0.32), "liquid": String(th.get("liquid", "water")), "prop": String(th.get("prop", "tree")),
-		"leaf": [shade(lf, -0.35), shade(lf, -0.15), lf, shade(lf, 0.3)],
-		"trunk": [shade(tk, -0.2), tk],
-		"rock": [shade(rk, -0.2), rk, shade(rk, 0.22)],
-		"grass": [shade(gr, -0.28), gr, shade(gr, 0.28)],
-	}
+	return MX.make_palette(th)
 
 
 func setup(t: String, sd: int) -> void:
@@ -326,7 +288,7 @@ func bake() -> void:
 	var FS: float = 6.0 * float(T)
 	for j in range(gw):
 		for i in range(gw):
-			grid[j * gw + i] = fbm(float(org + (i - 1) * S) / FS, float(org + (j - 1) * S) / FS, seed_v + 303)
+			grid[j * gw + i] = MX.fbm(float(org + (i - 1) * S) / FS, float(org + (j - 1) * S) / FS, seed_v + 303)
 	var mask := PackedByteArray()
 	mask.resize(W * (W + 1))
 	for y in range(-1, W):
@@ -342,7 +304,7 @@ func bake() -> void:
 			var c: float = grid[(jj + 1) * gw + ii]
 			var d: float = grid[(jj + 1) * gw + ii + 1]
 			var val: float = (a + (b - a) * u) * (1.0 - v) + (c + (d - c) * u) * v
-			val += (hsh((org + x) >> 1, (org + y) >> 1, seed_v + 9) - 0.5) * 0.05
+			val += (MX.hsh((org + x) >> 1, (org + y) >> 1, seed_v + 9) - 0.5) * 0.05
 			mask[(y + 1) * W + x] = 1 if val > 0.64 else 0
 	liquid_tiles.clear()
 	for j in range(n):
@@ -377,9 +339,9 @@ func _paint_floor(P: Pix, C: Dictionary, ox: int, oy: int, tx: int, ty: int, mas
 			if dirt:
 				dirt_count += 1
 			var pal: Array = dt if dirt else fl
-			var band: float = hsh(gx >> 3, gy >> 3, 11) * 0.7 + hsh(gx, gy, 12) * 0.5
+			var band: float = MX.hsh(gx >> 3, gy >> 3, 11) * 0.7 + MX.hsh(gx, gy, 12) * 0.5
 			var col: int = pal[mini(pal.size() - 1, int(floorf(band * float(pal.size()) / 1.2)))]
-			var rr: float = hsh(gx, gy, 13)
+			var rr: float = MX.hsh(gx, gy, 13)
 			if rr < 0.035:
 				col = C["speck"]
 			elif rr > 0.985:
@@ -395,9 +357,9 @@ func _paint_floor(P: Pix, C: Dictionary, ox: int, oy: int, tx: int, ty: int, mas
 			P.set_px(ox + x, oy, C["wallFaceDark"])
 			if (x + ty) % 2 != 0:
 				P.set_px(ox + x, oy + 1, C["speck"])
-	var d: float = hsh(tx, ty, 14)
-	var dx: int = ox + 3 + int(hsh(tx, ty, 15) * 10.0)
-	var dy: int = oy + 4 + int(hsh(tx, ty, 16) * 9.0)
+	var d: float = MX.hsh(tx, ty, 14)
+	var dx: int = ox + 3 + int(MX.hsh(tx, ty, 15) * 10.0)
+	var dy: int = oy + 4 + int(MX.hsh(tx, ty, 16) * 9.0)
 	var lt: int = C["light"]
 	var sp: int = C["speck"]
 	if is_dirt:
@@ -415,7 +377,7 @@ func _paint_floor(P: Pix, C: Dictionary, ox: int, oy: int, tx: int, ty: int, mas
 		P.set_px(dx, dy + 1, sp)
 	elif d < 0.26:
 		var fls: Array = C["flowers"]
-		var fc: int = fls[int(hsh(tx, ty, 17) * float(fls.size()))]
+		var fc: int = fls[int(MX.hsh(tx, ty, 17) * float(fls.size()))]
 		P.set_px(dx, dy - 1, fc)
 		P.set_px(dx - 1, dy, fc)
 		P.set_px(dx + 1, dy, fc)
@@ -451,17 +413,17 @@ func _paint_wall(P: Pix, C: Dictionary, ox: int, oy: int, tx: int, ty: int) -> v
 			var col: int
 			if y >= T - face:
 				var fy: int = y - (T - face)
-				var vv: int = 0 if hsh(gx, 0, 21) < 0.5 else 1
+				var vv: int = 0 if MX.hsh(gx, 0, 21) < 0.5 else 1
 				col = faces[1 if (x + vv) % 3 == 0 else 0]
 				if fy == 0:
 					col = C["wallEdge"]
 				elif y == T - 1:
 					col = C["wallFaceDark"]
-				elif hsh(gx, gy, 22) < 0.08:
+				elif MX.hsh(gx, gy, 22) < 0.08:
 					col = C["wallFaceDark"]
 			else:
-				col = tops[int(hsh(gx >> 1, gy >> 1, 23) * 2.2 + hsh(gx, gy, 24) * 0.8) % tops.size()]
-				if hsh(gx, gy, 25) < 0.05:
+				col = tops[int(MX.hsh(gx >> 1, gy >> 1, 23) * 2.2 + MX.hsh(gx, gy, 24) * 0.8) % tops.size()]
+				if MX.hsh(gx, gy, 25) < 0.05:
 					col = C["wallLight"]
 				if not n and y == 0:
 					col = C["wallEdge"]
@@ -505,7 +467,7 @@ func _paint_liquid(P: Pix, C: Dictionary, ox: int, oy: int, tx: int, ty: int) ->
 				d = minf(d, Vector2(T - 1 - x, T - 1 - y).length() - 0.5)
 			var gx: int = tx * T + x
 			var gy: int = ty * T + y
-			var rr: float = hsh(gx, gy, 31)
+			var rr: float = MX.hsh(gx, gy, 31)
 			var col: int
 			if d < 1.0:
 				col = C["shore"]
@@ -519,9 +481,9 @@ func _paint_liquid(P: Pix, C: Dictionary, ox: int, oy: int, tx: int, ty: int) ->
 				col = C["liq"] if (d < 8.0 and rr < 0.5) else C["liqDeep"]
 			if d >= 6.0 and d < BIG and rr < 0.08:
 				col = C["liq"]
-			if d >= 3.0 and hsh(gx >> 2, gy, 33) < 0.045 and (gx & 3) != 3:
+			if d >= 3.0 and MX.hsh(gx >> 2, gy, 33) < 0.045 and (gx & 3) != 3:
 				col = C["liqLight"]
-			if d >= 3.0 and hsh(gx, gy, 34) < 0.004:
+			if d >= 3.0 and MX.hsh(gx, gy, 34) < 0.004:
 				col = C["foam"]
 			P.set_px(ox + x, oy + y, col)
 
@@ -567,16 +529,16 @@ func _paint_tree(style: String, tv: int = 0) -> Image:
 		var by: int = bl[1]
 		var br: int = bl[2]
 		if tv > 0:
-			bx += int(hsh(bi, tv, 301) * 3.0) - 1
-			by += int(hsh(bi, tv, 302) * 3.0) - 1
-			br += int(hsh(bi, tv, 303) * 3.0) - 1 if br > 6 else 0
+			bx += int(MX.hsh(bi, tv, 301) * 3.0) - 1
+			by += int(MX.hsh(bi, tv, 302) * 3.0) - 1
+			br += int(MX.hsh(bi, tv, 303) * 3.0) - 1 if br > 6 else 0
 		for y in range(by - br, by + br + 1):
 			for x in range(bx - br, bx + br + 1):
 				var d: float = Vector2(x - bx, y - by).length()
 				if d <= float(br):
 					var lit: float = (float(x - bx) * -0.6 + float(y - by) * -0.8) / float(br)
 					var idx: int = 3 if lit > 0.45 else (2 if lit > 0.05 else (1 if lit > -0.45 else 0))
-					P.set_px(x, y, L[idx - 1] if (hsh(x, y, 41) < 0.12 and idx > 0) else L[idx])
+					P.set_px(x, y, L[idx - 1] if (MX.hsh(x, y, 41) < 0.12 and idx > 0) else L[idx])
 	P.outline(pk(Color("#14200f")))
 	return P.img()
 
@@ -633,10 +595,10 @@ func _paint_rock(variant: int) -> Image:
 		for x in range(1, 21):
 			var nx: float = (float(x) - 10.5) / 9.5
 			var ny: float = (float(y) - 9.5) / 7.0
-			var d: float = nx * nx + ny * ny + (hsh(x, y, 61) - 0.5) * 0.08
+			var d: float = nx * nx + ny * ny + (MX.hsh(x, y, 61) - 0.5) * 0.08
 			if d > 1.0:
 				continue
-			var lit: float = -nx * 0.55 - ny * 0.85 + (hsh(x, y, 62) - 0.5) * 0.25
+			var lit: float = -nx * 0.55 - ny * 0.85 + (MX.hsh(x, y, 62) - 0.5) * 0.25
 			var c: int = R[2 if lit > 0.4 else (1 if lit > -0.15 else 0)]
 			if y >= 14:
 				c = R[0]
@@ -663,9 +625,9 @@ func _paint_grass(variant: int) -> Image:
 		var b: int = pass_i
 		while b < blades:
 			var t: float = float(b) / float(blades - 1)
-			var x0: float = 3.0 + t * 13.0 + (hsh(b, 7, 52) - 0.5) * 2.0
-			var hgt: int = 8 + int(hsh(b, 3, 51) * 6.0) + (3 if absf(t - 0.5) < 0.25 else 0)
-			var lean: float = (t - 0.5) * 7.0 + sway * (0.6 + hsh(b, 1, 53))
+			var x0: float = 3.0 + t * 13.0 + (MX.hsh(b, 7, 52) - 0.5) * 2.0
+			var hgt: int = 8 + int(MX.hsh(b, 3, 51) * 6.0) + (3 if absf(t - 0.5) < 0.25 else 0)
+			var lean: float = (t - 0.5) * 7.0 + sway * (0.6 + MX.hsh(b, 1, 53))
 			for i in range(hgt + 1):
 				var k: float = float(i) / float(hgt)
 				var x: int = int(roundf(x0 + lean * k * k))
@@ -725,7 +687,7 @@ func build(world_node: Node2D) -> void:
 				for a in range(-1, 2):
 					if terrain(lx + a, ly + b) != FLOOR:
 						open = false
-			var hh: float = hsh(lx, ly, seed_v + 777)
+			var hh: float = MX.hsh(lx, ly, seed_v + 777)
 			var kind := ""
 			if open and hh < ptree:
 				kind = "tree"
@@ -735,7 +697,7 @@ func build(world_node: Node2D) -> void:
 				kind = "grass"
 			if kind != "":
 				var p := ArenaProp.new()
-				p.setup(kind, self, hsh(lx, ly, seed_v + 5))
+				p.setup(kind, self, MX.hsh(lx, ly, seed_v + 5))
 				p.position = global_position + Vector2(float(lx) * TS, float(ly) * TS + TS * 0.35)
 				world_node.add_child(p)
 				prop_nodes.append(p)
@@ -930,4 +892,5 @@ class Portal extends Node2D:
 			draw_rect(Rect2(Vector2(roundf(pp.x / 3.0) * 3.0, roundf(pp.y / 3.0) * 3.0), Vector2(3, 3)), Color(0.85, 0.76, 1.0, (1.0 - k) * a))
 
 
+const MX = preload("res://scripts/util/mathx.gd")
 const ArenaScript = preload("res://scripts/arena.gd")

@@ -6,6 +6,7 @@ extends Node2D
 # Al caer: cualquier tecla, boton del mando o toque de pantalla reinicia.
 # Cartas de nivel: tocalas, o 1/2/3, o izquierda/derecha + A en el mando.
 
+const MX = preload("res://scripts/util/mathx.gd")
 const MD = preload("res://scripts/moves_data.gd")
 const TD = preload("res://scripts/types_data.gd")
 const SV = preload("res://scripts/save_data.gd")
@@ -3221,7 +3222,7 @@ func _behavior_of(p: Dictionary) -> String:
 func _behavior_calc(p: Dictionary) -> String:
 	var dex: int = int(p["dex"])
 	var t: Array = p["types"]
-	var h: float = ARENA.hsh(dex, 7, 11)
+	var h: float = MX.hsh(dex, 7, 11)
 	if HEAL_SET.has(dex):
 		return "healer"
 	if SHIELD_SET.has(dex):
@@ -4712,7 +4713,7 @@ func _kill_enemy(e: Enemy) -> void:
 # --- jefes: 4 ataques (Pisoton + Embestida o Salto, y 2 de lejos segun tipo) ---
 func _boss_init(e: Enemy) -> void:
 	var t: Array = e.types
-	var melee := ["slam", "dash" if ARENA.hsh(e.dex, 3, 7) < 0.5 else "leap"]
+	var melee := ["slam", "dash" if MX.hsh(e.dex, 3, 7) < 0.5 else "leap"]
 	var pref: String = "volley"
 	if _has_t(t, ["fire", "ground", "poison", "rock", "grass"]):
 		pref = "rain"
@@ -4722,7 +4723,7 @@ func _boss_init(e: Enemy) -> void:
 		pref = "nova"
 	var others: Array = ["rain", "beam", "nova", "volley"]
 	others.erase(pref)
-	var ranged: Array = [pref, others[int(ARENA.hsh(e.dex, 5, 9) * 3.0) % 3]]
+	var ranged: Array = [pref, others[int(MX.hsh(e.dex, 5, 9) * 3.0) % 3]]
 	var far: bool = e.behavior == "ranged"
 	e.ai = {"melee": melee, "ranged": ranged, "far_like": 0.65 if far else 0.35, "mode": "far" if far else "close",
 		"mode_t": randf_range(6.0, 8.0), "cd": 1.6, "cast": null, "fury": false, "side": 1.0 if randf() < 0.5 else -1.0}
@@ -5180,7 +5181,7 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 			var tx: int = bx + i
 			var ty: int = by + j
 			# Lo barato primero: casi ninguna casilla es candidata a arbol o roca
-			var h: float = ARENA.hsh(tx, ty, world_seed + 404)
+			var h: float = MX.hsh(tx, ty, world_seed + 404)
 			if h >= 0.045 and h <= 0.994:
 				continue
 			if ground.terrain(tx, ty) != 0:
@@ -5188,7 +5189,7 @@ func _gen_chunk(cx: int, cy: int) -> Dictionary:
 			var dist0: float = Vector2(float(tx) + 0.5, float(ty) + 0.5).length()
 			if dist0 < 8.0:
 				continue
-			var grove: bool = h < 0.045 and ARENA.fbm(float(tx) / 10.0, float(ty) / 10.0, world_seed + 505) > 0.62
+			var grove: bool = h < 0.045 and MX.fbm(float(tx) / 10.0, float(ty) / 10.0, world_seed + 505) > 0.62
 			var is_tree: bool = h < (0.045 if grove else 0.004)
 			if not is_tree and h <= 0.994:
 				continue
@@ -5291,7 +5292,7 @@ func _grass_rows(job: Dictionary, usec: int) -> bool:
 			var gx: float = float(bx) * tile_px + float(si) * half + half * 0.5 + (half * 0.5 if sj % 2 == 1 else 0.0)
 			var gy: float = float(by) * tile_px + float(sj) * half + half * 0.5
 			# primero lo barato (casi todas se descartan aqui)
-			if ARENA.hsh(si + bx * 2, sj + by * 2, world_seed + 808) > 0.38:
+			if MX.hsh(si + bx * 2, sj + by * 2, world_seed + 808) > 0.38:
 				continue
 			var gtx: int = floori(gx / tile_px)
 			var gty: int = floori(gy / tile_px)
@@ -5303,10 +5304,10 @@ func _grass_rows(job: Dictionary, usec: int) -> bool:
 				continue
 			if Vector2(gx, gy).length() < sq8:
 				continue
-			var gf: float = ARENA.fbm(gx / (tile_px * 5.0), gy / (tile_px * 5.0), world_seed + 707)
+			var gf: float = MX.fbm(gx / (tile_px * 5.0), gy / (tile_px * 5.0), world_seed + 707)
 			if gf < 0.66:
 				continue
-			var gp := Vector2(gx + ARENA.hsh(si, sj + bx, world_seed + 909) * 6.0 - 3.0, gy + ARENA.hsh(sj, si + by, world_seed + 919) * 4.0 - 2.0)
+			var gp := Vector2(gx + MX.hsh(si, sj + bx, world_seed + 909) * 6.0 - 3.0, gy + MX.hsh(sj, si + by, world_seed + 919) * 4.0 - 2.0)
 			var blocked := false
 			for pl in placed:
 				var pk: String = String(pl[2]) if pl.size() > 2 else ""
