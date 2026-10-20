@@ -118,6 +118,40 @@ const SUMMON_MAP := {15: 13, 18: 16, 24: 23, 28: 27, 31: 29, 34: 32, 42: 41, 51:
 const PLAIN_B := ["chase", "charger", "ranged", "tank"]
 const SUPPORT_B := ["healer", "shielder", "summoner"]
 const KEEP_DIST := ["ranged", "fan", "beamer", "zoner", "healer", "summoner"]
+# Numeros de los caminos calientes (_enemy_step, _update_bullets, _spawn_one): solo nombres, valores de siempre.
+const PARA_SPD_K := 0.4        # paralizado: velocidad
+const THIEF_NEAR := 300.0      # duende: huye a toda velocidad si estas mas cerca
+const THIEF_FAR_K := 0.35
+const BOMBER_TRIGGER := 26.0   # bomber: distancia extra al jugador que enciende la mecha
+const BOMBER_FUSE_T := 1.0
+const BOMBER_ZONE_R := 62.0
+const BOMBER_DMG_K := 1.4
+const SHIELDER_CD := 8.0
+const JUMPER_RANGE := 250.0
+const JUMPER_CD_MIN := 5.0
+const JUMPER_CD_MAX := 7.0
+const SKILL_RETRY_CD := 0.5
+const CHARGER_RANGE := 200.0
+const CHARGER_AIM_T := 0.55
+const CHARGER_DASH_T := 0.42
+const CHARGER_DASH_K := 3.4
+const CHARGER_REST_T := 1.1
+const KEEP_DIST_K := 0.82      # los de distancia se quedan al 82% de su alcance
+const CONTACT_CD := 0.55       # contacto con el jugador (combat.js): cada 0,55 s por enemigo
+const CONTACT_KNOCK := 150.0
+const BULLET_HOMING_R := 340.0
+const BULLET_TRAIL_DT := 0.04
+const BULLET_MAX_DIST := 2000.0
+const BULLET_HITLOG_MAX := 300
+const SPAWN_NEAR_MIN := 380.0
+const SPAWN_NEAR_MAX := 520.0
+const SPAWN_FREE_R := 14.0
+const CROWD_FRAC := 0.85       # con la horda casi al tope, los nuevos salen mas duros
+const CROWD_HP_K := 1.6
+const CROWD_DMG_K := 1.25
+const CROWD_XP_K := 1.6
+const INCENSE_HP_K := 1.3
+const INCENSE_XP_K := 1.5
 const DMG_K := 2.4
 const XP_K := 5.6
 # Torre: un poco mas dificil (vida, dano y ritmo de aparicion de los enemigos; mas vida en los jefes)
@@ -3559,22 +3593,22 @@ func _spawn_one(angle: float = -999.0, near: bool = false) -> Enemy:
 	var a: float = angle if angle > -900.0 else randf() * TAU
 	var pos: Vector2 = _ring_point(a)
 	if near:
-		pos = player.position + Vector2.from_angle(a) * randf_range(380.0, 520.0)
-	pos = _free_spot(pos, 14.0)
+		pos = player.position + Vector2.from_angle(a) * randf_range(SPAWN_NEAR_MIN, SPAWN_NEAR_MAX)
+	pos = _free_spot(pos, SPAWN_FREE_R)
 	var base: Dictionary = _scale_at(_dt())
 	var sc := {"hp": float(base["hp"]) * _hp_k(_dt()), "dmg": base["dmg"], "spd": base["spd"]}
 	var e: Enemy = _make_enemy(def, pos, sc)
 	e.dmg *= DMG_K
 	e.xp_val = roundf(e.xp_val * XP_K)
-	if enemies.size() >= int(ENEMY_CAP * 0.85):
-		e.max_hp = roundf(e.max_hp * 1.6)
+	if enemies.size() >= int(ENEMY_CAP * CROWD_FRAC):
+		e.max_hp = roundf(e.max_hp * CROWD_HP_K)
 		e.hp = e.max_hp
-		e.dmg *= 1.25
-		e.xp_val = roundf(e.xp_val * 1.6)
+		e.dmg *= CROWD_DMG_K
+		e.xp_val = roundf(e.xp_val * CROWD_XP_K)
 	if _has_item("pureincense"):
-		e.max_hp = roundf(e.max_hp * 1.3)
+		e.max_hp = roundf(e.max_hp * INCENSE_HP_K)
 		e.hp = e.max_hp
-		e.xp_val = roundf(e.xp_val * 1.5)
+		e.xp_val = roundf(e.xp_val * INCENSE_XP_K)
 	if bool(_sm(e.dex).get("sh", 0)) and randf() < SHINY_RATE:
 		e.make_shiny()
 		Aud.sfx("shiny")
@@ -4319,7 +4353,7 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 		_confused_step(e, delta, kn_decay, spd)
 		return
 	if e.para_t > 0.0:
-		spd *= 0.4
+		spd *= PARA_SPD_K
 	if e.life > 0.0 and e.behavior == "thief":
 		e.life -= delta
 		if e.life <= 0.0:
@@ -4331,7 +4365,7 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 	if e.behavior == "thief":
 		e.zig += delta
 		var ang: float = (-dirv).angle() + sin(e.zig * 2.2) * 0.7
-		var kk: float = 1.0 if dist < 300.0 else 0.35
+		var kk: float = 1.0 if dist < THIEF_NEAR else THIEF_FAR_K
 		e.position += (Vector2.from_angle(ang) * spd * kk + e.knock) * delta
 		e.position = _collide(e.position, e.radius * 0.5)
 		e.knock *= kn_decay
@@ -4362,23 +4396,23 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 			_kill_enemy(e)
 		e.loop_anim("Idle", 1.0)
 		return
-	if e.behavior == "bomber" and dist < e.radius + player.radius + 26.0:
+	if e.behavior == "bomber" and dist < e.radius + player.radius + BOMBER_TRIGGER:
 		e.phase = "fuse"
-		e.pt = 1.0
-		_hazard_zone(e.position, 62.0, 1.0, e.dmg * 1.4, e.atk_type, Color("#ff7b3d"))
+		e.pt = BOMBER_FUSE_T
+		_hazard_zone(e.position, BOMBER_ZONE_R, 1.0, e.dmg * BOMBER_DMG_K, e.atk_type, Color("#ff7b3d"))
 		return
 	if e.behavior == "shielder" or e.behavior == "jumper":
 		e.skill_cd -= delta
 		if e.skill_cd <= 0.0:
 			if e.behavior == "shielder":
-				e.skill_cd = 8.0
+				e.skill_cd = SHIELDER_CD
 				_cast_shields(e)
-			elif dist < 250.0:
-				e.skill_cd = randf_range(5.0, 7.0)
+			elif dist < JUMPER_RANGE:
+				e.skill_cd = randf_range(JUMPER_CD_MIN, JUMPER_CD_MAX)
 				_start_jump(e)
 				return
 			else:
-				e.skill_cd = 0.5
+				e.skill_cd = SKILL_RETRY_CD
 	var v: Vector2 = dirv * spd
 	var abase: String = "Walk"
 	if e.boss:
@@ -4388,27 +4422,27 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 	elif e.behavior == "charger":
 		e.pt -= delta
 		if e.phase == "walk":
-			if dist < 200.0 and e.pt <= 0.0:
+			if dist < CHARGER_RANGE and e.pt <= 0.0:
 				e.phase = "aim"
-				e.pt = 0.55
+				e.pt = CHARGER_AIM_T
 				e.play("Charge", 1.6)
 		elif e.phase == "aim":
 			v = Vector2.ZERO
 			abase = "Idle"
 			if e.pt <= 0.0:
 				e.phase = "dash"
-				e.pt = 0.42
+				e.pt = CHARGER_DASH_T
 				e.dash_dir = dirv
 				e.play("Attack", 1.4)
 				_ring(e.position, e.radius, e.radius * 2.4, Color("#ff6b6b"), 0.25)
 		elif e.phase == "dash":
-			v = e.dash_dir * spd * 3.4
+			v = e.dash_dir * spd * CHARGER_DASH_K
 			if e.pt <= 0.0:
 				e.phase = "walk"
-				e.pt = 1.1
+				e.pt = CHARGER_REST_T
 	elif KEEP_DIST.has(e.behavior):
 		var rng: float = float(e.def.get("range", 200.0))
-		var keep: float = rng * 0.82
+		var keep: float = rng * KEEP_DIST_K
 		if dist < keep * 0.75:
 			v = -dirv * spd * 0.8
 		elif dist < keep:
@@ -4435,10 +4469,10 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 	# Contacto con el jugador (combat.js): cada 0,55 s por enemigo.
 	var rr: float = e.radius + player.radius
 	if dist <= rr and e.touch_cd <= 0.0 and e.behavior != "thief":
-		e.touch_cd = 0.55
+		e.touch_cd = CONTACT_CD
 		e.strike(to.angle())
 		_hurt_player(e.dmg, e.atk_type)
-		e.knock = -dirv * 150.0
+		e.knock = -dirv * CONTACT_KNOCK
 		if _has_item("rockyhelmet"):
 			_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
 		if _has_item("eternalice"):
@@ -5848,7 +5882,7 @@ func _update_bullets(delta: float) -> void:
 					continue
 				b.hit_log[key] = run_time
 				_bullet_hit(b, e)
-			if b.hit_log.size() > 300:
+			if b.hit_log.size() > BULLET_HITLOG_MAX:
 				b.hit_log.clear()
 			_bullet_visual_tick(b)
 			continue
@@ -5864,7 +5898,7 @@ func _update_bullets(delta: float) -> void:
 				if dd < player.radius + 8.0:
 					remove = true
 		if not remove and b.homing > 0.0:
-			var tg: Node2D = _nearest_enemy(b.position, 340.0)
+			var tg: Node2D = _nearest_enemy(b.position, BULLET_HOMING_R)
 			if tg != null:
 				var sp: float = b.vel.length()
 				var want: Vector2 = (tg.position + Vector2(0.0, -tg.body_h * 0.5) - b.position).normalized() * sp
@@ -5872,12 +5906,12 @@ func _update_bullets(delta: float) -> void:
 		if b.trail != "":
 			b.trail_t -= delta
 			if b.trail_t <= 0.0:
-				b.trail_t = 0.04
+				b.trail_t = BULLET_TRAIL_DT
 				pfx.trail(b.trail, b.pal, b.position + Vector2(0.0, -18.0), b.vel)
 		if not remove:
 			b.ppos = b.position
 			b.position += b.vel * delta
-			if b.position.distance_squared_to(player.position) > 2000.0 * 2000.0:
+			if b.position.distance_squared_to(player.position) > BULLET_MAX_DIST * BULLET_MAX_DIST:
 				remove = true
 			elif _wall_hit(b.ppos, b.position):
 				if b.boom > 0.0 and not b.back:
