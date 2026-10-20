@@ -482,6 +482,7 @@ func _boot_data() -> void:
 	shake_on = bool(SV.setting("shake"))
 	Actor.flash_k = 1.0 if shake_on else 0.35
 	Actor.lite = _hh()
+	relocate_on = Actor.lite
 	quality = int(SV.setting("quality"))
 	var hh: bool = _hh()
 	if hh:
@@ -4031,7 +4032,52 @@ func _spawn_thief() -> void:
 # ---------------------------------------------------------------
 # Comportamiento de los enemigos (enemy.js)
 # ---------------------------------------------------------------
+# Consola: los enemigos que se quedan muy atras (el jugador es mas rapido) se reubican en el anillo de delante,
+# si no ocupan el ENEMY_CAP lejos y delante no aparece nadie. Solo cambia la posicion; hp, dmg, evolucion y estados se conservan.
+var relocate_on := false
+var _rl_last := Vector2.ZERO
+var _rl_dir := Vector2.ZERO   # velocidad suavizada del jugador (px/s)
+
+
+func _relocate_stragglers(delta: float) -> void:
+	var pp: Vector2 = player.position
+	if delta > 0.0:
+		var jump_ok: bool = _rl_last.distance_squared_to(pp) < 90000.0   # un salto (teletransporte, arena) no cuenta como velocidad
+		_rl_dir = _rl_dir.lerp((pp - _rl_last) / delta if jump_ok else Vector2.ZERO, 0.08)
+	_rl_last = pp
+	if not relocate_on or arena != null or mode == "rush" or mode == "tower" or (Actor.tick & 7) != 3:
+		return
+	var sp: float = _rl_dir.length()
+	var moving: bool = sp > 40.0
+	var dir: Vector2 = _rl_dir / sp if moving else Vector2.ZERO
+	var half: float = get_viewport_rect().size.length() * 0.5 / cam_zoom
+	var lim: float = half * (1.7 if moving else 2.2)
+	var lim2: float = lim * lim
+	var moved := 0
+	for e in enemies:
+		if moved >= 3:
+			break
+		if e.dead or e.boss or e.legend or e.judge or e.is_minion or e.life > 0.0 or e.jump != null:
+			continue
+		var d: Vector2 = e.position - pp
+		if d.length_squared() <= lim2 or (moving and d.dot(dir) >= 0.0):
+			continue
+		var ang: float = (dir.angle() if moving else randf() * TAU) + randf_range(-0.9, 0.9)
+		e.position = _free_spot(_ring_point(ang), 14.0)
+		e.knock = Vector2.ZERO
+		e.touch_cd = 0.0
+		e.far_acc = 0.0
+		e.jump = null
+		if e.phase != "walk":
+			e.phase = "walk"
+			e.pt = 0.0
+		moved += 1
+	if moved > 0:
+		_eg_frame = -1   # la rejilla de enemigos se reconstruye con las posiciones nuevas
+
+
 func _update_enemies(delta: float) -> void:
+	_relocate_stragglers(delta)
 	var kn_decay: float = pow(0.0015, delta)
 	var far2 := 0.0
 	if Actor.lite:

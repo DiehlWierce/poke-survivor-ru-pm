@@ -14,6 +14,9 @@ const MOVES := ["ember", "fire-spin", "heat-wave", "thunderbolt", "bug-buzz", "r
 var m: Node
 var RUN := _arg_scenario() == "run"   # бег прямо в новые зоны с толпой и множеством снарядов
 var FRAMES := FRAMES_RUN if _arg_scenario() == "run" else FRAMES_DEFAULT
+var NOWARP := "--nobenchwarp" in OS.get_cmdline_user_args()   # выключить собственный перенос отставших бенчем (проверка переселения в main.gd)
+var NORELOC := "--noreloc" in OS.get_cmdline_user_args()      # выключить переселение в main.gd (relocate_on=false), для сравнения «до»
+var TANK := "--tank" in OS.get_cmdline_user_args()   # враги не умирают, бенч сам не спавнит: копятся отставшие (воспроизведение жалобы)
 var run_dir := Vector2(1.0, 0.25).normalized()
 var prof_rows: Array = []   # на каждый замеренный кадр: копия Prof.last (секции предыдущего, уже закрытого кадра)
 var n := 0
@@ -57,6 +60,8 @@ func _process(_delta: float) -> bool:
 	if load_frames > 0 and n == 0:
 		print("загрузка: кадров=%d  всего=%.0f мс  худший кадр=%.1f мс" % [load_frames, load_total, load_worst])
 	if n == 3:
+		if NORELOC:
+			m.relocate_on = false
 		m.run_time = 900.0
 		m.player.hp = 1e9
 		m.player.max_hp = 1e9
@@ -90,9 +95,14 @@ func _process(_delta: float) -> bool:
 			for mv in m.player.moves:   # неактивные слоты тоже стреляют (в игре тикает только активная группа)
 				if not act.has(mv):
 					m._tick_move(mv, 1.0 / 30.0)
-			if m.enemies.size() < m.ENEMY_CAP and n % 3 == 0:
+			if TANK and n % 30 == 0:
+				for e in m.enemies:
+					e.hp = 1e9
+					e.spd = minf(e.spd, 60.0)   # медленнее игрока (165 px/s): толпа отстаёт, как у быстрого персонажа
+					e.max_hp = 1e9
+			if m.enemies.size() < m.ENEMY_CAP and n % 3 == 0 and not TANK:
 				m._spawn_one(run_dir.angle() + randf_range(-1.0, 1.0))   # толпа подтягивается и впереди по ходу
-			if n % 8 == 0:   # отставших далеко позади переносим вперёд: впереди всегда новая толпа
+			if n % 8 == 0 and not NOWARP:   # отставших далеко позади переносим вперёд: впереди всегда новая толпа
 				var moved := 0
 				for e in m.enemies:
 					if moved >= 3:
@@ -137,13 +147,21 @@ func _process(_delta: float) -> bool:
 func _run_line() -> void:
 	var front := 0
 	var back := 0
+	var sum := 0.0
+	var behind_far := 0   # позади дальше 900 px
 	for e in m.enemies:
-		if (e.position - m.player.position).dot(run_dir) >= 0.0:
+		var d: Vector2 = e.position - m.player.position
+		sum += d.length()
+		if d.dot(run_dir) >= 0.0:
 			front += 1
 		else:
 			back += 1
-	print("  кадр %4d: врагов впереди=%d позади=%d  снарядов=%d  вражьих=%d  орбов=%d  эффектов=%d" % [
-		n, front, back, m.bullets.size(), m.ebullets.size(), m.orbs.size(), m.fx.get_child_count()])
+			if d.length() > 900.0 and not e.boss and not e.is_minion:   # отставшие обычные (боссы и их миньоны не переселяются)
+				behind_far += 1
+				if "--dbgfar" in OS.get_cmdline_user_args():
+					print("    далеко: %s dist=%.0f boss=%s legend=%s judge=%s minion=%s life=%.1f jump=%s dead=%s" % [e.enemy_name, d.length(), e.boss, e.legend, e.judge, e.is_minion, e.life, e.jump != null, e.dead])
+	print("  кадр %4d: врагов впереди=%d позади=%d (обычных дальше 900: %d) ср.дистанция=%.0f  снарядов=%d  вражьих=%d  орбов=%d  эффектов=%d" % [
+		n, front, back, behind_far, sum / maxf(1.0, float(m.enemies.size())), m.bullets.size(), m.ebullets.size(), m.orbs.size(), m.fx.get_child_count()])
 
 
 func _sec_line(a) -> String:
