@@ -4,6 +4,7 @@ extends RefCounted
 
 static var sticky_x := 0.0
 static var sticky_for: Control = null
+static var veto: Callable = Callable()   # (desde, hasta, dy) -> bool: true = el menú ya hizo otra cosa (p. ej. desplazó el texto que hay entre ambos) y el foco no se mueve
 
 
 static func focusables(root: Node) -> Array:
@@ -91,6 +92,8 @@ static func move(vp: Viewport, event: InputEvent, items: Array) -> bool:
 				target = c
 	if target == null or target == f:
 		return false
+	if dir.y != 0 and veto.is_valid() and bool(veto.call(f, target, dir.y)):
+		return true
 	target.grab_focus()
 	sticky_for = target
 	return true

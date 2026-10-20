@@ -7,6 +7,10 @@ extends Node
 const SPIKE_MS := 45.0
 const REPORT_S := 10.0
 
+const SV = preload("res://scripts/save_data.gd")
+
+static var base_fps := 0   # потолок до выбора в настройках (0 = без ограничения)
+
 var active := false
 var _log: FileAccess
 var _acc := 0.0
@@ -24,16 +28,20 @@ func _ready() -> void:
 	set_process_input(active)
 	Prof.on = active
 	set_process(false)
+	# потолок кадров по умолчанию: на приставке 30 (или maxfps.txt), на десктопе остаётся как есть; выбор в настройках главнее
+	base_fps = Engine.max_fps
+	if active:
+		base_fps = 30
+		# необязательный файл maxfps.txt рядом с игрой (например 60 для максимума): ровные 30 к/с часто приятнее, чем 40–55 с провалами
+		var fpsf := FileAccess.open(OS.get_executable_path().get_base_dir().path_join("maxfps.txt"), FileAccess.READ)
+		if fpsf != null:
+			var want: int = int(fpsf.get_as_text().strip_edges())
+			if want >= 20 and want <= 120:
+				base_fps = want
+	apply_fps()
 	if not active:
 		return
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	Engine.max_fps = 30
-	# необязательный файл maxfps.txt рядом с игрой (например 60 для максимума): ровные 30 к/с часто приятнее, чем 40–55 с провалами
-	var fpsf := FileAccess.open(OS.get_executable_path().get_base_dir().path_join("maxfps.txt"), FileAccess.READ)
-	if fpsf != null:
-		var want: int = int(fpsf.get_as_text().strip_edges())
-		if want >= 20 and want <= 120:
-			Engine.max_fps = want
 	RenderingServer.viewport_set_measure_render_time(get_tree().root.get_viewport_rid(), true)
 	# _input вызывается с конца дерева: держим узел последним ребёнком корня, чтобы он шёл первым
 	var root := get_tree().root
@@ -45,6 +53,13 @@ func _ready() -> void:
 	if _log != null:
 		_log.store_line("# %s  кадр > %d мс = рывок; раз в %d с: средний/худший кадр (мс), к/с, узлов, вызовов отрисовки" % [Time.get_datetime_string_from_system(), int(SPIKE_MS), int(REPORT_S)])
 		set_process(true)
+
+
+# Потолок кадров: значение из настроек ("max_fps": 30 / 40 / 60 / 0 = без ограничения), пока оно не выбрано (-1) — base_fps.
+static func apply_fps() -> void:
+	SV.ensure()
+	var v: int = int(SV.d["settings"].get("max_fps", -1))
+	Engine.max_fps = v if v >= 0 else base_fps
 
 
 func _to_last() -> void:

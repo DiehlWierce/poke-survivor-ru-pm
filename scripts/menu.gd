@@ -21,6 +21,7 @@ const PAD = preload("res://scripts/pad.gd")
 const PADI = preload("res://scripts/padicons.gd")
 const UPD = preload("res://scripts/updater.gd")
 const PN = preload("res://scripts/patchnotes.gd")
+const KO = preload("res://scripts/keys_only.gd")
 
 const C_PANEL := Color("#27449a")
 const C_PANEL_D := Color("#18296a")
@@ -56,6 +57,9 @@ var pad_hint: HBoxContainer
 var pad_hint_key := ""
 var shade: ColorRect
 var focus_first: Control = null
+var sum_ov: Control = null          # fondo del cuadro de resultados de la partida
+var modal_prev: Control = null      # control enfocado antes de abrirse un cuadro
+var modal_was := false
 var news_top: Button
 var news_box: VBoxContainer
 var news_scroll: ScrollContainer
@@ -94,7 +98,7 @@ var up_focus_id := ""
 var up_dex := 25
 var ban_open := false
 var tm_open := false
-var main_prev: Preview
+var main_prev: Control   # RunView
 var main_card: PanelContainer
 var main_info: Label
 var main_stats: Label
@@ -280,6 +284,142 @@ class Preview extends Control:
 		# se dibuja directo (antes: TextureRect + AtlasTexture nuevos en cada fotograma)
 		draw_texture_rect_region(_tx, Rect2(pos, Vector2(w * k, h * k)), Rect2(float(frame) * w, 0.0, w, h), Color(0, 0, 0, 0.9) if dark else Color.WHITE)
 
+
+
+# ---------------------------------------------------------------
+# Retrato de la pantalla principal: el Pokemon elegido corre sobre un suelo que se desplaza (como el fondo vivo del menu original,
+# pero barato para la consola): un solo Sprite2D animado a 10 fotogramas/s, el suelo es un TextureRect en mosaico que solo se mueve
+# (nada se redibuja) y no se procesa nada mientras la pantalla principal no se ve.
+# ---------------------------------------------------------------
+class RunShadow extends Node2D:
+	var w := 40.0
+
+	func _draw() -> void:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.35))
+		draw_circle(Vector2.ZERO, w, Color(0, 0, 0, 0.3))
+
+
+class RunView extends Control:
+	const FPS := 10.0       # fotogramas de la animacion por segundo
+	const SPEED := 90.0     # px/s a los que pasa el suelo
+	const PROPS := ["tuft_a", "tuft_b", "flower_pink", "tuft_a", "flower_yellow", "tuft_b", "pebble"]
+	var dex := -1
+	var shiny := false
+	var scale_k := 6.0
+	var spr: Sprite2D
+	var shadow: RunShadow
+	var ground: TextureRect
+	var deco: Array = []     # Sprite2D del suelo (hierbas y flores) que pasan con el
+	var am: Dictionary = {}  # animacion Walk: w, h, n, r, ax, ay
+	var frame := 0
+	var acc := 0.0
+	var scroll := 0.0
+	var _k := 1.0
+
+	func _init() -> void:
+		clip_contents = true
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ground = TextureRect.new()
+		ground.texture = load("res://assets/world/ground_grass.png")
+		ground.stretch_mode = TextureRect.STRETCH_TILE
+		ground.scale = Vector2(2, 2)
+		ground.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(ground)
+		for i in range(PROPS.size()):
+			var d := Sprite2D.new()
+			d.texture = load("res://assets/world/%s.png" % PROPS[i])
+			d.centered = false
+			d.scale = Vector2(2, 2)
+			d.set_meta("fx", float(i) / float(PROPS.size()))
+			d.set_meta("fy", 0.1 + 0.8 * fposmod(float(i) * 0.618, 1.0))
+			add_child(d)
+			deco.append(d)
+		shadow = RunShadow.new()
+		add_child(shadow)
+		spr = Sprite2D.new()
+		spr.centered = false
+		spr.region_enabled = true
+		add_child(spr)
+		visibility_changed.connect(func(): set_process(is_visible_in_tree()))
+		set_process(false)
+
+	func setup(d: int, shn: bool = false, k: float = 6.0, _drk: bool = false) -> void:
+		scale_k = k
+		if d == dex and shn == shiny:
+			return
+		dex = d
+		shiny = shn
+		var sm: Dictionary = SV.smeta.get(str(d), {})
+		var meta: Dictionary = sm.get("a", {})
+		var nm := "Walk" if meta.has("Walk") else ("Idle" if meta.has("Idle") else "")
+		am = {}
+		spr.visible = false
+		if nm != "":
+			am = meta[nm]
+			var tx: Texture2D = Preview.tex_of(d, nm, shn)
+			if tx != null:
+				spr.texture = tx
+				spr.offset = Vector2(-float(am["ax"]), -float(am["ay"]))
+				spr.visible = true
+		frame = 0
+		acc = 0.0
+		_region()
+		_layout()
+		set_process(is_visible_in_tree())
+
+	func _region() -> void:
+		if am.is_empty():
+			return
+		var rows: int = int(am.get("r", 8))
+		var w: float = float(am["w"])
+		var h: float = float(am["h"])
+		spr.region_rect = Rect2(float(frame) * w, float(mini(2, rows - 1)) * h, w, h)   # fila 2: mirando a la derecha
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			_layout()
+
+	func _layout() -> void:
+		if size.x < 8.0 or size.y < 8.0:
+			return
+		var hz: float = size.y * 0.52   # horizonte
+		ground.position = Vector2(0, hz)
+		ground.size = Vector2(size.x / 2.0 + 128.0, (size.y - hz) / 2.0 + 2.0)
+		for d in deco:
+			var sp := d as Sprite2D
+			sp.set_meta("y", hz + (size.y - hz - 24.0) * float(sp.get_meta("fy")))
+			sp.position = Vector2(float(sp.get_meta("fx")) * (size.x + 60.0), float(sp.get_meta("y")))
+		var feet := Vector2(size.x * 0.5, size.y * 0.86)
+		if not am.is_empty():
+			_k = minf(scale_k, minf(size.x / float(am["w"]), size.y * 0.8 / float(am["h"])))
+			spr.scale = Vector2(_k, _k)
+			shadow.w = float(am["w"]) * _k * 0.26
+		spr.position = feet
+		shadow.position = feet
+		queue_redraw()
+
+	func _draw() -> void:
+		var hz: float = size.y * 0.52
+		draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(size.x, 0), Vector2(size.x, hz), Vector2(0, hz)]), PackedColorArray([Color("#3d6fb8"), Color("#3d6fb8"), Color("#9fd0f0"), Color("#9fd0f0")]))
+
+	func _process(delta: float) -> void:
+		scroll += SPEED * delta
+		ground.position.x = -fmod(scroll, 128.0)
+		var span: float = size.x + 60.0
+		for d in deco:
+			var sp := d as Sprite2D
+			var x: float = sp.position.x - SPEED * delta
+			if x < -40.0:
+				x += span
+			sp.position.x = x
+		if am.is_empty():
+			return
+		acc += delta
+		if acc >= 1.0 / FPS:
+			acc = fmod(acc, 1.0 / FPS)
+			frame = (frame + 1) % int(am["n"])
+			_region()
 
 
 # ---------------------------------------------------------------
@@ -965,6 +1105,7 @@ func _ready() -> void:
 	# Solo la pantalla principal se construye ahora; las demas, la primera vez que se abren (_ensure): volver al menu tras cada partida cuesta menos.
 	if not is_overlay:   # los Ajustes dentro de la partida no usan la pantalla principal
 		_build_main()
+	NAVG.veto = _nav_veto
 	get_viewport().size_changed.connect(_fit_later)   # Callable de un metodo: se desconecta solo al liberar el menu
 	_fit_layout()
 	if is_overlay:
@@ -1496,28 +1637,165 @@ func _btn(text: String, cb: Callable, min_size: Vector2 = Vector2(0, 52)) -> But
 
 
 # Con mando: el ScrollContainer sigue al control enfocado.
-# Si no hay nada enfocable mas abajo (o arriba) pero el menu sigue, el D-pad desplaza la lista.
-func _scroll_fallback(down: bool) -> bool:
-	var f: Control = get_viewport().gui_get_focus_owner()
-	if f == null or not screens.has(cur):
-		return false
-	var p: Node = f.get_parent()
+# Si el foco no puede ir mas abajo (o arriba) pero la pagina sigue, el D-pad la desplaza a pasos de ~1/3 de alto
+# (mantener pulsado acelera); en paginas sin botones (novedades, lexico, "Acerca de") desplaza aunque el foco este en las pestanas.
+var scr_hold := 0         # pasos seguidos (mantener pulsado acelera)
+var scr_last := 0.0
+var scr_echo := false     # el evento de direccion que se esta tratando es una repeticion
+var scr_pick: ScrollContainer = null    # el scroll principal de la pantalla / cuadro abierto (ver _scroll_main)
+var scr_pick_key := ""
+var scr_pick_free := true               # ese scroll no tiene ningun control enfocable (solo se lee)
+var scr_axis_t := 0.0
+
+
+func _scroll_of(c: Node) -> ScrollContainer:
+	var p: Node = c.get_parent()
 	while p != null and not (p is ScrollContainer):
 		p = p.get_parent()
-	if p == null:
+	return p as ScrollContainer
+
+
+# Un paso de desplazamiento; false si ya no puede moverse. frac = parte del alto visible (1/3, o casi una pagina con L2/R2).
+func _scroll_step(sc: ScrollContainer, down: bool, frac: float = 0.0) -> bool:
+	var bar: ScrollBar = sc.get_v_scroll_bar()
+	var mx: int = int(maxf(0.0, bar.max_value - bar.page))
+	var v: int = sc.scroll_vertical
+	if (down and v >= mx) or (not down and v <= 0):
 		return false
-	var sc := p as ScrollContainer
-	var nb: Control = f.find_valid_focus_neighbor(SIDE_BOTTOM if down else SIDE_TOP)
-	if nb != null and sc.is_ancestor_of(nb):
+	var now: float = Time.get_ticks_msec() / 1000.0
+	if scr_echo or now - scr_last < 0.2:
+		scr_hold += 1
+	else:
+		scr_hold = 0
+	scr_last = now
+	var step: float = clampf(sc.size.y / 3.0, 60.0, 360.0) if frac <= 0.0 else maxf(60.0, sc.size.y * frac)
+	step *= 1.0 + minf(float(scr_hold) / 6.0, 2.0)
+	sc.scroll_vertical = clampi(v + int(step) * (1 if down else -1), 0, mx)
+	return sc.scroll_vertical != v
+
+
+# Raiz donde manda la entrada: el cuadro abierto o, si no hay, la pantalla actual.
+func _input_root() -> Control:
+	var mr: Control = _modal_root()
+	if mr != null:
+		return mr
+	return screens[cur] if screens.has(cur) else null
+
+
+# El ScrollContainer mas grande y visible de la raiz (se guarda mientras no cambie la pantalla, el cuadro ni el numero de nodos).
+func _scroll_main(root: Control) -> ScrollContainer:
+	var key := "%s|%d|%d" % [cur, root.get_instance_id(), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))]
+	if key == scr_pick_key and scr_pick != null and is_instance_valid(scr_pick) and scr_pick.is_visible_in_tree():
+		return scr_pick
+	var best: ScrollContainer = null
+	var best_a := -1.0
+	var cands: Array = root.find_children("*", "ScrollContainer", true, false)
+	if root is ScrollContainer:
+		cands.append(root)
+	for n in cands:
+		var sc := n as ScrollContainer
+		if not sc.is_visible_in_tree():
+			continue
+		var ar: float = sc.size.x * sc.size.y
+		if ar > best_a:
+			best_a = ar
+			best = sc
+	scr_pick = best
+	scr_pick_key = key
+	scr_pick_free = best == null or NAVG.focusables(best).is_empty()
+	return best
+
+
+# pre = antes de mover el foco: solo para paginas que se leen (sin botones) con el foco fuera del scroll.
+# Si no, despues de que el foco no se haya podido mover.
+func _scroll_text(down: bool, pre: bool) -> bool:
+	if _popup_open() or listening != "":
 		return false
-	var mx: float = maxf(0.0, (sc.get_v_scroll_bar().max_value - sc.size.y))
-	var cur_v: float = float(sc.scroll_vertical)
-	if down and cur_v >= mx - 1.0:
+	var root: Control = _input_root()
+	if root == null:
 		return false
-	if not down and cur_v <= 0.0:
+	var f: Control = get_viewport().gui_get_focus_owner()
+	var fsc: ScrollContainer = null
+	if f != null and root.is_ancestor_of(f):
+		fsc = _scroll_of(f)
+	var sc: ScrollContainer = null
+	if pre:
+		if fsc != null:
+			return false
+		sc = _scroll_main(root)
+		if sc == null or not scr_pick_free:
+			return false
+		if not down and sc.scroll_vertical <= 0:
+			return false
+	else:
+		sc = fsc if fsc != null else _scroll_main(root)
+	if sc == null:
 		return false
-	sc.scroll_vertical = int(cur_v + (140.0 if down else -140.0))
-	return true
+	return _scroll_step(sc, down)
+
+
+func _scroll_fallback(down: bool) -> bool:
+	return _scroll_text(down, false)
+
+
+# L2 / R2 (en la consola: Z / C) y stick derecho: pagina arriba / abajo sin mover el foco; -1 / +1, 0 si no es.
+func _page_dir(event: InputEvent) -> int:
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_Z:
+			return -1
+		if event.keycode == KEY_C:
+			return 1
+	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.6:
+		var now: float = Time.get_ticks_msec() / 1000.0
+		if (event.axis == JOY_AXIS_RIGHT_Y or event.axis == JOY_AXIS_TRIGGER_LEFT or event.axis == JOY_AXIS_TRIGGER_RIGHT) and now - scr_axis_t > 0.18:
+			scr_axis_t = now
+			if event.axis == JOY_AXIS_TRIGGER_LEFT:
+				return -1
+			if event.axis == JOY_AXIS_TRIGGER_RIGHT:
+				return 1
+			return 1 if event.axis_value > 0.0 else -1
+	return 0
+
+
+func _scroll_page(down: bool) -> bool:
+	var root: Control = _input_root()
+	if root == null:
+		return false
+	var f: Control = get_viewport().gui_get_focus_owner()
+	var sc: ScrollContainer = null
+	if f != null and root.is_ancestor_of(f):
+		sc = _scroll_of(f)
+	if cur == "dex" and sc == dex_scroll and dex_dp != null:
+		sc = dex_dp.get_child(0) as ScrollContainer   # en el Pokedex L2/R2 pasan la ficha (la lista ya se recorre con el foco)
+	if sc == null:
+		sc = _scroll_main(root)
+	return sc != null and _scroll_step(sc, down, 0.85)
+
+
+# Veto de navgrid: el siguiente control queda lejos (hay texto entre medias) y fuera de la vista: primero se desplaza,
+# asi el texto de en medio se lee; el foco se mueve cuando el destino ya cabe.
+func _nav_veto(from: Control, to: Control, dy: int) -> bool:
+	if not is_visible_in_tree():
+		return false
+	var sc: ScrollContainer = _scroll_of(to)
+	if sc == null or not sc.is_visible_in_tree():
+		return false
+	var view: Rect2 = sc.get_global_rect()
+	var tr: Rect2 = to.get_global_rect()
+	var fr: Rect2 = from.get_global_rect()
+	var from_in: bool = sc.is_ancestor_of(from)
+	var gap := 0.0
+	if dy > 0:
+		if tr.end.y <= view.end.y + 1.0:
+			return false
+		gap = tr.position.y - (fr.end.y if from_in else view.position.y)
+	else:
+		if tr.position.y >= view.position.y - 1.0:
+			return false
+		gap = (fr.position.y if from_in else view.end.y) - tr.end.y
+	if gap < 56.0:
+		return false
+	return _scroll_step(sc, dy > 0)
 
 
 func _follow_focus() -> void:
@@ -1741,6 +2019,7 @@ func _process(delta: float) -> void:
 		if save_t <= 0.0:
 			save_t = 0.0
 			SV.save()
+	_modal_tick()
 	pad_chk -= delta
 	if pad_hint != null and pad_chk <= 0.0:
 		pad_chk = 0.5
@@ -1813,8 +2092,12 @@ func _go_back() -> void:
 	if slots_busy:
 		slots_ui.fast = true
 		return
+	if sum_ov != null and is_instance_valid(sum_ov) and not sum_ov.is_queued_for_deletion():
+		_close_summary()
+		return
 	if gacha_result != null and gacha_result.visible:
 		gacha_result.visible = false
+		kb_open = false
 		return
 	if up_picker != null and is_instance_valid(up_picker):
 		_close_up_picker()
@@ -1828,6 +2111,51 @@ func _go_back() -> void:
 		else:
 			back_t = Time.get_ticks_msec() / 1000.0
 			toast(L.t("Pulsa atrás otra vez para salir"))
+
+
+# Cuadro abierto encima de la pantalla (resultados de la partida, resultado del gacha / favoritos / tarjeta / nombre, selector, tragaperras):
+# mientras exista, el foco y la entrada se quedan dentro de el. null si no hay ninguno.
+func _modal_root() -> Control:
+	if sum_ov != null and is_instance_valid(sum_ov) and not sum_ov.is_queued_for_deletion():
+		return sum_ov
+	if up_picker != null and is_instance_valid(up_picker):
+		return up_picker
+	if gacha_result != null and is_instance_valid(gacha_result) and gacha_result.visible:
+		return gacha_result
+	if slots_busy and slots_ui != null and is_instance_valid(slots_ui):
+		return slots_ui
+	return null
+
+
+func _close_summary() -> void:
+	if sum_ov != null and is_instance_valid(sum_ov):
+		sum_ov.queue_free()
+	sum_ov = null
+	_update_top()
+	focus_first = main_play_btn
+	main_play_btn.grab_focus()
+
+
+# Al cerrar un cuadro el foco vuelve al boton que lo abrio (si sigue ahi; si la pagina se rehizo, la pagina pone el suyo).
+func _modal_tick() -> void:
+	var mr: Control = _modal_root()
+	if mr != null:
+		modal_was = true
+		return
+	kb_open = false
+	if modal_was:
+		modal_was = false
+		_modal_restore.call_deferred()
+		return
+	modal_prev = get_viewport().gui_get_focus_owner()
+
+
+func _modal_restore() -> void:
+	var f: Control = get_viewport().gui_get_focus_owner()
+	var p: Control = modal_prev
+	if (f == null or not f.is_visible_in_tree()) and p != null and is_instance_valid(p) and p.is_inside_tree() and p.is_visible_in_tree() and p.focus_mode == Control.FOCUS_ALL:
+		p.grab_focus()
+		_follow(p)
 
 
 func _popup_open() -> bool:
@@ -1863,7 +2191,7 @@ func _tab_dir(event: InputEvent) -> int:
 
 # Hay un cuadro encima (resultado del gacha / selector de favorito / tragaperras): las pestanas no responden.
 func _tab_blocked() -> bool:
-	if listening != "" or slots_busy or _popup_open():
+	if listening != "" or slots_busy or _popup_open() or _modal_root() != null:
 		return true
 	if gacha_result != null and gacha_result.visible:
 		return true
@@ -1975,6 +2303,41 @@ func _input(event: InputEvent) -> void:
 			_refresh_listen()
 			get_viewport().set_input_as_handled()
 			return
+	# Con un cuadro abierto el foco y las direcciones no salen de el (antes seguian navegando por la pantalla de detras)
+	var mr: Control = _modal_root()
+	if mr != null and not _popup_open():
+		var fm: Control = get_viewport().gui_get_focus_owner()
+		var tabk: bool = event is InputEventKey and event.keycode == KEY_TAB
+		if mr == slots_ui:
+			if _dir_event(event) or tabk:
+				get_viewport().set_input_as_handled()
+				return
+		elif (_dir_event(event) or tabk or event.is_action_pressed("ui_accept")) and (fm == null or not mr.is_ancestor_of(fm)):
+			var mf: Array = NAVG.focusables(mr)
+			if not mf.is_empty():
+				(mf[0] as Control).grab_focus()
+				_follow(mf[0])
+			get_viewport().set_input_as_handled()
+			return
+		elif tabk:
+			get_viewport().set_input_as_handled()
+			return
+	if kb_open and _kb_input(event):
+		get_viewport().set_input_as_handled()
+		return
+	# L2 / R2 y stick derecho: pagina arriba / abajo
+	var pgd: int = _page_dir(event)
+	if pgd != 0 and not _popup_open() and listening == "":
+		if _scroll_page(pgd > 0):
+			get_viewport().set_input_as_handled()
+			return
+	# botón cíclico (Límite de FPS): izquierda / derecha cambian el valor sin salir de la fila
+	if event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right"):
+		var fcy: Control = get_viewport().gui_get_focus_owner()
+		if fcy != null and fcy.has_meta("cycle") and not _popup_open():
+			(fcy.get_meta("cycle") as Callable).call(-1 if event.is_action_pressed("ui_left") else 1)
+			get_viewport().set_input_as_handled()
+			return
 	var on_tabs: bool = cur in TAB_SCREENS and tab_row != null and is_instance_valid(tab_row)
 	if on_tabs and not _tab_blocked():
 		# L1 / R1: pestana anterior / siguiente al instante, y el foco al primer elemento
@@ -2003,28 +2366,25 @@ func _input(event: InputEvent) -> void:
 				tab_sel.grab_focus()
 				get_viewport().set_input_as_handled()
 				return
-	if cur == "news" and news_scroll != null and (event.is_action_pressed("ui_down", true) or event.is_action_pressed("ui_up", true)):
-		news_scroll.scroll_vertical += 130 if event.is_action_pressed("ui_down", true) else -130
+	# Paginas que solo se leen (novedades, lexico, "Acerca de"...): arriba / abajo desplazan aunque el foco este en las pestanas
+	var vdir: bool = event.is_action_pressed("ui_down", true) or event.is_action_pressed("ui_up", true)
+	scr_echo = vdir and event is InputEventKey and event.echo
+	if vdir and _scroll_text(event.is_action_pressed("ui_down", true), true):
 		get_viewport().set_input_as_handled()
 		return
-	# Lexico: no tiene elementos enfocables, asi que con el foco en las pestanas arriba/abajo desplaza la lista
-	if cur == "lexicon" and lex_box != null and (event.is_action_pressed("ui_down", true) or event.is_action_pressed("ui_up", true)):
-		var fl: Control = get_viewport().gui_get_focus_owner()
-		var lsc := lex_box.get_parent() as ScrollContainer
-		if lsc != null and fl != null and lex_tabs.is_ancestor_of(fl):
-			var ld: bool = event.is_action_pressed("ui_down", true)
-			if ld or lsc.scroll_vertical > 0:
-				lsc.scroll_vertical += 140 if ld else -140
-				get_viewport().set_input_as_handled()
-				return
 	var nav: bool = _nav_event(event)
 	if _dir_event(event) and _grid_nav(event):
 		get_viewport().set_input_as_handled()
 		call_deferred("_follow_focus")
 		return
-	if (event.is_action_pressed("ui_down") or event.is_action_pressed("ui_up")) and _scroll_fallback(event.is_action_pressed("ui_down")):
+	if vdir and _scroll_fallback(event.is_action_pressed("ui_down", true)):
 		get_viewport().set_input_as_handled()
 		return
+	if mr != null and _dir_event(event):
+		var fd: Control = get_viewport().gui_get_focus_owner()
+		if not (fd is Slider or fd is OptionButton or fd is LineEdit):
+			get_viewport().set_input_as_handled()   # la direccion no sale del cuadro
+			return
 	if nav:
 		call_deferred("_follow_focus")
 		if get_viewport().gui_get_focus_owner() == null:
@@ -2059,6 +2419,9 @@ func _grid_items() -> Array:
 	if up_picker != null and is_instance_valid(up_picker):
 		root = up_picker
 		key = "p"
+	if sum_ov != null and is_instance_valid(sum_ov) and not sum_ov.is_queued_for_deletion():
+		root = sum_ov
+		key = "s"
 	key += cur
 	var nc: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
 	if not gi_dirty and key == gi_key and nc == gi_nodes and _gi_valid():
@@ -2119,7 +2482,9 @@ func _nav_event(event: InputEvent) -> bool:
 # Primer control con foco visible: dentro del resultado del gacha si esta abierto, si no en la pantalla actual.
 func _first_focusable() -> Control:
 	var root: Node = self
-	if gacha_result != null and gacha_result.visible:
+	if sum_ov != null and is_instance_valid(sum_ov) and not sum_ov.is_queued_for_deletion():
+		root = sum_ov
+	elif gacha_result != null and gacha_result.visible:
 		root = gacha_result
 	elif screens.has(cur):
 		root = screens[cur]
@@ -2614,11 +2979,10 @@ func _refresh_main() -> void:
 		dex = int(SV.d["owned"].keys()[0])
 		SV.d["selected"] = dex
 	var shn: bool = bool(SV.d["shiny_on"]) and SV.owns(dex) and bool(SV.d["owned"][str(dex)]["shiny"])
-	if is_instance_valid(main_prev):
-		main_prev.queue_free()
-	main_prev = Preview.new()
-	main_prev.custom_minimum_size = main_prev_min
-	main_card.add_child(main_prev)
+	if not is_instance_valid(main_prev):   # el retrato se crea una vez; si el Pokemon no cambia, setup no hace nada
+		main_prev = RunView.new()
+		main_prev.custom_minimum_size = main_prev_min
+		main_card.add_child(main_prev)
 	main_prev.setup(dex, shn, 6.0)
 	main_info.text = "%s · %s" % [_name_of(dex), _type_text(dex)]
 	var ttl: String = String(SV.d.get("title", ""))
@@ -2657,6 +3021,7 @@ func _show_run_summary() -> void:
 	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ov.z_index = 40
 	add_child(ov)
+	sum_ov = ov
 	var c := CenterContainer.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ov.add_child(c)
@@ -2827,7 +3192,7 @@ func _show_run_summary() -> void:
 		var rl := _label("¡Nuevo récord de tiempo!", 22, C_GOLD)
 		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(rl)
-	var ok := _btn("Volver al menú", func(): ov.queue_free(); _update_top(); focus_first = main_play_btn; main_play_btn.grab_focus(), Vector2(260, 56))
+	var ok := _btn("Volver al menú", func(): _close_summary(), Vector2(260, 56))
 	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(ok)
 	_gf(ok)
@@ -4735,6 +5100,18 @@ func _ach_card(a: Dictionary, done: bool) -> PanelContainer:
 # ---------------------------------------------------------------
 # Perfil del jugador (sin online): nombre, Pokemon actual, 3 favoritos, titulo y tarjeta
 # ---------------------------------------------------------------
+var fav_btns: Array = []   # los 3 huecos de favoritos de la pagina Perfil (el foco vuelve al que se acaba de cambiar)
+
+
+func _hh() -> bool:
+	return OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
+
+
+# Sin teclado fisico (consola o mando conectado): el nombre se escribe con el teclado en pantalla.
+func _pad_mode() -> bool:
+	return _hh() or Input.get_connected_joypads().size() > 0
+
+
 func _nick() -> String:
 	var n: String = String(SV.d.get("nick", "")).strip_edges()
 	return n if n != "" else L.t("Entrenador")
@@ -4758,19 +5135,28 @@ func _goals_profile() -> Button:
 	row.add_child(right)
 	# nombre
 	left.add_child(_label("Nombre de entrenador", 24, C_GOLD))
-	var le := LineEdit.new()
-	le.text = String(SV.d.get("nick", ""))
-	le.placeholder_text = L.t("Entrenador")
-	le.max_length = 16
-	le.custom_minimum_size = Vector2(0, 52)
-	le.add_theme_font_size_override("font_size", 26)
-	var save_nick := func(_t = ""):
-		SV.d["nick"] = le.text.strip_edges()
-		SV.save()
-		_update_top()
-	le.text_submitted.connect(save_nick)
-	le.focus_exited.connect(save_nick)
-	left.add_child(le)
+	var name_btn: Button = null
+	if _pad_mode():
+		# con mando no hay teclado: el nombre se escribe en un teclado en pantalla (_name_kb)
+		name_btn = _btn(_nick(), _name_kb, Vector2(0, 52))
+		name_btn.add_theme_font_size_override("font_size", 26)
+		name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		name_btn.clip_text = true
+		left.add_child(name_btn)
+	else:
+		var le := LineEdit.new()
+		le.text = String(SV.d.get("nick", ""))
+		le.placeholder_text = L.t("Entrenador")
+		le.max_length = KB_MAX
+		le.custom_minimum_size = Vector2(0, 52)
+		le.add_theme_font_size_override("font_size", 26)
+		var save_nick := func(_t = ""):
+			SV.d["nick"] = le.text.strip_edges()
+			SV.save()
+			_update_top()
+		le.text_submitted.connect(save_nick)
+		le.focus_exited.connect(save_nick)
+		left.add_child(le)
 	# favoritos
 	left.add_child(_label("Tus 3 Pokémon favoritos", 24, C_GOLD))
 	var favs: Array = SV.d.get("favs", [0, 0, 0])
@@ -4778,10 +5164,12 @@ func _goals_profile() -> Button:
 	fr.add_theme_constant_override("separation", 12)
 	left.add_child(fr)
 	var first: Button = null
+	fav_btns = []
 	for i in range(3):
 		var slot: int = i
 		var dex: int = int(favs[i]) if i < favs.size() else 0
 		var b := _btn("", func(): _fav_picker(slot), Vector2(150, 150))
+		fav_btns.append(b)
 		if dex > 0 and SV.dex_by.has(dex):
 			b.text = ""
 			var pv := Preview.new()
@@ -4844,7 +5232,7 @@ func _goals_profile() -> Button:
 		var tl := _label(_type_text(sd), 18, Color("#c8d6ee"))
 		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		right.add_child(tl)
-	return first
+	return name_btn if name_btn != null else first
 
 
 # Elegir uno de tus Pokemon para un hueco de favoritos.
@@ -4899,7 +5287,7 @@ func _fav_picker(slot: int) -> void:
 	hb.add_theme_constant_override("separation", 12)
 	v.add_child(hb)
 	hb.add_child(_btn("Quitar", func(): _set_fav(slot, 0), Vector2(180, 52)))
-	var cancel := _btn("Cancelar", func(): gacha_result.visible = false; _refresh_goals(), Vector2(180, 52))
+	var cancel := _btn("Cancelar", func(): gacha_result.visible = false, Vector2(180, 52))
 	hb.add_child(cancel)
 	gacha_result.visible = true
 	_gf(firstb if firstb != null else cancel)
@@ -4915,6 +5303,166 @@ func _set_fav(slot: int, dex: int) -> void:
 	Aud.sfx("confirm")
 	gacha_result.visible = false
 	_refresh_goals()
+	if slot < fav_btns.size():
+		_gf(fav_btns[slot])
+
+
+# ---------------------------------------------------------------
+# Teclado en pantalla para el nombre de entrenador (D-pad + A; X borra, Y pone un espacio, B/Esc cancela)
+# ---------------------------------------------------------------
+const KB_MAX := 16   # como max_length del campo de texto del original
+const KB_LAT := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const KB_RU := "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+const KB_NUM := "0123456789"
+var kb_open := false
+var kb_text := ""
+var kb_upper := true
+var kb_ru := false
+var kb_lbl: Label
+var kb_grid: GridContainer
+var kb_first: Button = null
+
+
+func _name_kb() -> void:
+	_ensure_result()
+	_clear(gacha_result)
+	kb_text = String(SV.d.get("nick", ""))
+	kb_ru = L.lang() == "ru"
+	kb_upper = kb_text == ""
+	var c := CenterContainer.new()
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gacha_result.add_child(c)
+	var pc := PanelContainer.new()
+	c.add_child(pc)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.custom_minimum_size = Vector2(minf(560.0, DSP.area(get_tree()).size.x - 80.0), 0)
+	_pop_wrap(c, pc, v)
+	var tt := _label("Nombre de entrenador", 26, C_GOLD)
+	tt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(tt)
+	kb_lbl = _label("_", 32)
+	kb_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	kb_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	kb_lbl.clip_text = true
+	v.add_child(kb_lbl)
+	kb_grid = GridContainer.new()
+	kb_grid.columns = clampi(int((DSP.area(get_tree()).size.x - 120.0) / 52.0), 6, 10)
+	kb_grid.add_theme_constant_override("h_separation", 4)
+	kb_grid.add_theme_constant_override("v_separation", 4)
+	kb_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(kb_grid)
+	var sp := HFlowContainer.new()
+	sp.alignment = FlowContainer.ALIGNMENT_CENTER
+	sp.add_theme_constant_override("h_separation", 6)
+	sp.add_theme_constant_override("v_separation", 4)
+	v.add_child(sp)
+	sp.add_child(_btn("Aa", func(): kb_upper = not kb_upper; _kb_case(), Vector2(56, 44)))
+	if L.lang() == "ru":
+		sp.add_child(_btn("RU/EN", func(): kb_ru = not kb_ru; _kb_fill(); _gf(kb_first), Vector2(86, 44)))
+	sp.add_child(_btn("Espacio", func(): _kb_add(" "), Vector2(0, 44)))
+	sp.add_child(_btn("Borrar", func(): _kb_back(), Vector2(0, 44)))
+	var okb := _btn("OK", func(): _kb_ok(), Vector2(70, 44))
+	sp.add_child(okb)
+	sp.add_child(_btn("Cancelar", func(): _kb_close(), Vector2(0, 44)))
+	var hint := _label("X: borrar · Y: espacio · B: cancelar", 15, Color("#c8d6ee"))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(hint)
+	_kb_fill()
+	_kb_show()
+	kb_open = true
+	gacha_result.visible = true
+	_gf(kb_first if kb_first != null else okb)
+
+
+# Las teclas de letras y cifras (se rehacen solo al cambiar de alfabeto; mayusculas/minusculas solo cambian el texto)
+func _kb_fill() -> void:
+	for ch in kb_grid.get_children():
+		kb_grid.remove_child(ch)
+		ch.queue_free()
+	kb_first = null
+	for chs in [KB_RU if kb_ru else KB_LAT, KB_NUM]:
+		for i in range(String(chs).length()):
+			var cc: String = String(chs)[i]
+			var kbtn := _btn(cc, func(): _kb_add(String(_kb_ch(cc))), Vector2(46, 44))
+			kbtn.set_meta("ch", cc)
+			kbtn.add_theme_font_size_override("font_size", 22)
+			kb_grid.add_child(kbtn)
+			if kb_first == null:
+				kb_first = kbtn
+	_kb_case()
+
+
+func _kb_ch(cc: String) -> String:
+	return cc.to_upper() if kb_upper else cc.to_lower()
+
+
+func _kb_case() -> void:
+	for b in kb_grid.get_children():
+		(b as Button).text = _kb_ch(String(b.get_meta("ch")))
+
+
+func _kb_show() -> void:
+	kb_lbl.text = kb_text + "_"
+
+
+func _kb_add(ch: String) -> void:
+	if kb_text.length() >= KB_MAX:
+		return
+	kb_text += ch
+	var up: bool = ch == " "   # tras la primera letra, minusculas; tras un espacio, mayuscula
+	if kb_upper != up:
+		kb_upper = up
+		_kb_case()
+	_kb_show()
+
+
+func _kb_back() -> void:
+	if kb_text.is_empty():
+		return
+	kb_text = kb_text.substr(0, kb_text.length() - 1)
+	if kb_text.is_empty() or kb_text.ends_with(" "):
+		kb_upper = true
+		_kb_case()
+	_kb_show()
+
+
+func _kb_close() -> void:
+	kb_open = false
+	gacha_result.visible = false
+
+
+func _kb_ok() -> void:
+	SV.d["nick"] = kb_text.strip_edges()
+	SV.save()
+	Aud.sfx("confirm")
+	_update_top()
+	_kb_close()
+	_refresh_goals()
+	_focus_content()
+
+
+# Teclas del teclado en pantalla: X (R en la consola) borra, Y (B) pone un espacio; con teclado fisico se escribe directamente.
+func _kb_input(event: InputEvent) -> bool:
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_BACKSPACE or (_hh() and event.keycode == KEY_R):
+			_kb_back()
+			return true
+		if _hh():
+			if event.keycode == KEY_B:
+				_kb_add(" ")
+				return true
+		elif event.unicode > 32 and not event.echo and String.chr(event.unicode).strip_edges() != "" and (KB_LAT + KB_LAT.to_lower() + KB_NUM + KB_RU + KB_RU.to_lower()).contains(String.chr(event.unicode)):
+			_kb_add(String.chr(event.unicode))
+			return true
+	elif event is InputEventJoypadButton and event.pressed and not _hh():
+		if event.button_index == JOY_BUTTON_X:
+			_kb_back()
+			return true
+		if event.button_index == JOY_BUTTON_Y:
+			_kb_add(" ")
+			return true
+	return false
 
 
 # Tarjeta de entrenador: lo que antes era "ver mi perfil publico", pero sin conexion.
@@ -4971,7 +5519,7 @@ func _show_card() -> void:
 	g.add_child(_stat_cell(L.t("Logros"), "%d / %d" % [SV.d.get("ach", {}).size(), PG.list().size()]))
 	var tm: int = int(st.get("total_time", 0))
 	g.add_child(_stat_cell(L.t("Tiempo jugado"), "%dh %02dm" % [tm / 3600, (tm % 3600) / 60]))
-	var ok := _btn("Cerrar", func(): gacha_result.visible = false; _refresh_goals(), Vector2(220, 52))
+	var ok := _btn("Cerrar", func(): gacha_result.visible = false, Vector2(220, 52))
 	var hb := HBoxContainer.new()
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
 	hb.add_child(ok)
@@ -5500,12 +6048,51 @@ func _set_graphics() -> void:
 	_sx(func():
 		_sec("Pantalla")
 		_view_row())
+	_sx(func(): _srow("Límite de FPS", "Máximo de cuadros por segundo. En la consola 30 suele ir más fluido; más sube la velocidad, pero puede dar tirones.", _fps_btn()))
 	_sx(func(): _srow("Números de daño", "Los números que salen al golpear o ser golpeado.", _toggle_set("dmg_numbers")))
 	_sx(func(): _srow("Menos sacudidas y destellos", "La cámara tiembla menos y los destellos son más suaves.", _toggle_set("shake", true)))
 	_sx(func(): _srow("Vibración", "Vibra el móvil cuando te golpean.", _toggle_set("vibration")))
 	_sx(func(): _srow("Mostrar FPS", "Cuadros por segundo, en la esquina.", _toggle_set("fps")))
 	_sx(func(): _srow("Caja de estadísticas", "Muestra tus estadísticas (daño, velocidad…) arriba a la izquierda.", _toggle_set("stats_box")))
 	_sx(func(): _srow("Dificultad adaptativa", "En la partida normal, el juego empieza fácil y se pone más difícil según tus mejoras: más vida y daño, más enemigos, hordas más seguidas y más experiencia por nivel.", _toggle_set("adaptive")))
+
+
+# Límite de cuadros: botón cíclico (pulsar o izquierda/derecha cambia el valor; ver "cycle" en _input).
+const FPS_OPTS := [30, 40, 60, 0]   # 0 = sin límite
+
+
+func _fps_cur() -> int:
+	var v: int = int(SV.d["settings"].get("max_fps", -1))
+	return v if v >= 0 else Engine.max_fps
+
+
+func _fps_text(v: int) -> String:
+	return "< %s >" % (L.t("Sin límite") if v == 0 else "%d FPS" % v)
+
+
+func _fps_btn() -> Button:
+	var b := _btn("", func(): pass, Vector2(220, 46))
+	var step := func(d: int):
+		var v: int = _fps_cur()
+		var i: int = FPS_OPTS.find(v)
+		if i < 0:   # valor ajeno (maxfps.txt): al siguiente mayor / menor de la lista
+			i = 3
+			for k in range(3):
+				if int(FPS_OPTS[k]) >= v:
+					i = k
+					break
+			i = clampi(i + (0 if d > 0 else -1), 0, 3)
+		else:
+			i = posmod(i + d, FPS_OPTS.size())
+		SV.d["settings"]["max_fps"] = int(FPS_OPTS[i])
+		SV.save()
+		KO.apply_fps()
+		b.text = _fps_text(int(FPS_OPTS[i]))
+		Aud.sfx("hover")
+	b.text = _fps_text(_fps_cur())
+	b.pressed.connect(func(): step.call(1))
+	b.set_meta("cycle", step)
+	return b
 
 
 func _set_controls() -> void:
