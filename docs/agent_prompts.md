@@ -1,6 +1,6 @@
 # Промты на реализацию плана улучшения кода
 
-План лежит в [code_review_prompt_and_plan.md](code_review_prompt_and_plan.md), часть 2. Два агента работают параллельно и независимо, каждый в своей ветке от `main`. Работа поделена по файлам так, чтобы агенты не правили одно и то же. Сводить и мерджить будет отдельная сессия.
+План лежит в [code_review_prompt_and_plan.md](code_review_prompt_and_plan.md), часть 2. Два агента работают параллельно и независимо, каждый в своей ветке от `portmaster`. Работа поделена по файлам так, чтобы агенты не правили одно и то же. Сводить и мерджить будет отдельная сессия.
 
 | | Claude, ветка `claude/code-quality-core` | Codex, ветка `codex/code-quality-support` |
 |---|---|---|
@@ -17,9 +17,9 @@
 Задача: реализовать твою часть плана улучшения кода из docs/code_review_prompt_and_plan.md (часть 2). Параллельно в другой ветке работает Codex над ДРУГИМИ файлами; итог сводит отдельная сессия.
 
 GIT
-- Создай ветку claude/code-quality-core от свежего origin/main (git fetch; git switch -c claude/code-quality-core origin/main). Работай в ней. Лучше в отдельном worktree, чтобы не мешать основной папке.
+- Создай ветку claude/code-quality-core от свежего origin/portmaster (git fetch; git switch -c claude/code-quality-core origin/portmaster). Работай в ней. Лучше в отдельном worktree, чтобы не мешать основной папке.
 - Один шаг плана = один небольшой коммит на русском с префиксом пункта ("B1: вынести Minimap в scripts/ui/minimap.gd").
-- Пушь ветку после каждых 2–3 коммитов (обычный push, без force). В main не мерджи, PR не открывай, релизы/сборки/архивы/флешку не трогай.
+- Пушь ветку после каждых 2–3 коммитов (обычный push, без force). В portmaster и main не мерджи, main вообще не трогай (это зеркало оригинала), PR не открывай, релизы/сборки/архивы/флешку не трогай.
 
 ТВОИ ФАЙЛЫ (правишь только их):
 scripts/main.gd, scripts/menu.gd, scripts/moves_data.gd, scripts/abilities.gd и новые файлы, которые выносишь из них (scripts/game/*.gd, scripts/ui/*.gd).
@@ -77,9 +77,9 @@ HANDOFF (docs/handoff_claude.md, обновлять после каждого ш
 Задача: реализовать свою часть плана улучшения кода из docs/code_review_prompt_and_plan.md (часть 2). Параллельно в другой ветке Claude правит scripts/main.gd и scripts/menu.gd; итог сводит отдельная сессия.
 
 GIT
-- Создай ветку codex/code-quality-support от свежего origin/main в СВОЁМ worktree (не переключай ветку в /Users/andrew/vscode_projects/poke-survivor — там работают другие).
+- Создай ветку codex/code-quality-support от свежего origin/portmaster в СВОЁМ worktree (не переключай ветку в /Users/andrew/vscode_projects/poke-survivor — там работают другие).
 - Один шаг = один небольшой коммит на русском с префиксом пункта ("B5: предупреждение о заблокированном сохранении").
-- Пушь ветку после каждых 2–3 коммитов, без force. В main не мерджи, PR не открывай, сборки/релизы/архивы не делай.
+- Пушь ветку после каждых 2–3 коммитов, без force. В portmaster и main не мерджи, main вообще не трогай (это зеркало оригинала), PR не открывай, сборки/релизы/архивы не делай.
 
 ТВОИ ФАЙЛЫ: scripts/save_data.gd, progress.gd, lang.gd, arena.gd, tileworld.gd, zmove.gd, pfx.gd, vfx.gd, judgment.gd, dynamax.gd, slots.gd, pause_ui.gd, audio.gd, icons.gd, updater.gd, navgrid.gd, display.gd, patchnotes.gd, padicons.gd, prof.gd, pad.gd, keys_only.gd; новые scripts/util/*.gd; tools/; мёртвые файлы в scripts/ и data/.
 ЗАПРЕЩЕНО ТРОГАТЬ: scripts/main.gd, scripts/menu.gd, scripts/moves_data.gd, scripts/abilities.gd (их правит Claude), project.godot, export_presets.cfg, portmaster/, содержимое data/lang_*.json и других data/*.json.
@@ -126,4 +126,4 @@ HANDOFF (docs/handoff_codex.md, после каждого шага): базов�
 
 ## Для мердж-сессии (потом)
 
-Свести `claude/code-quality-core` и `codex/code-quality-support` в одну ветку от `main`, прочитать оба handoff, сделать пункты «нужно от другого агента» (например, показ `SV.save_blocked` в menu.gd), прогнать `tools/check_all.sh` и бенч, собрать архив PortMaster, плейтест.
+Свести `claude/code-quality-core` и `codex/code-quality-support` в `portmaster`, прочитать оба handoff, сделать пункты «нужно от другого агента» (например, показ `SV.save_blocked` в menu.gd), прогнать `tools/check_all.sh` и бенч, собрать архив PortMaster, плейтест.
