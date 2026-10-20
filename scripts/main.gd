@@ -20,6 +20,15 @@ const DSP = preload("res://scripts/display.gd")
 const PAD = preload("res://scripts/pad.gd")
 const PADI = preload("res://scripts/padicons.gd")
 const ARENA = preload("res://scripts/arena.gd")
+const Hud = preload("res://scripts/ui/hud.gd")
+const Cards = preload("res://scripts/ui/cards.gd")
+const Slots = preload("res://scripts/ui/move_slots.gd")
+const Minimap = preload("res://scripts/ui/minimap.gd")
+const WTex = preload("res://scripts/game/wtex.gd")
+const TeamUi = preload("res://scripts/ui/team_ui.gd")
+const WeatherFx = preload("res://scripts/game/weather_fx.gd")
+const LoadScreen = preload("res://scripts/ui/load_screen.gd")
+const Stick = preload("res://scripts/ui/stick.gd")
 const TW = preload("res://scripts/tileworld.gd")
 const JDM = preload("res://scripts/judgment.gd")
 const PG = preload("res://scripts/progress.gd")
@@ -118,6 +127,40 @@ const SUMMON_MAP := {15: 13, 18: 16, 24: 23, 28: 27, 31: 29, 34: 32, 42: 41, 51:
 const PLAIN_B := ["chase", "charger", "ranged", "tank"]
 const SUPPORT_B := ["healer", "shielder", "summoner"]
 const KEEP_DIST := ["ranged", "fan", "beamer", "zoner", "healer", "summoner"]
+# Numeros de los caminos calientes (_enemy_step, _update_bullets, _spawn_one): solo nombres, valores de siempre.
+const PARA_SPD_K := 0.4        # paralizado: velocidad
+const THIEF_NEAR := 300.0      # duende: huye a toda velocidad si estas mas cerca
+const THIEF_FAR_K := 0.35
+const BOMBER_TRIGGER := 26.0   # bomber: distancia extra al jugador que enciende la mecha
+const BOMBER_FUSE_T := 1.0
+const BOMBER_ZONE_R := 62.0
+const BOMBER_DMG_K := 1.4
+const SHIELDER_CD := 8.0
+const JUMPER_RANGE := 250.0
+const JUMPER_CD_MIN := 5.0
+const JUMPER_CD_MAX := 7.0
+const SKILL_RETRY_CD := 0.5
+const CHARGER_RANGE := 200.0
+const CHARGER_AIM_T := 0.55
+const CHARGER_DASH_T := 0.42
+const CHARGER_DASH_K := 3.4
+const CHARGER_REST_T := 1.1
+const KEEP_DIST_K := 0.82      # los de distancia se quedan al 82% de su alcance
+const CONTACT_CD := 0.55       # contacto con el jugador (combat.js): cada 0,55 s por enemigo
+const CONTACT_KNOCK := 150.0
+const BULLET_HOMING_R := 340.0
+const BULLET_TRAIL_DT := 0.04
+const BULLET_MAX_DIST := 2000.0
+const BULLET_HITLOG_MAX := 300
+const SPAWN_NEAR_MIN := 380.0
+const SPAWN_NEAR_MAX := 520.0
+const SPAWN_FREE_R := 14.0
+const CROWD_FRAC := 0.85       # con la horda casi al tope, los nuevos salen mas duros
+const CROWD_HP_K := 1.6
+const CROWD_DMG_K := 1.25
+const CROWD_XP_K := 1.6
+const INCENSE_HP_K := 1.3
+const INCENSE_XP_K := 1.5
 const DMG_K := 2.4
 const XP_K := 5.6
 # Torre: un poco mas dificil (vida, dano y ritmo de aparicion de los enemigos; mas vida en los jefes)
@@ -617,6 +660,7 @@ func _boot_ctrl() -> void:
 	if mode == "team":
 		var tu := TeamUi.new()
 		tu.m = self
+		tu.swap_requested.connect(_swap_team)
 		ui_layer.add_child(tu)
 	slots.picked.connect(_set_active)
 	cards = Cards.new()
@@ -1211,6 +1255,36 @@ func _process_body(delta: float, pt: int) -> void:
 		_biome_warm()
 	if not _ld_keep.is_empty() and run_time > 20.0:
 		_ld_keep.clear()   # las texturas calentadas ya las tienen los actores vivos o se pueden volver a cargar
+	_tick_pause_ui()
+	_tick_toast(delta)
+	_tick_quality(delta)
+	_trim_fx()
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
+	if player.dead:
+		_tick_death(delta)
+	elif z_state == "cine" and not paused:
+		_z_cine(delta)
+	elif jd.cinematic() and not paused:
+		jd.cine_tick(delta)
+	elif not choosing and not paused:
+		pt = _tick_run(delta, pt)
+	_tick_hud(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_HUD, pt)
+	_update_active_fx(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
+		if (Actor.tick % 30) == 0:
+			Prof.n_enemies = enemies.size()
+			Prof.n_bullets = bullets.size()
+			Prof.n_ebullets = ebullets.size()
+			Prof.n_orbs = orbs.size()
+			Prof.n_fx = fx.get_child_count()
+	Actor.tick_visuals(delta)
+
+
+func _tick_pause_ui() -> void:
 	hud.paused = paused
 	if not settings_open:
 		var want_ui: bool = paused and not player.dead
@@ -1219,6 +1293,9 @@ func _process_body(delta: float, pt: int) -> void:
 				pause_ui.open()
 			else:
 				pause_ui.close()
+
+
+func _tick_toast(delta: float) -> void:
 	if hud.toast_t > 0.0:
 		hud.toast_t -= delta
 	elif not PG.toasts.is_empty():
@@ -1227,6 +1304,9 @@ func _process_body(delta: float, pt: int) -> void:
 			"sub": (L.t(String(tt["sub"])) % String(tt["subarg"]) if String(tt["subarg"]) != "" else L.t(String(tt["sub"]))) if String(tt["sub"]) != "" else ""}
 		hud.toast_t = 2.8
 		Aud.sfx(String(tt.get("snd", "legend")))
+
+
+func _tick_quality(delta: float) -> void:
 	if quality == 0:
 		# Auto: baja los efectos si el juego va a tirones.
 		if Engine.get_frames_per_second() < 40 and run_time > 5.0:
@@ -1236,6 +1316,9 @@ func _process_body(delta: float, pt: int) -> void:
 				q_bad_t = 0.0
 		else:
 			q_bad_t = 0.0
+
+
+func _trim_fx() -> void:
 	var fcap := _fx_cap()
 	if fx.get_child_count() > fcap:
 		var over: int = fx.get_child_count() - fcap
@@ -1246,110 +1329,115 @@ func _process_body(delta: float, pt: int) -> void:
 			if ch is Fx and not ch.is_queued_for_deletion():
 				ch.queue_free()
 				over -= 1
+
+
+# Jugador caido: camara lenta, animacion de desmayo y cierre de la partida por etapas.
+func _tick_death(delta: float) -> void:
+	Actor.frozen = true
+	death_t += delta
+	# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
+	if death_done_t < 0.0:
+		var fa: bool = player.anim == "Faint" and player.frame >= (player._am("Faint")["d"] as Array).size() - 1
+		if player.anim != "Faint" or fa or death_t > 6.0:
+			death_done_t = 0.0
+	else:
+		death_done_t += delta
+	if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
+		Engine.time_scale = 1.0
+	if fin_stage >= 0:
+		if not run_saved:
+			Aud.music("")
+			Aud.sfx("gameover")
+		_finish_step()   # una etapa por fotograma: sin un tiron de ~150 ms en la consola al morir
+
+
+# Un fotograma de partida en marcha (sin cartas ni pausa); devuelve el marcador de Prof.
+func _tick_run(delta: float, pt: int) -> int:
+	run_time += delta
+	if mode == "rifts" and run_time >= RIFTS_LIMIT and arena == null and not timeup:
+		timeup = true
+		hud.timeup = true
+		hud.rifts_n = run_rifts
+		player.dead = true
+		player.active = false
+		_clear_orbit_orbs()
+		for e in enemies:
+			e.active = false
+		Aud.sfx("bossDown")
+	if _has_mod("nohealing"):
+		if player.max_hp > nh_max:
+			nh_last += player.max_hp - nh_max
+			nh_max = player.max_hp
+		if player.hp > nh_last:
+			player.hp = nh_last
+		else:
+			nh_last = player.hp
+	Aud.music(jd.music() if jd.active() else "rift" if arena != null else ("boss" if _boss_alive() else ["forest", "cave", "volcano"][biome_idx % 3]))
+	if down:
+		_update_down(delta)
+	else:
+		_update_player(delta)
+	_update_partner(delta)
+	_z_poll()
+	_cooldowns(delta)
+	_adapt(delta)
+	if z_state == "fx":
+		_z_fx(delta)
+	if dyn != null:
+		dyn_flash += delta
+		if player.dead or down:
+			dyn.stop()
+		elif dyn.active:
+			dyn.tick(delta)
 	if Prof.on:
-		pt = Prof.lap(Prof.S_FX, pt)
-	if player.dead:
-		Actor.frozen = true
-		death_t += delta
-		# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
-		if death_done_t < 0.0:
-			var fa: bool = player.anim == "Faint" and player.frame >= (player._am("Faint")["d"] as Array).size() - 1
-			if player.anim != "Faint" or fa or death_t > 6.0:
-				death_done_t = 0.0
-		else:
-			death_done_t += delta
-		if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
-			Engine.time_scale = 1.0
-		if fin_stage >= 0:
-			if not run_saved:
-				Aud.music("")
-				Aud.sfx("gameover")
-			_finish_step()   # una etapa por fotograma: sin un tiron de ~150 ms en la consola al morir
-	elif z_state == "cine" and not paused:
-		_z_cine(delta)
-	elif jd.cinematic() and not paused:
-		jd.cine_tick(delta)
-	elif not choosing and not paused:
-		run_time += delta
-		if mode == "rifts" and run_time >= RIFTS_LIMIT and arena == null and not timeup:
-			timeup = true
-			hud.timeup = true
-			hud.rifts_n = run_rifts
-			player.dead = true
-			player.active = false
-			_clear_orbit_orbs()
-			for e in enemies:
-				e.active = false
-			Aud.sfx("bossDown")
-		if _has_mod("nohealing"):
-			if player.max_hp > nh_max:
-				nh_last += player.max_hp - nh_max
-				nh_max = player.max_hp
-			if player.hp > nh_last:
-				player.hp = nh_last
-			else:
-				nh_last = player.hp
-		Aud.music(jd.music() if jd.active() else "rift" if arena != null else ("boss" if _boss_alive() else ["forest", "cave", "volcano"][biome_idx % 3]))
-		if down:
-			_update_down(delta)
-		else:
-			_update_player(delta)
-		_update_partner(delta)
-		_z_poll()
-		_cooldowns(delta)
-		_adapt(delta)
-		if z_state == "fx":
-			_z_fx(delta)
-		if dyn != null:
-			dyn_flash += delta
-			if player.dead or down:
-				dyn.stop()
-			elif dyn.active:
-				dyn.tick(delta)
+		pt = Prof.lap(Prof.S_PLAYER, pt)
+	if arena == null:
+		_update_world(delta)
+		_update_biome()
 		if Prof.on:
-			pt = Prof.lap(Prof.S_PLAYER, pt)
-		if arena == null:
-			_update_world(delta)
-			_update_biome()
-			if Prof.on:
-				pt = Prof.lap(Prof.S_WORLD, pt)
-			_update_spawner(delta)
-			if Prof.on:
-				pt = Prof.lap(Prof.S_SPAWN, pt)
-			_update_rift(delta)
+			pt = Prof.lap(Prof.S_WORLD, pt)
+		_update_spawner(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_SPAWN, pt)
+		_update_rift(delta)
+		jd.update(delta)
+		if run_time >= JDM.ARC_AT and not jd.done and pending_levels == 0 and mode != "rush" and mode != "tower":
+			jd.begin()
+	else:
+		_update_arena(delta)
+		if jd.active():
 			jd.update(delta)
-			if run_time >= JDM.ARC_AT and not jd.done and pending_levels == 0 and mode != "rush" and mode != "tower":
-				jd.begin()
-		else:
-			_update_arena(delta)
-			if jd.active():
-				jd.update(delta)
-		_update_weather(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_PLAYER, pt)
-		_update_enemies(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_ENEMIES, pt)
-		_update_hazards(delta)
-		_update_ebullets(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_HAZ_EB, pt)
-		_update_fields(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_FIELDS, pt)
-		_update_bullets(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_BULLETS, pt)
-		_update_orbs(delta)
-		if Prof.on:
-			pt = Prof.lap(Prof.S_ORBS, pt)
-		_cleanup_enemies()
-		if Prof.on:
-			pt = Prof.lap(Prof.S_CLEAN, pt)
-		if pending_levels > 0 and not choosing:
-			_open_cards()
-		elif bonds > 0 and not choosing and (arena == null or _arena_bond_ready()):
-			_offer_bond(true)
+	_update_weather(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_PLAYER, pt)
+	_update_enemies(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_ENEMIES, pt)
+	_update_hazards(delta)
+	_update_ebullets(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_HAZ_EB, pt)
+	_update_fields(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FIELDS, pt)
+	_update_bullets(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_BULLETS, pt)
+	_update_orbs(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_ORBS, pt)
+	_cleanup_enemies()
+	if Prof.on:
+		pt = Prof.lap(Prof.S_CLEAN, pt)
+	if pending_levels > 0 and not choosing:
+		_open_cards()
+	elif bonds > 0 and not choosing and (arena == null or _arena_bond_ready()):
+		_offer_bond(true)
+	return pt
+
+
+# Camara y datos del HUD.
+func _tick_hud(delta: float) -> void:
 	ground.center = player.position
 	cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake * (1.0 if shake_on else 0.0)
 	shake = maxf(0.0, shake - 30.0 * delta)
@@ -1423,18 +1511,6 @@ func _process_body(delta: float, pt: int) -> void:
 	wx.kind = wx_kind
 	wx.level = _wx_level()
 	_refresh_slots()
-	if Prof.on:
-		pt = Prof.lap(Prof.S_HUD, pt)
-	_update_active_fx(delta)
-	if Prof.on:
-		pt = Prof.lap(Prof.S_FX, pt)
-		if (Actor.tick % 30) == 0:
-			Prof.n_enemies = enemies.size()
-			Prof.n_bullets = bullets.size()
-			Prof.n_ebullets = ebullets.size()
-			Prof.n_orbs = orbs.size()
-			Prof.n_fx = fx.get_child_count()
-	Actor.tick_visuals(delta)
 
 
 func _refresh_slots() -> void:
@@ -2240,7 +2316,7 @@ func _hurt_player(amount: float, atk_type: String = "", pure: bool = false) -> v
 		_ring(player.position, 8.0, 260.0, Color("#ff8ad8"), 0.8)
 		shake = 6.0
 		for e in enemies:
-			if not e.dead and e.position.distance_to(player.position) < 260.0:
+			if not e.dead and e.position.distance_squared_to(player.position) < 260.0 * 260.0:
 				e.knock = (e.position - player.position).normalized() * 500.0
 		return
 	if player.hp <= 0.0 and mode == "team":
@@ -2328,7 +2404,7 @@ func _revive_from_down() -> void:
 	_ring(player.position, 8.0, 240.0, Color("#7dffb0"), 0.8)
 	add_text(player.position + Vector2(0.0, -player.body_h - 22.0), L.t("¡Tu compañero te ha revivido!"), Color("#7dffb0"), 24)
 	for e in enemies:
-		if not e.dead and e.position.distance_to(player.position) < 220.0:
+		if not e.dead and e.position.distance_squared_to(player.position) < 220.0 * 220.0:
 			e.knock = (e.position - player.position).normalized() * 450.0
 
 
@@ -2533,7 +2609,8 @@ func _melee(m: Dictionary) -> void:
 	for e in enemies:
 		if e.dead:
 			continue
-		if e.position.distance_to(player.position) > rad + e.radius * 0.5:
+		var rr: float = rad + e.radius * 0.5
+		if e.position.distance_squared_to(player.position) > rr * rr:
 			continue
 		if not _in_arc(player.position, e.position, player.aim, half):
 			continue
@@ -2576,7 +2653,8 @@ func _aura(m: Dictionary) -> void:
 	for e in enemies:
 		if e.dead:
 			continue
-		if e.position.distance_to(player.position) <= rad + e.radius * 0.5:
+		var rr: float = rad + e.radius * 0.5
+		if e.position.distance_squared_to(player.position) <= rr * rr:
 			if m.has("dream") and e.sleep_t <= 0.0:
 				continue   # Come Sueños: solo afecta a enemigos dormidos
 			_hit_move(e, _f(m, "dmg") * _atk(), e.position - player.position, m)
@@ -2680,8 +2758,9 @@ func _mines(m: Dictionary) -> void:
 func _meteors(m: Dictionary) -> void:
 	var n: int = maxi(1, int(_f(m, "count", 1.0)))
 	var near: Array = []
+	var reach: float = _reach(m)
 	for e in enemies:
-		if not e.dead and e.position.distance_to(player.position) <= _reach(m):
+		if not e.dead and e.position.distance_squared_to(player.position) <= reach * reach:
 			near.append(e)
 	near.shuffle()
 	for i in range(n):
@@ -3021,7 +3100,8 @@ func _blast(f: Field, r: float, k: float) -> void:
 	for e in enemies:
 		if e.dead:
 			continue
-		if e.position.distance_to(f.position) <= r + e.radius * 0.5:
+		var rr: float = r + e.radius * 0.5
+		if e.position.distance_squared_to(f.position) <= rr * rr:
 			_hit_move(e, f.dmg * k, e.position - f.position, m)
 
 
@@ -3038,7 +3118,7 @@ func _update_fields(delta: float) -> void:
 			var trig: bool = false
 			if f.t >= f.arm:
 				for e in enemies:
-					if not e.dead and e.position.distance_to(f.position) <= 14.0 + e.radius * 0.5:
+					if not e.dead and e.position.distance_squared_to(f.position) <= (14.0 + e.radius * 0.5) * (14.0 + e.radius * 0.5):
 						trig = true
 						break
 			if trig or f.t >= f.life:
@@ -3101,16 +3181,6 @@ func _sm(dex: int) -> Dictionary:
 	return _smeta[str(dex)]
 
 
-# Hash determinista (util.js) con enteros de 32 bits.
-func _hash(x: int, y: int, seed_v: int) -> float:
-	var h: int = ((x & 0xFFFFFFFF) * 374761393) & 0xFFFFFFFF
-	h = h ^ (((y & 0xFFFFFFFF) * 668265263) & 0xFFFFFFFF)
-	h = h ^ (((seed_v & 0xFFFFFFFF) * 2246822519) & 0xFFFFFFFF)
-	h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
-	h = h ^ (h >> 16)
-	return float(h & 0xFFFFFFFF) / 4294967296.0
-
-
 func _pick_n(arr: Array, n: int) -> Array:
 	var c: Array = arr.duplicate()
 	c.shuffle()
@@ -3147,7 +3217,7 @@ func _behavior_of(p: Dictionary) -> String:
 func _behavior_calc(p: Dictionary) -> String:
 	var dex: int = int(p["dex"])
 	var t: Array = p["types"]
-	var h: float = _hash(dex, 7, 11)
+	var h: float = ARENA.hsh(dex, 7, 11)
 	if HEAL_SET.has(dex):
 		return "healer"
 	if SHIELD_SET.has(dex):
@@ -3569,22 +3639,22 @@ func _spawn_one(angle: float = -999.0, near: bool = false) -> Enemy:
 	var a: float = angle if angle > -900.0 else randf() * TAU
 	var pos: Vector2 = _ring_point(a)
 	if near:
-		pos = player.position + Vector2.from_angle(a) * randf_range(380.0, 520.0)
-	pos = _free_spot(pos, 14.0)
+		pos = player.position + Vector2.from_angle(a) * randf_range(SPAWN_NEAR_MIN, SPAWN_NEAR_MAX)
+	pos = _free_spot(pos, SPAWN_FREE_R)
 	var base: Dictionary = _scale_at(_dt())
 	var sc := {"hp": float(base["hp"]) * _hp_k(_dt()), "dmg": base["dmg"], "spd": base["spd"]}
 	var e: Enemy = _make_enemy(def, pos, sc)
 	e.dmg *= DMG_K
 	e.xp_val = roundf(e.xp_val * XP_K)
-	if enemies.size() >= int(ENEMY_CAP * 0.85):
-		e.max_hp = roundf(e.max_hp * 1.6)
+	if enemies.size() >= int(ENEMY_CAP * CROWD_FRAC):
+		e.max_hp = roundf(e.max_hp * CROWD_HP_K)
 		e.hp = e.max_hp
-		e.dmg *= 1.25
-		e.xp_val = roundf(e.xp_val * 1.6)
+		e.dmg *= CROWD_DMG_K
+		e.xp_val = roundf(e.xp_val * CROWD_XP_K)
 	if _has_item("pureincense"):
-		e.max_hp = roundf(e.max_hp * 1.3)
+		e.max_hp = roundf(e.max_hp * INCENSE_HP_K)
 		e.hp = e.max_hp
-		e.xp_val = roundf(e.xp_val * 1.5)
+		e.xp_val = roundf(e.xp_val * INCENSE_XP_K)
 	if bool(_sm(e.dex).get("sh", 0)) and randf() < SHINY_RATE:
 		e.make_shiny()
 		Aud.sfx("shiny")
@@ -4329,7 +4399,7 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 		_confused_step(e, delta, kn_decay, spd)
 		return
 	if e.para_t > 0.0:
-		spd *= 0.4
+		spd *= PARA_SPD_K
 	if e.life > 0.0 and e.behavior == "thief":
 		e.life -= delta
 		if e.life <= 0.0:
@@ -4337,16 +4407,8 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 			e.dead = true
 			e.fade = 0.2
 			return
-	# Duende del tesoro: huye de ti en zigzag.
 	if e.behavior == "thief":
-		e.zig += delta
-		var ang: float = (-dirv).angle() + sin(e.zig * 2.2) * 0.7
-		var kk: float = 1.0 if dist < 300.0 else 0.35
-		e.position += (Vector2.from_angle(ang) * spd * kk + e.knock) * delta
-		e.position = _collide(e.position, e.radius * 0.5)
-		e.knock *= kn_decay
-		e.face_angle(ang)
-		e.loop_anim("Walk", 1.4)
+		_thief_step(e, delta, kn_decay, dirv, dist, spd)
 		return
 	if e.behavior == "runner":
 		# Va a donde vas a estar.
@@ -4372,23 +4434,23 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 			_kill_enemy(e)
 		e.loop_anim("Idle", 1.0)
 		return
-	if e.behavior == "bomber" and dist < e.radius + player.radius + 26.0:
+	if e.behavior == "bomber" and dist < e.radius + player.radius + BOMBER_TRIGGER:
 		e.phase = "fuse"
-		e.pt = 1.0
-		_hazard_zone(e.position, 62.0, 1.0, e.dmg * 1.4, e.atk_type, Color("#ff7b3d"))
+		e.pt = BOMBER_FUSE_T
+		_hazard_zone(e.position, BOMBER_ZONE_R, 1.0, e.dmg * BOMBER_DMG_K, e.atk_type, Color("#ff7b3d"))
 		return
 	if e.behavior == "shielder" or e.behavior == "jumper":
 		e.skill_cd -= delta
 		if e.skill_cd <= 0.0:
 			if e.behavior == "shielder":
-				e.skill_cd = 8.0
+				e.skill_cd = SHIELDER_CD
 				_cast_shields(e)
-			elif dist < 250.0:
-				e.skill_cd = randf_range(5.0, 7.0)
+			elif dist < JUMPER_RANGE:
+				e.skill_cd = randf_range(JUMPER_CD_MIN, JUMPER_CD_MAX)
 				_start_jump(e)
 				return
 			else:
-				e.skill_cd = 0.5
+				e.skill_cd = SKILL_RETRY_CD
 	var v: Vector2 = dirv * spd
 	var abase: String = "Walk"
 	if e.boss:
@@ -4398,27 +4460,27 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 	elif e.behavior == "charger":
 		e.pt -= delta
 		if e.phase == "walk":
-			if dist < 200.0 and e.pt <= 0.0:
+			if dist < CHARGER_RANGE and e.pt <= 0.0:
 				e.phase = "aim"
-				e.pt = 0.55
+				e.pt = CHARGER_AIM_T
 				e.play("Charge", 1.6)
 		elif e.phase == "aim":
 			v = Vector2.ZERO
 			abase = "Idle"
 			if e.pt <= 0.0:
 				e.phase = "dash"
-				e.pt = 0.42
+				e.pt = CHARGER_DASH_T
 				e.dash_dir = dirv
 				e.play("Attack", 1.4)
 				_ring(e.position, e.radius, e.radius * 2.4, Color("#ff6b6b"), 0.25)
 		elif e.phase == "dash":
-			v = e.dash_dir * spd * 3.4
+			v = e.dash_dir * spd * CHARGER_DASH_K
 			if e.pt <= 0.0:
 				e.phase = "walk"
-				e.pt = 1.1
+				e.pt = CHARGER_REST_T
 	elif KEEP_DIST.has(e.behavior):
 		var rng: float = float(e.def.get("range", 200.0))
-		var keep: float = rng * 0.82
+		var keep: float = rng * KEEP_DIST_K
 		if dist < keep * 0.75:
 			v = -dirv * spd * 0.8
 		elif dist < keep:
@@ -4445,25 +4507,42 @@ func _enemy_step(e: Enemy, delta: float, kn_decay: float) -> void:
 	# Contacto con el jugador (combat.js): cada 0,55 s por enemigo.
 	var rr: float = e.radius + player.radius
 	if dist <= rr and e.touch_cd <= 0.0 and e.behavior != "thief":
-		e.touch_cd = 0.55
-		e.strike(to.angle())
-		_hurt_player(e.dmg, e.atk_type)
-		e.knock = -dirv * 150.0
-		if _has_item("rockyhelmet"):
-			_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
-		if _has_item("eternalice"):
-			e.apply_slow(0.3, 2.0)
-		if not ab_fx.is_empty():
-			if ab_fx.has("thorns"):
-				_damage_enemy(e, 12.0 + float(player.level) * 3.0, Color("#9aa6b5"), -dirv, 60.0)
-			if ab_fx.has("contact") and not e.dead and randf() < _abn("contact_p"):
-				var ck: String = String(ab_fx["contact"])
-				if ck == "burn":
-					e.apply_burn(1)
-				elif ck == "poison":
-					e.apply_poison(1)
-				else:
-					_apply_cc(e, ck)
+		_enemy_contact(e, to, dirv)
+
+
+# Duende del tesoro: huye de ti en zigzag.
+func _thief_step(e: Enemy, delta: float, kn_decay: float, dirv: Vector2, dist: float, spd: float) -> void:
+	e.zig += delta
+	var ang: float = (-dirv).angle() + sin(e.zig * 2.2) * 0.7
+	var kk: float = 1.0 if dist < THIEF_NEAR else THIEF_FAR_K
+	e.position += (Vector2.from_angle(ang) * spd * kk + e.knock) * delta
+	e.position = _collide(e.position, e.radius * 0.5)
+	e.knock *= kn_decay
+	e.face_angle(ang)
+	e.loop_anim("Walk", 1.4)
+
+
+# Contacto con el jugador (combat.js): golpe, retroceso y efectos de objetos y habilidad.
+func _enemy_contact(e: Enemy, to: Vector2, dirv: Vector2) -> void:
+	e.touch_cd = CONTACT_CD
+	e.strike(to.angle())
+	_hurt_player(e.dmg, e.atk_type)
+	e.knock = -dirv * CONTACT_KNOCK
+	if _has_item("rockyhelmet"):
+		_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
+	if _has_item("eternalice"):
+		e.apply_slow(0.3, 2.0)
+	if not ab_fx.is_empty():
+		if ab_fx.has("thorns"):
+			_damage_enemy(e, 12.0 + float(player.level) * 3.0, Color("#9aa6b5"), -dirv, 60.0)
+		if ab_fx.has("contact") and not e.dead and randf() < _abn("contact_p"):
+			var ck: String = String(ab_fx["contact"])
+			if ck == "burn":
+				e.apply_burn(1)
+			elif ck == "poison":
+				e.apply_poison(1)
+			else:
+				_apply_cc(e, ck)
 
 
 func _shot_dmg(e: Enemy) -> float:
@@ -4528,7 +4607,7 @@ func _heal_around(e: Enemy) -> void:
 	for o in enemies:
 		if o.dead or o.hp >= o.max_hp:
 			continue
-		if o.position.distance_to(e.position) <= 150.0:
+		if o.position.distance_squared_to(e.position) <= 150.0 * 150.0:
 			o.hp = minf(o.max_hp, o.hp + o.max_hp * k)
 			o.queue_redraw()
 	e.play("Charge", 1.0)
@@ -4538,7 +4617,7 @@ func _heal_around(e: Enemy) -> void:
 func _cast_shields(e: Enemy) -> void:
 	var near: Array = []
 	for o in enemies:
-		if not o.dead and o.position.distance_to(e.position) <= 160.0:
+		if not o.dead and o.position.distance_squared_to(e.position) <= 160.0 * 160.0:
 			near.append(o)
 	near.sort_custom(func(a, b): return a.position.distance_squared_to(e.position) < b.position.distance_squared_to(e.position))
 	# Balance: escudo del 30 % (antes 35 %) durante 7 s, y un mismo Pokemon no recibe otro
@@ -4623,7 +4702,7 @@ func _kill_enemy(e: Enemy) -> void:
 # --- jefes: 4 ataques (Pisoton + Embestida o Salto, y 2 de lejos segun tipo) ---
 func _boss_init(e: Enemy) -> void:
 	var t: Array = e.types
-	var melee := ["slam", "dash" if _hash(e.dex, 3, 7) < 0.5 else "leap"]
+	var melee := ["slam", "dash" if ARENA.hsh(e.dex, 3, 7) < 0.5 else "leap"]
 	var pref: String = "volley"
 	if _has_t(t, ["fire", "ground", "poison", "rock", "grass"]):
 		pref = "rain"
@@ -4633,7 +4712,7 @@ func _boss_init(e: Enemy) -> void:
 		pref = "nova"
 	var others: Array = ["rain", "beam", "nova", "volley"]
 	others.erase(pref)
-	var ranged: Array = [pref, others[int(_hash(e.dex, 5, 9) * 3.0) % 3]]
+	var ranged: Array = [pref, others[int(ARENA.hsh(e.dex, 5, 9) * 3.0) % 3]]
 	var far: bool = e.behavior == "ranged"
 	e.ai = {"melee": melee, "ranged": ranged, "far_like": 0.65 if far else 0.35, "mode": "far" if far else "close",
 		"mode_t": randf_range(6.0, 8.0), "cd": 1.6, "cast": null, "fury": false, "side": 1.0 if randf() < 0.5 else -1.0}
@@ -5694,7 +5773,7 @@ func _trigger_trap(p: Prop) -> void:
 		col = Color("#ff7ad9")
 	_ring(pos, 6.0, 74.0, col, 0.5)
 	for e in enemies:
-		if e.dead or e.position.distance_to(pos) > 74.0:
+		if e.dead or e.position.distance_squared_to(pos) > 74.0 * 74.0:
 			continue
 		if p.sub == "poison":
 			e.apply_poison(5)
@@ -5858,7 +5937,7 @@ func _update_bullets(delta: float) -> void:
 					continue
 				b.hit_log[key] = run_time
 				_bullet_hit(b, e)
-			if b.hit_log.size() > 300:
+			if b.hit_log.size() > BULLET_HITLOG_MAX:
 				b.hit_log.clear()
 			_bullet_visual_tick(b)
 			continue
@@ -5874,7 +5953,7 @@ func _update_bullets(delta: float) -> void:
 				if dd < player.radius + 8.0:
 					remove = true
 		if not remove and b.homing > 0.0:
-			var tg: Node2D = _nearest_enemy(b.position, 340.0)
+			var tg: Node2D = _nearest_enemy(b.position, BULLET_HOMING_R)
 			if tg != null:
 				var sp: float = b.vel.length()
 				var want: Vector2 = (tg.position + Vector2(0.0, -tg.body_h * 0.5) - b.position).normalized() * sp
@@ -5882,12 +5961,12 @@ func _update_bullets(delta: float) -> void:
 		if b.trail != "":
 			b.trail_t -= delta
 			if b.trail_t <= 0.0:
-				b.trail_t = 0.04
+				b.trail_t = BULLET_TRAIL_DT
 				pfx.trail(b.trail, b.pal, b.position + Vector2(0.0, -18.0), b.vel)
 		if not remove:
 			b.ppos = b.position
 			b.position += b.vel * delta
-			if b.position.distance_squared_to(player.position) > 2000.0 * 2000.0:
+			if b.position.distance_squared_to(player.position) > BULLET_MAX_DIST * BULLET_MAX_DIST:
 				remove = true
 			elif _wall_hit(b.ppos, b.position):
 				if b.boom > 0.0 and not b.back:
@@ -6151,7 +6230,7 @@ func _collect(kind: String, value: float) -> void:
 		Aud.sfx("ball")
 		shake = 12.0
 		for e in enemies.duplicate():
-			if not e.dead and e.position.distance_to(player.position) < 520.0:
+			if not e.dead and e.position.distance_squared_to(player.position) < 520.0 * 520.0:
 				_damage_enemy(e, 80.0, Color("#ff7b3d"))
 		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), L.t("BOOM!"), Color("#ff7b3d"))
 
@@ -7695,17 +7774,6 @@ class EBullet extends Node2D:
 
 
 # --- dibujo ---
-class WTex:
-	const SC := 2.4   # objetos del mundo (cofres, altares, fuentes...) un 20 % mas pequenos
-	static var cache := {}
-
-	static func get_t(n: String) -> Texture2D:
-		if not cache.has(n):
-			var p: String = "res://assets/world/%s.png" % n
-			cache[n] = load(p) if ResourceLoader.exists(p) else null
-		return cache[n]
-
-
 class Decor extends Node2D:
 	var items: Array = []
 	var done := false
@@ -8184,96 +8252,6 @@ class Field extends Node2D:
 
 
 # ---------------------------------------------------------------
-# Barra de movimientos (abajo a la derecha): tocalos para cambiar
-# ---------------------------------------------------------------
-class Slots extends Node2D:
-	signal picked(idx: int)
-	const SZ := 76.0
-	var info: Array = []
-	var active := 0
-	var enabled := true
-	var _vp := Vector2(1280.0, 720.0)   # tamano de la vista y margen inferior en cache (se refrescan en size_changed)
-	var _inw := 0.0
-
-	func _ready() -> void:
-		_relayout()
-		get_viewport().size_changed.connect(_relayout)
-
-	func _relayout() -> void:
-		_vp = get_viewport_rect().size
-		_inw = DSP.insets(get_tree()).w
-
-	func _rects() -> Array:
-		var vp: Vector2 = _vp
-		var n: int = info.size()
-		# Si no caben todos a 76 px (vista pequena), los huecos se estrechan un poco.
-		var gap := 8.0
-		var total: float = SZ * float(n) + gap * float(maxi(0, n - 1))
-		if total > vp.x - 16.0 and n > 1:
-			gap = maxf(2.0, (vp.x - 16.0 - SZ * float(n)) / float(n - 1))
-			total = SZ * float(n) + gap * float(n - 1)
-		var x0: float = (vp.x - total) * 0.5
-		var y0: float = vp.y - SZ - 12.0 - _inw
-		var out: Array = []
-		for i in range(n):
-			out.append(Rect2(x0 + float(i) * (SZ + gap), y0, SZ, SZ))
-		return out
-
-	func _process(_delta: float) -> void:
-		if not Actor.lite or (Actor.tick % 3) == 0:   # consola: 10 veces por segundo bastan
-			queue_redraw()
-
-	func _input(event: InputEvent) -> void:
-		if not enabled:
-			return
-		if event is InputEventScreenTouch and event.pressed:
-			var rs: Array = _rects()
-			for i in range(rs.size()):
-				if rs[i].has_point(event.position):
-					get_viewport().set_input_as_handled()
-					picked.emit(i)
-					return
-
-	func _draw() -> void:
-		var font := ThemeDB.fallback_font
-		var rs: Array = _rects()
-		for i in range(rs.size()):
-			var r: Rect2 = rs[i]
-			var it: Dictionary = info[i]
-			var col: Color = it["color"]
-			var is_act: bool = i == active
-			var border: Color = Color("#ffd33d") if is_act else Color(col.r, col.g, col.b, 0.6)
-			draw_rect(r.grow(3.0 if is_act else 1.0), border)
-			draw_rect(r, Color(0.08, 0.12, 0.2, 0.9))
-			IC.draw_in(self, String(it.get("icon", "star")), r.position + Vector2(SZ * 0.5, 29.0), 32.0)
-			if bool(it["evo"]):
-				IC.draw_in(self, "star", r.position + Vector2(SZ - 12.0, 12.0), 12.0)
-			if int(it.get("n", 1)) > 1:
-				draw_rect(Rect2(r.position.x + SZ - 30.0, r.position.y + 2.0, 28.0, 14.0), Color("#ff8ad8"))
-				draw_string(font, r.position + Vector2(SZ - 30.0, 13.0), "x%d" % int(it["n"]), HORIZONTAL_ALIGNMENT_CENTER, 28.0, 12, Color("#2a0f24"))
-			draw_string(font, r.position + Vector2(5.0, 15.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color("#8fa8cc"))
-			var nm_t: String = L.t(String(it["name"]))
-			var nm_fs: int = 11
-			while nm_fs > 8 and font.get_string_size(nm_t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
-				nm_fs -= 1
-			if font.get_string_size(nm_t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
-				var nb: String = nm_t   # ni a 8 px cabe: se recorta con "…"
-				while nb.length() > 1 and font.get_string_size(nb + "…", HORIZONTAL_ALIGNMENT_LEFT, -1.0, nm_fs).x > SZ - 4.0:
-					nb = nb.substr(0, nb.length() - 1)
-				nm_t = nb.strip_edges() + "…"
-			draw_string(font, r.position + Vector2(2.0, 55.0), nm_t, HORIZONTAL_ALIGNMENT_CENTER, SZ - 4.0, nm_fs, Color.WHITE)
-			var mx: int = int(it["max"])
-			var lv: int = int(it["lvl"])
-			var pw: float = (SZ - 12.0) / float(maxi(1, mx))
-			for p in range(mx):
-				var pc := Color(1, 1, 1, 0.2)
-				if p < lv:
-					pc = Color("#ffd33d")
-				draw_rect(Rect2(r.position.x + 6.0 + float(p) * pw, r.position.y + 60.0, pw - 1.5, 4.0), pc)
-			draw_rect(Rect2(r.position.x, r.position.y + SZ - 6.0, SZ * float(it["frac"]), 6.0), Color(col.r, col.g, col.b, 0.8))
-
-
-# ---------------------------------------------------------------
 # Orbe de experiencia / objeto que suelta un enemigo
 # ---------------------------------------------------------------
 class Orb extends Node2D:
@@ -8326,348 +8304,6 @@ class Orb extends Node2D:
 			draw_circle(c + Vector2(0.0, -4.0), 15.0, Color(glow.r, glow.g, glow.b, 0.22))
 			IC.draw_in(self, icn, c + Vector2(0.0, -4.0), 20.0)
 
-
-
-# ---------------------------------------------------------------
-# Cartas de subida de nivel (tactil, mando y teclado)
-# ---------------------------------------------------------------
-class Cards extends Node2D:
-	signal chosen(idx: int)
-	var items: Array = []
-	var sel := 0
-	var open := false
-	var age := 0.0
-	var title := ""
-	var headline := L.t("¡Subes de nivel!")
-	var _axis_free := true
-	signal reroll_pressed
-	signal ban_picked(idx: int)
-	var rerolls := 0
-	var bans := 0
-	var ban_mode := false
-	var extras := true
-	# Disposicion en cache: bloque vertical (titulo, cartas, botones, pie) que cabe en la zona util.
-	# Se recalcula al abrir y en size_changed (ventana o % de vista), no en cada _draw.
-	var _vp := Vector2(1280.0, 720.0)
-	var _ins := Vector4.ZERO
-	var _cx := 640.0       # centro horizontal de la zona util
-	var _top := 100.0      # arriba del bloque (linea del titulo = _top + 34)
-	var _h := 294.0        # alto de las cartas (240..294)
-	var _btn_y := 0.0
-	var _bw := 230.0       # ancho de cada boton Cambiar / Vetar
-
-	func _ready() -> void:
-		_relayout()
-		get_viewport().size_changed.connect(_relayout)
-
-	func _relayout() -> void:
-		_vp = get_viewport_rect().size
-		_ins = DSP.insets(get_tree())
-		_cx = (_ins.x + _vp.x - _ins.z) * 0.5
-		var top_lim: float = _ins.y + 6.0
-		var bot_lim: float = _vp.y - _ins.w - 48.0          # encima del pie (iconos de 28 px)
-		var head := 78.0                                     # titulo y subtitulo antes de las cartas
-		var tail: float = (12.0 + 50.0 + 30.0) if extras else 0.0   # botones y cartel de veto
-		var avail: float = bot_lim - top_lim
-		_h = clampf(avail - head - tail, 240.0, 294.0)
-		_top = top_lim + maxf(0.0, (avail - (head + _h + tail)) * 0.6)
-		_btn_y = _top + head + _h + 12.0
-		_bw = clampf((_vp.x - _ins.x - _ins.z - 60.0) * 0.5, 120.0, 230.0)
-		_fit_text()
-		queue_redraw()
-
-	# Tamano de letra de cada carta (etiqueta, titulo, descripcion): se reduce lo justo para que el texto quepa en la
-	# carta (titulo en 2 lineas, descripcion en las que deje la altura) sin cortarse ni salirse. Se calcula al abrir y
-	# en size_changed, no en cada _draw. Cada elemento: {tag, tag_fs, title_fs, desc_fs, d_lines}.
-	var _fit: Array = []
-
-	func _lines_of(font: Font, txt: String, w: float, fs: int) -> Vector2:
-		# se mide con 8 px de holgura: con el escalado de la vista la letra se rasteriza algo distinta y una linea al borde puede pasar a dos
-		var sz: Vector2 = font.get_multiline_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, w - 8.0, fs, -1, TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND)
-		return Vector2(roundf(sz.y / font.get_height(fs)), sz.x)   # x = lineas, y = ancho de la linea mas larga
-
-	func _fit_ml(font: Font, txt: String, w: float, fs0: int, fs_min: int, lines_for: Callable) -> int:
-		var fs: int = fs0
-		while fs > fs_min:
-			var ln: Vector2 = _lines_of(font, txt, w, fs)
-			if int(ln.x) <= int(lines_for.call(fs)) and ln.y <= w - 8.0 + 0.5:
-				return fs
-			fs -= 1
-		return fs_min
-
-	func _fit_text() -> void:
-		_fit = []
-		var font := ThemeDB.fallback_font
-		var rs: Array = _rects()
-		var d_y: float = 196.0 - (294.0 - _h) * 0.5
-		for i in range(items.size()):
-			var it: Dictionary = items[i]
-			var w: float = (rs[i] as Rect2).size.x
-			var tag: String = L.t(String(it["tag"]))
-			var tfs := 16
-			while tfs > 10 and font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tfs).x > w - 40.0:
-				tfs -= 1
-			while tag.length() > 2 and font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tfs).x > w - 40.0:
-				tag = tag.substr(0, tag.length() - 2).strip_edges() + "…"
-			var ttl_fs: int = _fit_ml(font, L.t(String(it["title"])), w - 24.0, 24, 14, func(_f: int) -> int: return 2)
-			var h_card: float = _h
-			var dsc_fs: int = _fit_ml(font, L.t(String(it["desc"])), w - 32.0, 18, 11, func(f: int) -> int: return int((h_card - 6.0 - d_y - 0.25 * float(f)) / font.get_height(f)) + 1)
-			var dl: int = maxi(2, int((h_card - 6.0 - d_y - 0.25 * float(dsc_fs)) / font.get_height(dsc_fs)) + 1)
-			_fit.append({"tag": tag, "tag_fs": tfs, "title_fs": ttl_fs, "desc_fs": dsc_fs, "d_lines": dl})
-
-	func _btn_rects() -> Array:
-		return [Rect2(_cx - 20.0 - _bw, _btn_y, _bw, 50.0), Rect2(_cx + 20.0, _btn_y, _bw, 50.0)]
-
-	func _do_reroll() -> void:
-		if extras and rerolls > 0 and not ban_mode:
-			reroll_pressed.emit()
-
-	func _toggle_ban() -> void:
-		if extras and bans > 0:
-			ban_mode = not ban_mode
-			queue_redraw()
-
-	func show_cards(list: Array, heading: String, head: String = "¡Subes de nivel!", ex: bool = true) -> void:
-		items = list
-		title = heading
-		headline = head
-		extras = ex
-		ban_mode = false
-		sel = 0
-		open = true
-		age = 0.0
-		_axis_free = false
-		_relayout()   # sin botones el bloque es mas bajo
-		queue_redraw()
-
-	func hide_cards() -> void:
-		open = false
-		queue_redraw()
-
-	func _rects() -> Array:
-		var n: int = items.size()
-		var gap := 20.0
-		var w: float = minf(300.0, (_vp.x - _ins.x - _ins.z - 40.0 - gap * float(n - 1)) / float(maxi(n, 1)))
-		var h: float = _h
-		var total: float = w * float(n) + gap * float(n - 1)
-		var x0: float = _cx - total * 0.5
-		var y0: float = _top + 78.0
-		var out: Array = []
-		for i in range(n):
-			out.append(Rect2(x0 + float(i) * (w + gap), y0, w, h))
-		return out
-
-	func _process(delta: float) -> void:
-		if open:
-			age += delta
-			queue_redraw()
-
-	func _move(step: int) -> void:
-		if items.is_empty():
-			return
-		sel = posmod(sel + step, items.size())
-		queue_redraw()
-
-	func _pick(i: int) -> void:
-		if i >= 0 and i < items.size():
-			sel = i
-			if ban_mode:
-				if String(items[i]["cat"]) == "new":
-					ban_picked.emit(i)
-				return
-			chosen.emit(i)
-
-	func _input(event: InputEvent) -> void:
-		if not open:
-			return
-		if event is InputEventJoypadMotion and event.axis == JOY_AXIS_LEFT_X:
-			if absf(event.axis_value) < 0.3:
-				_axis_free = true
-			elif absf(event.axis_value) > 0.6 and _axis_free and age > 0.3:
-				_axis_free = false
-				_move(1 if event.axis_value > 0.0 else -1)
-			return
-		var pressed := false
-		if event is InputEventScreenTouch:
-			pressed = event.pressed
-		elif event is InputEventJoypadButton:
-			pressed = event.pressed
-		elif event is InputEventKey:
-			pressed = event.pressed and not event.echo
-		if not pressed:
-			return
-		# Tragamos las pulsaciones (no las sueltas) mientras hay cartas.
-		get_viewport().set_input_as_handled()
-		if age < 0.4:
-			return
-		if event is InputEventScreenTouch:
-			var brs: Array = _btn_rects()
-			if brs[0].has_point(event.position):
-				_do_reroll()
-				return
-			if brs[1].has_point(event.position):
-				_toggle_ban()
-				return
-			var rs: Array = _rects()
-			for i in range(rs.size()):
-				if rs[i].has_point(event.position):
-					_pick(i)
-					return
-		elif event is InputEventKey:
-			match event.keycode:
-				KEY_1:
-					_pick(0)
-				KEY_2:
-					_pick(1)
-				KEY_3:
-					_pick(2)
-				KEY_LEFT, KEY_A:
-					_move(-1)
-				KEY_RIGHT, KEY_D:
-					_move(1)
-				KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_E:
-					_pick(sel)
-				KEY_R:
-					_do_reroll()
-				KEY_B:
-					_toggle_ban()
-		elif event is InputEventJoypadButton:
-			var bi: int = event.button_index
-			if bi == JOY_BUTTON_DPAD_LEFT or bi == PAD.btn("prev"):
-				_move(-1)
-			elif bi == JOY_BUTTON_DPAD_RIGHT or bi == PAD.btn("next"):
-				_move(1)
-			elif bi == PAD.btn("confirm"):
-				_pick(sel)
-			elif bi == PAD.btn("reroll"):
-				_do_reroll()
-			elif bi == PAD.btn("ban"):
-				_toggle_ban()
-
-	func _draw() -> void:
-		if not open:
-			return
-		var font := ThemeDB.fallback_font
-		var vp: Vector2 = _vp
-		draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
-		draw_string(font, Vector2(0.0, _top + 34.0), L.t(headline), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color("#ffd33d"))
-		draw_string(font, Vector2(0.0, _top + 66.0), L.t(title), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color.WHITE)
-		var rs: Array = _rects()
-		# Con cartas mas bajas (vista pequena) el icono, el titulo y la descripcion suben un poco.
-		var sh: float = 294.0 - _h
-		var t_y: float = 134.0 - sh * 0.25
-		var d_y: float = 196.0 - sh * 0.5
-		if _fit.size() != items.size():
-			_fit_text()
-		for i in range(rs.size()):
-			var r: Rect2 = rs[i]
-			var it: Dictionary = items[i]
-			var ft: Dictionary = _fit[i]
-			var tag_col: Color = it["color"]
-			var chosen_now: bool = i == sel
-			var border: Color = tag_col
-			if chosen_now:
-				border = Color("#ffd33d")
-			var paper: bool = bool(it.get("paper", false))
-			draw_rect(r.grow(4.0 if chosen_now else 1.5), border)
-			draw_rect(r, Color("#1b2a44"))
-			var legend: bool = bool(it.get("legend", false))
-			if legend:
-				_draw_legend_bg(r)
-			if paper:
-				draw_rect(r, Color("#ecd9a6"))
-				draw_rect(r.grow(-6.0), Color("#8a6a3a"), false, 2.0)
-				draw_line(Vector2(r.position.x + 24.0, r.end.y - 22.0), Vector2(r.position.x + r.size.x * 0.55, r.end.y - 22.0), Color("#6b4a2b"), 2.0)
-				draw_circle(Vector2(r.end.x - 40.0, r.end.y - 34.0), 15.0, Color("#a8281c"))
-				draw_circle(Vector2(r.end.x - 40.0, r.end.y - 34.0), 9.0, Color("#c0392b"))
-			draw_rect(Rect2(r.position, Vector2(r.size.x, 32.0)), Color(tag_col.r, tag_col.g, tag_col.b, 0.35))
-			draw_string(font, r.position + Vector2(10.0, 22.0), String(ft["tag"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 40.0, int(ft["tag_fs"]), Color("#2b1a00") if legend else Color.WHITE)
-			draw_string(font, r.position + Vector2(r.size.x - 24.0, 22.0), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#8fa8cc"))
-			var ic_c: Vector2 = r.position + Vector2(r.size.x * 0.5, 72.0 - sh * 0.1)
-			var ic_bg := Rect2(ic_c - Vector2(34.0, 34.0), Vector2(68.0, 68.0))
-			draw_rect(ic_bg, Color(0.1, 0.06, 0.0, 0.82) if legend else Color(tag_col.r, tag_col.g, tag_col.b, 0.22))
-			draw_rect(ic_bg, Color(tag_col.r, tag_col.g, tag_col.b, 0.7), false, 2.0)
-			IC.draw_in(self, String(it.get("icon", "star")), ic_c, 52.0)
-			draw_multiline_string(font, r.position + Vector2(12.0, t_y), L.t(String(it["title"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 24.0, int(ft["title_fs"]), 2, Color("#4a2f12") if paper else (Color("#2b1a00") if legend else Color.WHITE))
-			draw_multiline_string(font, r.position + Vector2(16.0, d_y), L.t(String(it["desc"])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 32.0, int(ft["desc_fs"]), int(ft["d_lines"]), Color("#5a3d1c") if paper else (Color("#3a2600") if legend else Color("#c8d6ee")))
-		if extras:
-			var brs: Array = _btn_rects()
-			if rerolls > 0:
-				draw_rect(brs[0], Color("#1b2a44"))
-				draw_rect(brs[0], Color("#7fe0ff"), false, 2.0)
-				_draw_key_label(brs[0], L.t("Cambiar (%d)  [R]") % rerolls, "reroll")
-			if bans > 0:
-				draw_rect(brs[1], Color("#5a1f2a") if ban_mode else Color("#1b2a44"))
-				draw_rect(brs[1], Color("#ff6b7a"), false, 2.0)
-				_draw_key_label(brs[1], L.t("Vetar (%d)  [B]") % bans, "ban")
-			if ban_mode:
-				draw_string(font, Vector2(0.0, _btn_y + 50.0 + 24.0), L.t("Elige un movimiento nuevo para vetarlo"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color("#ff9aa5"))
-		_draw_footer(vp)
-
-
-	# Carta legendaria: fondo de oro con brillo diagonal que recorre la carta y destellos.
-	func _draw_legend_bg(r: Rect2) -> void:
-		var beat: float = 0.5 + 0.5 * sin(age * 4.0)
-		draw_rect(r.grow(5.0), Color(1.0, 0.82, 0.25, 0.25 + 0.2 * beat))
-		draw_rect(r.grow(2.5), Color("#ffd23f"))
-		draw_rect(r, Color("#a87a12"))
-		draw_rect(Rect2(r.position + Vector2(0.0, 32.0), Vector2(r.size.x, r.size.y - 32.0)), Color("#c9951c"))
-		draw_rect(Rect2(r.position + Vector2(0.0, r.size.y * 0.55), Vector2(r.size.x, r.size.y * 0.45)), Color("#e3b52e"))
-		draw_rect(r.grow(-6.0), Color("#ffe27a"), false, 2.0)
-		var sx: float = fposmod(age * 120.0, r.size.x + 160.0) - 80.0
-		var sheen := PackedVector2Array([r.position + Vector2(sx, 0.0), r.position + Vector2(sx + 40.0, 0.0), r.position + Vector2(sx + 10.0, r.size.y), r.position + Vector2(sx - 30.0, r.size.y)])
-		var clipped := Geometry2D.intersect_polygons(sheen, PackedVector2Array([r.position, r.position + Vector2(r.size.x, 0.0), r.end, r.position + Vector2(0.0, r.size.y)]))
-		for poly in clipped:
-			draw_colored_polygon(poly, Color(1.0, 0.97, 0.7, 0.22))
-		for i in range(7):
-			var ph: float = age * 1.3 + float(i) * 0.9
-			var sp := Vector2(r.position.x + fposmod(float(i) * 47.0 + 20.0, r.size.x - 20.0) + 10.0, r.position.y + 40.0 + fposmod(float(i) * 83.0 + ph * 18.0, r.size.y - 60.0))
-			var sz: float = 2.0 + 2.5 * (0.5 + 0.5 * sin(age * 6.0 + float(i) * 2.1))
-			draw_colored_polygon(PackedVector2Array([sp + Vector2(0, -sz * 1.6), sp + Vector2(sz * 0.5, 0), sp + Vector2(0, sz * 1.6), sp + Vector2(-sz * 0.5, 0)]), Color(1.0, 0.98, 0.8, 0.9))
-			draw_colored_polygon(PackedVector2Array([sp + Vector2(-sz * 1.6, 0), sp + Vector2(0, sz * 0.5), sp + Vector2(sz * 1.6, 0), sp + Vector2(0, -sz * 0.5)]), Color(1.0, 0.98, 0.8, 0.9))
-
-	# Texto de un boton de la pantalla; con mando conectado cambia "[R]" por el icono del boton asignado.
-	func _draw_key_label(r: Rect2, txt: String, action: String) -> void:
-		var font := ThemeDB.fallback_font
-		var pad: bool = Input.get_connected_joypads().size() > 0
-		if not pad:
-			draw_string(font, r.position + Vector2(0.0, 32.0), txt, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 20, Color.WHITE)
-			return
-		var rx := RegEx.new()
-		rx.compile("\\s*\\[[^\\]]*\\]")
-		var clean: String = rx.sub(txt, "", true)
-		var tw: float = font.get_string_size(clean, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20).x
-		var isz := 30.0
-		var x0: float = r.position.x + (r.size.x - (tw + 8.0 + isz)) * 0.5
-		draw_string(font, Vector2(x0, r.position.y + 32.0), clean, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
-		draw_texture_rect(PADI.tex(PAD.btn(action)), Rect2(Vector2(x0 + tw + 8.0, r.position.y + (r.size.y - isz) * 0.5), Vector2(isz, isz)), false)
-
-
-	# Pie: "Toca una carta | Mando: [cruceta] [aceptar] | Teclado: 1 2 3" con los iconos del mando elegido.
-	func _draw_footer(vp: Vector2) -> void:
-		var font := ThemeDB.fallback_font
-		var col := Color("#8fa8cc")
-		var parts: Array = [{"t": L.t("Toca una carta") + "  |  "}]
-		if Input.get_connected_joypads().size() > 0:
-			parts.append({"t": L.t("Mando") + ": "})
-			parts.append({"i": PADI.named("dpad_lr")})
-			parts.append({"t": " + "})
-			parts.append({"i": PADI.tex(PAD.btn("confirm"))})
-			parts.append({"t": "  |  "})
-		parts.append({"t": L.t("Teclado: 1 2 3")})
-		var isz := 28.0
-		var total := 0.0
-		for p in parts:
-			total += isz if p.has("i") else font.get_string_size(String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var x: float = _cx - total * 0.5
-		var y: float = vp.y - 24.0 - _ins.w
-		for p in parts:
-			if p.has("i"):
-				draw_texture_rect(p["i"], Rect2(Vector2(x, y - 21.0), Vector2(isz, isz)), false)
-				x += isz
-			else:
-				draw_string(font, Vector2(x, y), String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, col)
-				x += font.get_string_size(String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
 
 
 # ---------------------------------------------------------------
@@ -8725,1370 +8361,3 @@ class Ground extends Node2D:
 					if posmod(ix + iy, 2) == 1:
 						c = Color("#244632")
 					draw_rect(Rect2(ix * TILE, iy * TILE, TILE, TILE), c)
-
-
-
-# ---------------------------------------------------------------
-# HUD: vida, tiempo, derrotados, pantalla de derrota
-# ---------------------------------------------------------------
-# ---------------------------------------------------------------
-# Minimapa circular (exclusivo del port Android). Terreno detallado que se desplaza
-# con el jugador y niebla de exploracion: lo que ya recorriste queda dibujado (mas
-# apagado), lo que no, oculto. Iconos: cofres/altares/fuentes cercanos o ya vistos,
-# trampas ocultas solo muy cerca, enemigos solo a corta distancia; grietas y jefes
-# siempre, como flecha en el borde.
-# ---------------------------------------------------------------
-class Minimap extends Node2D:
-	const N := 50          # tiles guardados en la imagen
-	const VIEW := 48       # tiles visibles (diametro)
-	const S := 4.0         # pixeles por tile
-	const BOX := 192.0     # VIEW * S
-	const CT := Vector2(100.0, 100.0)
-	const RAD := 96.0
-	const SIGHT := 14      # radio (tiles) que se descubre y se ve a pleno color
-	const RADAR := 20.0    # radio (tiles) en el que se detectan cofres, altares y fuentes
-	const TRAP_R := 9.0    # radio (tiles) en el que se revelan las trampas
-	const FOE_R := 12.0    # radio (tiles) en el que se ven enemigos
-	const CODE := "shader_type canvas_item;\nuniform vec2 ctr = vec2(100.0, 100.0);\nuniform float rad = 97.0;\nvarying vec2 lp;\nvoid vertex() { lp = VERTEX; }\nvoid fragment() { COLOR.a *= 1.0 - smoothstep(rad - 1.0, rad, distance(lp, ctr)); }\n"
-	var m
-	var img: Image
-	var tex: ImageTexture
-	var fog: Image
-	var fog_tex: ImageTexture
-	var explored := {}
-	var ti := Vector2i(99999, 99999)
-	var bio := -1
-	var sd := -1
-	var t := 0.0
-	var ring: Node2D
-
-	func _init() -> void:
-		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		img = Image.create(N, N, false, Image.FORMAT_RGBA8)
-		tex = ImageTexture.create_from_image(img)
-		fog = Image.create(N, N, false, Image.FORMAT_RGBA8)
-		fog_tex = ImageTexture.create_from_image(fog)
-		var sh := Shader.new()
-		sh.code = CODE
-		var mat := ShaderMaterial.new()
-		mat.shader = sh
-		material = mat
-		ring = MiniRing.new()
-		add_child(ring)
-
-	class MiniRing extends Node2D:
-		func _draw() -> void:
-			var c := Vector2(100.0, 100.0)
-			draw_arc(c, 97.5, 0.0, TAU, 96, Color(0.02, 0.04, 0.1, 0.9), 3.0, true)
-			draw_arc(c, 96.0, 0.0, TAU, 96, Color("#f4f8ff"), 2.0, true)
-			draw_string(ThemeDB.fallback_font, Vector2(c.x - 5.0, 20.0), "N", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1, 1, 1, 0.8))
-
-	func _tile_color(g, pal: Dictionary, tx: int, ty: int) -> Color:
-		var h: float = ARENA.hsh(tx, ty, 31)
-		var tt: int = g.terrain(tx, ty)
-		var c: Color
-		if tt == 1:
-			var south: int = g.terrain(tx, ty + 1)
-			var north: int = g.terrain(tx, ty - 1)
-			if south != 1:
-				c = pal["wallFace"][0]
-			elif north != 1:
-				c = pal["wallLight"]
-			else:
-				c = pal["wallTop"][int(h * 3.0) % 3]
-		elif tt == 2:
-			var inner: bool = g.terrain(tx - 1, ty) == 2 and g.terrain(tx + 1, ty) == 2 and g.terrain(tx, ty - 1) == 2 and g.terrain(tx, ty + 1) == 2
-			c = pal["liqDeep"] if inner else pal["liq"]
-			if h > 0.92:
-				c = c.lerp(pal["foam"], 0.55)
-		else:
-			if g.is_dirt(tx, ty):
-				c = pal["dirt"][int(h * 3.0) % 3]
-			else:
-				c = pal["floor"][int(h * 3.0) % 3]
-				if h > 0.965:
-					c = pal["flowers"][int(h * 1000.0) % 3]
-				elif h < 0.07:
-					c = c.lerp(pal["grass"][2], 0.5)
-			if g.terrain(tx, ty + 1) == 1:
-				c = c.darkened(0.25)
-			elif g.terrain(tx + 1, ty) == 2 or g.terrain(tx - 1, ty) == 2 or g.terrain(tx, ty + 1) == 2 or g.terrain(tx, ty - 1) == 2:
-				c = c.lerp(pal["shore"], 0.35)
-		return c
-
-	func _refresh(i0: Vector2i, full: bool) -> void:
-		var g = m.ground
-		var pal: Dictionary = g.pal(g.biome)
-		var dx: int = i0.x - ti.x
-		var dy: int = i0.y - ti.y
-		var half: int = N / 2
-		if full or absi(dx) >= N or absi(dy) >= N:
-			for r in range(N):
-				for c in range(N):
-					img.set_pixel(c, r, _tile_color(g, pal, i0.x - half + c, i0.y - half + r))
-		else:
-			var old: Image = img.duplicate()
-			img.fill(Color(0, 0, 0, 0))
-			img.blit_rect(old, Rect2i(maxi(dx, 0), maxi(dy, 0), N - absi(dx), N - absi(dy)), Vector2i(maxi(-dx, 0), maxi(-dy, 0)))
-			var cols: Array = []
-			var rows: Array = []
-			if dx > 0:
-				for c in range(N - dx, N):
-					cols.append(c)
-			elif dx < 0:
-				for c in range(0, -dx):
-					cols.append(c)
-			if dy > 0:
-				for r in range(N - dy, N):
-					rows.append(r)
-			elif dy < 0:
-				for r in range(0, -dy):
-					rows.append(r)
-			for c in cols:
-				for r in range(N):
-					img.set_pixel(c, r, _tile_color(g, pal, i0.x - half + c, i0.y - half + r))
-			for r in rows:
-				for c in range(N):
-					img.set_pixel(c, r, _tile_color(g, pal, i0.x - half + c, i0.y - half + r))
-		tex.update(img)
-		ti = i0
-
-	# Descubre el area alrededor del jugador y repinta la niebla.
-	# La niebla se repinta por tandas de filas (unas pocas por fotograma): hacerlo entera de golpe,
-	# en cada tile que cruza el jugador, eran decenas de ms en una consola.
-	const FOG_ROWS := 10
-	var _fog_c := Vector2i.ZERO
-	var _fog_row := N   # N = nada pendiente
-
-	func _fog_begin(i0: Vector2i) -> void:
-		for oy in range(-SIGHT, SIGHT + 1):
-			for ox in range(-SIGHT, SIGHT + 1):
-				if ox * ox + oy * oy <= SIGHT * SIGHT:
-					explored[Vector2i(i0.x + ox, i0.y + oy)] = true
-		_fog_c = i0
-		_fog_row = 0
-
-	func _fog_step() -> void:
-		if _fog_row >= N:
-			return
-		var i0: Vector2i = _fog_c
-		var half: int = N / 2
-		var r_end: int = mini(_fog_row + FOG_ROWS, N)
-		var s2: int = SIGHT * SIGHT
-		for r in range(_fog_row, r_end):
-			var oy: int = r - half
-			for c in range(N):
-				var ox: int = c - half
-				var a := 0.94
-				if ox * ox + oy * oy <= s2:
-					a = 0.0
-				elif explored.has(Vector2i(i0.x + ox, i0.y + oy)):
-					a = 0.5
-				fog.set_pixel(c, r, Color(0.03, 0.05, 0.11, a))
-		_fog_row = r_end
-		if _fog_row >= N:
-			fog_tex.update(fog)
-
-	var _acc := 0.0
-
-	func _on() -> bool:
-		return m.arena == null and not m.jd.active() and not m.hud.dead
-
-	func _process(delta: float) -> void:
-		t += delta
-		visible = _on()
-		if not visible:
-			return
-		var g = m.ground
-		var i0 := Vector2i(floori(m.player.position.x / g.TS), floori(m.player.position.y / g.TS))
-		if i0 != ti or bio != g.biome or sd != g.seed_v:
-			var full: bool = bio != g.biome or sd != g.seed_v
-			bio = g.biome
-			sd = g.seed_v
-			_refresh(i0, full)
-			_fog_begin(i0)
-			_acc = 1.0
-		_fog_step()
-		_acc += delta
-		if _acc >= (0.1 if Actor.lite else 0.04):   # 25 veces por segundo bastan para el minimapa (10 en consola)
-			_acc = 0.0
-			queue_redraw()
-
-	func _pt(wp: Vector2) -> Vector2:
-		var d: Vector2 = (wp - m.player.position) / m.ground.TS
-		return Vector2((d.x + float(VIEW) * 0.5) * S + 4.0, (d.y + float(VIEW) * 0.5) * S + 4.0)
-
-	func _inside(q: Vector2, pad: float = 0.0) -> bool:
-		return q.distance_to(CT) <= RAD - pad
-
-	func _edge(q: Vector2) -> Vector2:
-		var c := CT
-		var d: Vector2 = q - c
-		var lim: float = RAD - 12.0
-		if d.length() > lim:
-			return c + d.normalized() * lim
-		return q
-
-	# Sprites del mundo reducidos una sola vez (suavizados) para el minimapa.
-	static var icons := {}
-
-	static func _icon(n: String, w: int) -> Texture2D:
-		var k: String = "%s_%d" % [n, w]
-		if not icons.has(k):
-			var tx: Texture2D = WTex.get_t(n)
-			if tx == null:
-				icons[k] = null
-			else:
-				var im: Image = tx.get_image()
-				var h: int = maxi(1, int(round(float(im.get_height()) * float(w) / float(im.get_width()))))
-				im.resize(w, h, Image.INTERPOLATE_LANCZOS)
-				icons[k] = ImageTexture.create_from_image(im)
-		return icons[k]
-
-	func _spr_at(n: String, w: int, q: Vector2) -> bool:
-		var tx: Texture2D = _icon(n, w)
-		if tx == null:
-			return false
-		var sz := Vector2(tx.get_width(), tx.get_height())
-		draw_texture(tx, (q - sz * 0.5).round())
-		return true
-
-	# Sprite de un Pokemon (fotograma actual) a tamano maximo mx px.
-	func _pk_at(a, mx: float, q: Vector2) -> bool:
-		if a == null or not is_instance_valid(a) or a.sprite.texture == null:
-			return false
-		var rr: Rect2 = a.sprite.region_rect
-		var k: float = mx / maxf(rr.size.x, rr.size.y)
-		var sz: Vector2 = rr.size * k
-		var anc: Vector2 = Vector2(-a.sprite.offset.x, -a.sprite.offset.y) * k
-		draw_texture_rect_region(a.sprite.texture, Rect2((q - anc + Vector2(0, sz.y * 0.25)).round(), sz), rr)
-		return true
-
-	func _tile_of(wp: Vector2) -> Vector2i:
-		return Vector2i(floori(wp.x / m.ground.TS), floori(wp.y / m.ground.TS))
-
-	func _draw() -> void:
-		var sz: float = BOX
-		var c := CT
-		draw_circle(c, 97.0, Color(0.03, 0.05, 0.11, 1.0))
-		var ppos: Vector2 = m.player.position
-		var px: float = ppos.x / m.ground.TS
-		var py: float = ppos.y / m.ground.TS
-		var fx: float = px - floorf(px)
-		var fy: float = py - floorf(py)
-		var half: float = float(N) * 0.5
-		var src := Rect2(half + fx - float(VIEW) * 0.5, half + fy - float(VIEW) * 0.5, float(VIEW), float(VIEW))
-		var dst := Rect2(4.0, 4.0, sz, sz)
-		draw_texture_rect_region(tex, dst, src)
-		draw_texture_rect_region(fog_tex, dst, src)
-		var pul: float = 0.6 + 0.4 * sin(t * 6.0)
-		var radar: float = RADAR * m.ground.TS
-		var trap_r: float = TRAP_R * m.ground.TS
-		var foe_r: float = FOE_R * m.ground.TS
-		# eventos especiales y trampas ocultas
-		for key in m.chunks:
-			for p in m.chunks[key]["specials"]:
-				if not is_instance_valid(p) or p.used:
-					continue
-				var k: String = p.kind
-				var d: float = p.position.distance_to(ppos)
-				var q: Vector2 = _pt(p.position)
-				if not _inside(q, 6.0):
-					continue
-				if k == "trap":
-					if d > trap_r or p.cd > 900.0:
-						continue
-					var tc := Color("#ff8a2b")
-					match String(p.sub):
-						"poison":
-							tc = Color("#a35cff")
-						"ice":
-							tc = Color("#5fd8ff")
-						"freeze":
-							tc = Color("#2f8fe0")
-						"shock":
-							tc = Color("#ffe14d")
-						"sleep":
-							tc = Color("#b9b6ff")
-						"confuse":
-							tc = Color("#ff7ad9")
-					draw_circle(q, 10.5, Color(tc.r, tc.g, tc.b, 0.35))
-					if not _spr_at("trap_" + String(p.sub), 18, q):
-						draw_circle(q, 4.0, tc)
-					continue
-				if d > radar and not explored.has(_tile_of(p.position)):
-					continue
-				var near: bool = d <= radar
-				if k == "chest":
-					if near:
-						draw_arc(q, 11.0 + 2.0 * pul, 0.0, TAU, 20, Color(1.0, 0.85, 0.2, 0.75 * pul), 1.5)
-					if not _spr_at("chest_closed", 20, q):
-						draw_rect(Rect2(q - Vector2(5, 4), Vector2(10, 8)), Color("#ffd23f"))
-				elif k == "altar":
-					if near:
-						draw_arc(q, 13.0 + 2.0 * pul, 0.0, TAU, 20, Color(p.color.r, p.color.g, p.color.b, 0.8 * pul), 1.5)
-					if not _spr_at("altar_" + String(p.power), 16, q):
-						draw_circle(q, 5.0, p.color)
-				elif k == "spring":
-					if not _spr_at("spring_on", 22, q):
-						draw_circle(q, 5.0, Color("#2fc6e8"))
-		# enemigos (solo a corta distancia)
-		for e in m.enemies:
-			if e.dead or e.boss:
-				continue
-			if e.position.distance_to(ppos) > foe_r:
-				continue
-			var q: Vector2 = _pt(e.position)
-			if _inside(q, 2.0):
-				draw_rect(Rect2(q - Vector2(1, 1), Vector2(2.5, 2.5)), Color(1.0, 0.25, 0.3, 0.95))
-		# jefes (siempre, en el borde si estan lejos)
-		for e in m.enemies:
-			if e.dead or not e.boss:
-				continue
-			var q: Vector2 = _edge(_pt(e.position))
-			draw_circle(q, 11.0, Color(0.88, 0.14, 0.23, 0.45 + 0.2 * pul))
-			draw_arc(q, 11.0, 0.0, TAU, 20, Color.WHITE, 1.5)
-			if not _pk_at(e, 22.0, q):
-				draw_circle(q, 5.0, Color("#e0243a"))
-		# grieta (siempre)
-		if m.rift != null and is_instance_valid(m.rift):
-			var q: Vector2 = _edge(_pt(m.rift.position))
-			draw_circle(q, 7.5 + 1.5 * pul, Color(0.7, 0.4, 1.0, 0.35))
-			draw_circle(q, 6.0, Color.WHITE)
-			draw_circle(q, 4.8, Color("#9b4dff"))
-			draw_arc(q, 3.0, 0.0, TAU * 0.75, 12, Color.WHITE, 1.4)
-			# brujula: si queda fuera del radio, una puntita apunta hacia ella
-			var rq: Vector2 = _pt(m.rift.position)
-			if rq.distance_to(CT) > RAD - 12.0:
-				var ad: Vector2 = (rq - CT).normalized()
-				var base: Vector2 = CT + ad * (RAD - 2.0)
-				var perp := Vector2(-ad.y, ad.x)
-				draw_colored_polygon(PackedVector2Array([base + ad * 7.0, base - ad * 2.0 + perp * 6.0, base - ad * 2.0 - perp * 6.0]), Color(0.9, 0.82, 1.0, 0.8 + 0.2 * pul))
-		# jugador
-		draw_circle(c, 9.0, Color(1, 1, 1, 0.35))
-		draw_arc(c, 9.0, 0.0, TAU, 20, Color("#ffd23f"), 1.5)
-		if not _pk_at(m.player, 20.0, c):
-			draw_circle(c, 3.0, Color("#ffd23f"))
-
-
-class Hud extends Node2D:
-	var hp := 1.0
-	var max_hp := 1.0
-	var run_time := 0.0
-	var kills := 0
-	var dead := false
-	var z_dim := 0.0
-	var z_state := ""
-	var z_t := 0.0
-	var z_name := ""
-	var z_type := ""
-	var z_btn := 0
-	var z_cd := 0.0
-	var dyn_cd := 0.0
-	var adapt_pct := 0
-	var dyn_left := -1.0
-	var dyn_flash := 99.0
-	var dyn_type := "normal"
-	var dyn_btn := 0
-	var rift_den := false
-	var ab_name := ""
-	var down := false
-	var down_left := 0.0
-	var pbar := 1.0
-	var show_end := false
-	var poke_name := ""
-	var level := 1
-	var xp := 0.0
-	var xp_next := 1.0
-	var buff_text := ""
-	var power_id := ""
-	var item_name := ""
-	var item_id := ""
-	var item2_name := ""
-	var item2_id := ""
-	var weather_text := ""
-	var banner := ""
-	var coins := 0
-	var tickets := 0
-	var tickets10 := 0
-	var paused := false
-	var show_fps := false
-	var show_stats := false
-	var revives := 0
-	var stats: Array = []
-	var rift_dir := Vector2.ZERO
-	var rift_ttl := -1.0
-	var rift_off := false
-	var rift_scr := Vector2.ZERO
-	var rift_m := 0
-	var arena_left := -1.0
-	var legend_name := ""
-	var legend_frac := -1.0
-	var arena_won := false
-	var toast: Dictionary = {}
-	var toast_t := 0.0
-
-	var _acc := 0.0
-
-	var rift_notice := -1.0
-	var thieves_hud: Array = []
-	var thief_notice := -1.0
-	var thief_name := ""
-	var thief_gold := false
-	var death_t := 0.0
-
-	# --- Disposicion en cache (se recalcula en size_changed y al cambiar el equipo, no en cada _draw) ---
-	var _vp := Vector2(1280.0, 720.0)
-	var _ins := Vector4.ZERO
-	var _team_n := -1
-	var mini_pos := Vector2(8.0, 92.0)   # minimapa: esquina izquierda bajo la barra de vida
-	var mini_scale := 1.0                # 0.8 si la vista es baja (< 500)
-	var stats_y := 300.0                 # panel de estadisticas, bajo el minimapa
-	var _rz := Rect2()                   # boton Z
-	var _rd := Rect2()                   # boton Dynamax
-	var _rt := Rect2()                   # boton de cambio de equipo
-	var _rp := Rect2()                   # boton de pausa
-	var _y_chip := 140.0                 # fila de los poderes/objeto (baja si el cartel de arriba es largo)
-	var _y_dyn := 58.0                   # barra de tiempo de Dynamax
-	var _y_down := 58.0                  # cartel "Espectando"
-	var _side_l := 270.0                 # ancho que ocupan a la izquierda la vida y el nombre (el texto central no lo pisa)
-
-	func _ready() -> void:
-		_relayout()
-		get_viewport().size_changed.connect(_relayout)
-
-	# Columna derecha, de arriba abajo: pausa, lista de equipo, [Dynamax, Z], cambio de equipo, huecos.
-	# Si Dynamax no cabe encima de Z (vista baja a 140 %), se pone a su izquierda; si Z tampoco cabe,
-	# los dos van en una fila junto al boton de equipo, encima de la barra de movimientos.
-	func _relayout() -> void:
-		_vp = get_viewport_rect().size
-		_ins = DSP.insets(get_tree())
-		_team_n = team.size()
-		var vp: Vector2 = _vp
-		var tight: bool = vp.y - _ins.y - _ins.w < 500.0
-		mini_scale = 0.8 if tight else 1.0
-		mini_pos = Vector2(8.0 + _ins.x, 92.0 + _ins.y)
-		stats_y = mini_pos.y + 200.0 * mini_scale + 8.0
-		_rp = Rect2(vp.x - 70.0 - _ins.z, 70.0 + _ins.y, 54.0, 46.0)
-		var b: float = vp.y - _ins.w
-		var col_top: float = _rp.end.y + 2.0
-		if _team_n > 0:
-			col_top = 126.0 + _ins.y + 52.0 * float(_team_n - 1) + 46.0 + 2.0
-		var zx: float = vp.x - 126.0 - _ins.z
-		_rt = Rect2(vp.x - 150.0 - _ins.z, b - 214.0, 120.0, 120.0)
-		if b - 442.0 >= col_top:
-			_rz = Rect2(zx, b - 330.0, 100.0, 100.0)
-			_rd = Rect2(zx, b - 442.0, 100.0, 100.0)
-		elif b - 330.0 >= col_top:
-			_rz = Rect2(zx, b - 330.0, 100.0, 100.0)
-			_rd = Rect2(zx - 112.0, b - 330.0, 100.0, 100.0)
-		else:
-			if _team_n >= 2:
-				zx = _rt.position.x - 112.0
-			_rt.position.y = maxf(_rt.position.y, col_top)   # sin pisar la lista de equipo si la vista es muy baja
-			var ry: float = maxf(b - 204.0, col_top)
-			_rz = Rect2(zx, ry, 100.0, 100.0)
-			_rd = Rect2(zx - 112.0, ry, 100.0, 100.0)
-		# lo que queda a ambos lados del texto central: vida/nombre a la izquierda y contadores a la derecha
-		_side_l = 270.0 + _ins.x
-		queue_redraw()
-
-	func team_btn_rect() -> Rect2:
-		return _rt
-
-	func _process(delta: float) -> void:
-		if rift_notice >= 0.0:
-			rift_notice += delta
-			if rift_notice >= 4.5:
-				rift_notice = -1.0
-		if thief_notice >= 0.0:
-			thief_notice += delta
-			if thief_notice >= 4.0:
-				thief_notice = -1.0
-		_acc += delta
-		if _acc >= (0.066 if Actor.lite else 0.033):   # el HUD se redibuja 30 veces por segundo (15 en consola)
-			_acc = 0.0
-			queue_redraw()
-
-	# Poderes activos (mejoras de altar, buffs) y objeto: en el centro, bajo el reloj.
-	func _chip(font: Font, vp: Vector2, y: float, txt: String, col: Color, icon: Texture2D, icon_name: String) -> void:
-		var iw: float = 34.0 if (icon != null or icon_name != "") else 0.0
-		var bd: Vector2 = _band(y - 24.0, y + 14.0)
-		var fit: Array = _fit_txt(font, txt, 20, maxf(60.0, bd.y - bd.x - iw - 26.0), 12)
-		txt = String(fit[0])
-		var fsz: int = int(fit[1])
-		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsz).x
-		var w: float = tw + iw + 26.0
-		var x0: float = clampf((vp.x - w) * 0.5, bd.x, maxf(bd.x, bd.y - w))
-		draw_rect(Rect2(x0, y - 24.0, w, 38.0), Color(0.03, 0.06, 0.16, 0.62))
-		draw_rect(Rect2(x0, y - 24.0, w, 38.0), Color(col.r, col.g, col.b, 0.8), false, 2.0)
-		var tx: float = x0 + 13.0
-		if icon != null:
-			var h: float = 30.0
-			var sw: float = float(icon.get_width()) * h / float(icon.get_height())
-			draw_texture_rect(icon, Rect2(Vector2(tx + 14.0 - sw * 0.5, y - 20.0), Vector2(sw, h)), false)
-			tx += iw
-		elif icon_name != "":
-			IC.draw_in(self, icon_name, Vector2(tx + 14.0, y - 5.0), 26.0)
-			tx += iw
-		draw_string(font, Vector2(tx, y + 2.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsz, col)
-
-	# Texto que cabe en `avail` px: se encoge hasta fs_min y, si aun asi no cabe, se recorta con "…". Devuelve [texto, tamano].
-	func _fit_txt(font: Font, txt: String, fs: int, avail: float, fs_min: int) -> Array:
-		var f: int = fs
-		var w: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
-		if w > avail:
-			f = maxi(fs_min, int(floor(float(fs) * avail / w)))
-			w = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
-		var base: String = txt
-		while w > avail and base.length() > 1:
-			base = base.substr(0, base.length() - 1)
-			w = font.get_string_size(base + "…", HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
-		return [base if base == txt else base.strip_edges() + "…", f]
-
-	# Hueco horizontal libre (izquierda, derecha) para una fila entre y0 e y1: descuenta lo que ocupan ahi la vida y el
-	# nombre, el nivel, el minimapa, los contadores, la pausa y la lista del equipo (se rellena al principio de cada _draw).
-	var _obst: Array = []
-
-	func _band(y0: float, y1: float) -> Vector2:
-		var xl: float = 8.0 + _ins.x
-		var xr: float = _vp.x - 8.0 - _ins.z
-		for o in _obst:
-			var r: Rect2 = o
-			if r.position.y < y1 and r.end.y > y0:
-				if r.get_center().x < _vp.x * 0.5:
-					xl = maxf(xl, r.end.x + 8.0)
-				else:
-					xr = minf(xr, r.position.x - 8.0)
-		return Vector2(xl, xr)
-
-	# Etiqueta con contorno que se queda dentro de la zona util: anclada por la izquierda, la derecha o el centro en ax.
-	func _pin_label(font: Font, txt: String, fs: int, ax: float, y: float, ha: int, col: Color) -> void:
-		var fit: Array = _fit_txt(font, txt, fs, _vp.x - _ins.x - _ins.z - 16.0, 10)
-		var t: String = String(fit[0])
-		var f: int = int(fit[1])
-		var w: float = font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
-		var x0: float = ax - (w if ha == HORIZONTAL_ALIGNMENT_RIGHT else (0.0 if ha == HORIZONTAL_ALIGNMENT_LEFT else w * 0.5))
-		x0 = clampf(x0, _ins.x + 8.0, _vp.x - _ins.z - 8.0 - w)
-		var yy: float = clampf(y, _ins.y + float(f) + 4.0, _vp.y - _ins.w - 8.0)
-		draw_string_outline(font, Vector2(x0, yy), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, 5, Color(0, 0, 0, 0.85))
-		draw_string(font, Vector2(x0, yy), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, col)
-
-	func draw_powers(font: Font, vp: Vector2) -> void:
-		var y: float = _y_chip
-		if buff_text != "":
-			_chip(font, vp, y, L.t(buff_text), Color("#ffd33d"), WTex.get_t("altar_" + power_id) if power_id != "" else null, "")
-			y += 46.0
-		if item_name != "":
-			_chip(font, vp, y, L.t(item_name), Color("#ff8ad8"), null, item_id)
-			y += 46.0
-		if item2_name != "":
-			_chip(font, vp, y, L.t(item2_name), Color("#ffd23f"), null, item2_id)
-
-	func draw_thief_notice(font: Font, vp: Vector2) -> void:
-		if thief_notice < 0.0:
-			return
-		var a: float = minf(1.0, minf(thief_notice * 4.0, (4.0 - thief_notice) * 2.0))
-		var pop: float = 1.0 + maxf(0.0, 0.25 - thief_notice) * 1.6
-		var t1: String = L.t("¡%s merodea cerca!") % thief_name
-		var t2: String = L.t("Sigue la flecha dorada: ¡trae un ticket ×10!") if thief_gold else L.t("Sigue la flecha dorada: ¡va cargado de monedas!")
-		# el cartel "salta" hasta x1,4: se limita para que ni asi se salga, y el texto se encoge si hace falta
-		var cap: float = (vp.x - _ins.x - _ins.z - 24.0) / 1.4
-		var fit1: Array = _fit_txt(font, t1, 26, cap - 32.0, 12)
-		var fit2: Array = _fit_txt(font, t2, 16, cap - 32.0, 10)
-		t1 = String(fit1[0])
-		t2 = String(fit2[0])
-		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit1[1])).x
-		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit2[1])).x
-		var bw: float = minf(cap, maxf(w1, w2) + 48.0)
-		draw_set_transform(Vector2((_ins.x + vp.x - _ins.z) * 0.5, maxf(vp.y * 0.2, 136.0 + _ins.y)), 0.0, Vector2(pop, pop))   # bajo la fila de nivel aunque la vista sea baja
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.2, 0.14, 0.02, 0.88 * a)
-		sb.border_color = Color(1.0, 0.82, 0.25, a)
-		sb.set_border_width_all(2)
-		sb.set_corner_radius_all(10)
-		draw_style_box(sb, Rect2(-bw * 0.5, -34.0, bw, 68.0))
-		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit1[1]), Color(1.0, 0.92, 0.55, a))
-		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit2[1]), Color(1.0, 0.85, 0.45, a))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-	# Brujula hacia los duendes del tesoro: flecha en el borde (o sobre su cabeza si ya los ves) con distancia y tiempo.
-	func draw_thieves(font: Font, vp: Vector2) -> void:
-		var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * 7.0)
-		var gcol: Color = Color("#ffd23f") if beat > 0.5 else Color("#fff0a0")
-		for th in thieves_hud:
-			var sp: Vector2 = th["sp"]
-			var off: bool = sp.x < 0.0 or sp.x > vp.x or sp.y < 0.0 or sp.y > vp.y
-			var label: String = "%s · %d m · %d s" % [String(th["name"]), int(th["m"]), ceili(float(th["life"]))]
-			if off:
-				var M := 52.0
-				var e := Vector2(clampf(sp.x, M, vp.x - M), clampf(sp.y, M + 70.0, vp.y - M - 80.0))
-				if e.x > vp.x - 150.0 and e.y < 150.0:
-					e.y = 150.0
-				var a: float = (sp - e).angle()
-				draw_circle(e, 30.0 + beat * 8.0, Color(1.0, 0.82, 0.25, 0.16 + beat * 0.22))
-				draw_colored_polygon(PackedVector2Array([e + Vector2.from_angle(a) * 45.0, e + Vector2.from_angle(a + 2.45) * 22.0, e + Vector2.from_angle(a - 2.45) * 22.0]), Color("#3a2606"))
-				draw_colored_polygon(PackedVector2Array([e + Vector2.from_angle(a) * 40.0, e + Vector2.from_angle(a + 2.45) * 20.0, e + Vector2.from_angle(a - 2.45) * 20.0]), gcol)
-				var ca: float = cos(a)
-				var ha := HORIZONTAL_ALIGNMENT_RIGHT if ca > 0.3 else (HORIZONTAL_ALIGNMENT_LEFT if ca < -0.3 else HORIZONTAL_ALIGNMENT_CENTER)
-				var lp: Vector2 = e + Vector2(-ca * 34.0, -sin(a) * 30.0 + 4.0)
-				_pin_label(font, label, 16, lp.x, lp.y, ha, Color("#ffe27a"))
-			else:
-				var by: float = maxf(sp.y - 60.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0, _ins.y + 104.0)   # la etiqueta no sale por arriba ni pisa el reloj
-				var p := Vector2(sp.x, by)
-				draw_colored_polygon(PackedVector2Array([p + Vector2(-17.0, -14.0), p + Vector2(17.0, -14.0), p + Vector2(0.0, 11.0)]), Color("#3a2606"))
-				draw_colored_polygon(PackedVector2Array([p + Vector2(-14.0, -12.0), p + Vector2(14.0, -12.0), p + Vector2(0.0, 8.0)]), gcol)
-				_pin_label(font, label, 15, p.x, p.y - 22.0, HORIZONTAL_ALIGNMENT_CENTER, Color("#ffe27a"))
-
-	func draw_rift_notice(font: Font, vp: Vector2) -> void:
-		if rift_notice < 0.0:
-			return
-		var a: float = minf(1.0, minf(rift_notice * 4.0, (4.5 - rift_notice) * 2.0))
-		var pop: float = 1.0 + maxf(0.0, 0.25 - rift_notice) * 1.6
-		var t1: String = L.t("¡SE HA ABIERTO UNA GRIETA!")
-		var t2: String = L.t("Sigue la flecha morada: dentro te espera un legendario")
-		if rift_den:
-			t1 = L.t("¡SE HA ABIERTO UNA GUARIDA DYNAMAX!")
-			t2 = L.t("Sigue la flecha roja: dentro te espera un Pokémon gigante")
-		# el cartel "salta" hasta x1,4: se limita para que ni asi se salga, y el texto se encoge si hace falta
-		var cap: float = (vp.x - _ins.x - _ins.z - 24.0) / 1.4
-		var fit1: Array = _fit_txt(font, t1, 26, cap - 32.0, 12)
-		var fit2: Array = _fit_txt(font, t2, 16, cap - 32.0, 10)
-		t1 = String(fit1[0])
-		t2 = String(fit2[0])
-		var w1: float = font.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit1[1])).x
-		var w2: float = font.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(fit2[1])).x
-		var bw: float = minf(cap, maxf(w1, w2) + 48.0)
-		draw_set_transform(Vector2((_ins.x + vp.x - _ins.z) * 0.5, maxf(vp.y * 0.2, 136.0 + _ins.y)), 0.0, Vector2(pop, pop))   # bajo la fila de nivel aunque la vista sea baja
-		var r := Rect2(-bw * 0.5, -34.0, bw, 68.0)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.102, 0.043, 0.2, 0.88 * a)
-		sb.border_color = Color(1.0, 0.24, 0.43, a) if rift_den else Color(0.706, 0.541, 1.0, a)
-		sb.set_border_width_all(2)
-		sb.set_corner_radius_all(10)
-		draw_style_box(sb, r)
-		draw_string(font, Vector2(-bw * 0.5, -4.0), t1, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit1[1]), Color(0.886, 0.816, 1.0, a))
-		draw_string(font, Vector2(-bw * 0.5, 22.0), t2, HORIZONTAL_ALIGNMENT_CENTER, bw, int(fit2[1]), Color(0.788, 0.69, 1.0, a))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-	func draw_rift(font: Font, vp: Vector2) -> void:
-		if rift_ttl >= 0.0:
-			var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * 7.0)
-			var tcol: Color = Color("#e2d0ff")
-			var fcol: Color = Color("#e2d0ff") if beat > 0.5 else Color("#a06bff")
-			var lbl: String = L.t("GRIETA ·")
-			if rift_den:
-				tcol = Color("#ffd0d6")
-				fcol = Color("#ffd0d6") if beat > 0.5 else Color("#ff3d6e")
-				lbl = L.t("GUARIDA ·")
-			if rift_off:
-				# Borde de pantalla: halo que late + flecha grande + "GRIETA · N m · S s"
-				var M := 52.0
-				var e := Vector2(clampf(rift_scr.x, M, vp.x - M), clampf(rift_scr.y, M + 70.0, vp.y - M - 80.0))
-				if e.x > vp.x - 150.0 and e.y < 150.0:
-					e.y = 150.0   # no tapar el boton de pausa
-				var a: float = (rift_scr - e).angle()
-				draw_circle(e, 30.0 + beat * 8.0, Color(0.706, 0.541, 1.0, 0.18 + beat * 0.22))
-				var big := PackedVector2Array([e + Vector2.from_angle(a) * 45.0, e + Vector2.from_angle(a + 2.45) * 22.0, e + Vector2.from_angle(a - 2.45) * 22.0])
-				draw_colored_polygon(big, Color("#1a0b33"))
-				draw_colored_polygon(PackedVector2Array([e + Vector2.from_angle(a) * 40.0, e + Vector2.from_angle(a + 2.45) * 20.0, e + Vector2.from_angle(a - 2.45) * 20.0]), fcol)
-				var label: String = "%s %d m · %d s" % [lbl, rift_m, ceili(rift_ttl)]
-				var ca: float = cos(a)
-				var ha := HORIZONTAL_ALIGNMENT_RIGHT if ca > 0.3 else (HORIZONTAL_ALIGNMENT_LEFT if ca < -0.3 else HORIZONTAL_ALIGNMENT_CENTER)
-				var lp: Vector2 = e + Vector2(-ca * 34.0, -sin(a) * 30.0 + 4.0)
-				_pin_label(font, label, 16, lp.x, lp.y, ha, tcol)
-			else:
-				# Encima de la grieta: flecha que bota con la cuenta atras
-				var by: float = maxf(rift_scr.y - 46.0 - absf(sin(Time.get_ticks_msec() * 0.001 * 4.0)) * 10.0, _ins.y + 104.0)
-				var p := Vector2(rift_scr.x, by)
-				var tri := PackedVector2Array([p + Vector2(-17.0, -14.0), p + Vector2(17.0, -14.0), p + Vector2(0.0, 11.0)])
-				draw_colored_polygon(tri, Color("#1a0b33"))
-				draw_colored_polygon(PackedVector2Array([p + Vector2(-14.0, -12.0), p + Vector2(14.0, -12.0), p + Vector2(0.0, 8.0)]), fcol)
-				var l2: String = "%s %d s" % [lbl, ceili(rift_ttl)]
-				_pin_label(font, l2, 15, p.x, p.y - 22.0, HORIZONTAL_ALIGNMENT_CENTER, tcol)
-		if legend_frac >= 0.0:
-			var w: float = minf(440.0, vp.x - 360.0)
-			var x0: float = vp.x * 0.5 - w * 0.5
-			draw_rect(Rect2(x0 - 2.0, vp.y - 148.0, w + 4.0, 22.0), Color(0, 0, 0, 0.6))
-			draw_rect(Rect2(x0, vp.y - 146.0, w * clampf(legend_frac, 0.0, 1.0), 18.0), Color("#b06bff"))
-			var lg: Array = _fit_txt(font, legend_name, 18, w - 70.0, 11)
-			draw_string(font, Vector2(x0, vp.y - 154.0), String(lg[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(lg[1]), Color("#e6d4ff"))
-			if arena_left >= 0.0:
-				draw_string(font, Vector2(x0, vp.y - 154.0), "%02d:%02d" % [int(arena_left) / 60, int(arena_left) % 60], HORIZONTAL_ALIGNMENT_RIGHT, w, 18, Color("#ffd33d") if arena_left > 20.0 else Color("#ff6b7a"))
-
-	var team: Array = []:
-		set(v):
-			team = v
-			if v.size() != _team_n and is_inside_tree():
-				_relayout()   # la columna derecha depende de cuantos miembros hay
-	var swap_cd := 0.0
-	var limit := 0.0
-	var rifts_n := 0
-	var timeup := false
-	var end_big := ""
-	var end_l1 := ""
-	var end_l2 := ""
-	var tower_floor := 0
-	var tower_t := 0.0
-	var tower_risk := 0
-	var reap_pct := -1.0
-
-	func team_rects() -> Array:
-		var out: Array = []
-		for i in range(team.size()):
-			out.append(Rect2(_vp.x - 190.0 - _ins.z, 126.0 + _ins.y + float(i) * 52.0, 174.0, 46.0))
-		return out
-
-	func draw_team(font: Font) -> void:
-		var rs: Array = team_rects()
-		for i in range(team.size()):
-			var t: Dictionary = team[i]
-			var r: Rect2 = rs[i]
-			var cur: bool = bool(t["cur"])
-			draw_rect(r, Color(0.08, 0.12, 0.25, 0.72) if not cur else Color(0.2, 0.32, 0.62, 0.85))
-			draw_rect(r, Color("#ffd23f") if cur else Color(1, 1, 1, 0.45), false, 2.0)
-			var dead: bool = bool(t["dead"])
-			draw_string(font, r.position + Vector2(8.0, 20.0), String(t["name"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16.0, 16, Color(0.6, 0.6, 0.65) if dead else Color.WHITE)
-			var f: float = clampf(float(t["frac"]), 0.0, 1.0)
-			draw_rect(Rect2(r.position + Vector2(8.0, 29.0), Vector2(r.size.x - 16.0, 9.0)), Color(0, 0, 0, 0.6))
-			var c2 := Color("#5fe08a") if f > 0.5 else (Color("#ffd33d") if f > 0.25 else Color("#ff6b7a"))
-			draw_rect(Rect2(r.position + Vector2(9.0, 30.0), Vector2((r.size.x - 18.0) * f, 7.0)), c2)
-			if not cur and swap_cd > 0.0 and not dead:
-				draw_rect(r, Color(0, 0, 0, 0.35))
-
-	func _ease_out(x: float) -> float:
-		return 1.0 - pow(1.0 - x, 3.0)
-
-	func _ease_back(x: float) -> float:
-		var c1: float = 1.70158
-		var c3: float = c1 + 1.0
-		return 1.0 + c3 * pow(x - 1.0, 3.0) + c1 * pow(x - 1.0, 2.0)
-
-	func _bounce(x: float) -> float:
-		var n1 := 7.5625
-		var d1 := 2.75
-		if x < 1.0 / d1:
-			return n1 * x * x
-		elif x < 2.0 / d1:
-			x -= 1.5 / d1
-			return n1 * x * x + 0.75
-		elif x < 2.5 / d1:
-			x -= 2.25 / d1
-			return n1 * x * x + 0.9375
-		x -= 2.625 / d1
-		return n1 * x * x + 0.984375
-
-	func z_rect() -> Rect2:
-		return _rz
-
-	func dyn_rect() -> Rect2:
-		return _rd
-
-	# Dynamax: boton (listo / bloqueado por nivel), barra de tiempo, borde rojo y cartel "DYNAMAX" al activarse.
-	func draw_dyn(font: Font, vp: Vector2) -> void:
-		var tcol: Color = Color("#ff3d6e")
-		var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * 6.0)
-		if dyn_left >= 0.0:
-			var a: float = 0.10 + 0.06 * beat
-			var th: float = 26.0
-			draw_rect(Rect2(0, 0, vp.x, th), Color(1.0, 0.1, 0.3, a))
-			draw_rect(Rect2(0, vp.y - th, vp.x, th), Color(1.0, 0.1, 0.3, a))
-			draw_rect(Rect2(0, 0, th, vp.y), Color(1.0, 0.1, 0.3, a))
-			draw_rect(Rect2(vp.x - th, 0, th, vp.y), Color(1.0, 0.1, 0.3, a))
-			var bd: Vector2 = _band(_y_dyn - 16.0, _y_dyn + 26.0)
-			var w: float = minf(360.0, bd.y - bd.x - 8.0)
-			var x0: float = clampf(vp.x * 0.5 - w * 0.5, bd.x + 4.0, maxf(bd.x + 4.0, bd.y - 4.0 - w))
-			var fr: float = clampf(dyn_left / DYN.DUR, 0.0, 1.0)
-			draw_rect(Rect2(x0 - 2.0, _y_dyn + 4.0, w + 4.0, 20.0), Color(0, 0, 0, 0.65))
-			draw_rect(Rect2(x0, _y_dyn + 6.0, w * fr, 16.0), tcol if fr > 0.25 else Color("#ffb347"))
-			draw_string(font, Vector2(x0, _y_dyn), "DYNAMAX  %d s" % ceili(dyn_left), HORIZONTAL_ALIGNMENT_CENTER, w, 16, Color.WHITE)
-		if dyn_flash < 2.7:
-			var fl: float = clampf(1.0 - dyn_flash / 0.25, 0.0, 1.0)
-			if fl > 0.0:
-				draw_rect(Rect2(Vector2.ZERO, vp), Color(1.0, 0.6, 0.7, 0.45 * fl))
-			var al: float = clampf((2.7 - dyn_flash) / 0.5, 0.0, 1.0)
-			var fs: int = 84
-			var word := "DYNAMAX"
-			var widths: Array = []
-			var tw: float = 0.0
-			for ch in word:
-				var cw: float = font.get_string_size(String(ch), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs).x + 3.0
-				widths.append(cw)
-				tw += cw
-			var x0: float = vp.x * 0.5 - tw * 0.5
-			var by: float = vp.y * 0.30
-			var shine: float = (dyn_flash - 0.9) / 0.9 * (tw + 160.0) - 80.0
-			var cx: float = x0
-			for i in range(word.length()):
-				var loc: float = dyn_flash - 0.35 - float(i) * 0.08
-				var cwid: float = float(widths[i])
-				if loc >= 0.0:
-					var k: float = clampf(loc / 0.55, 0.0, 1.0)
-					var drop: float = (1.0 - _bounce(k)) * 190.0
-					var sc: float = 1.0 + 0.35 * maxf(0.0, 1.0 - loc / 0.25)
-					var wave: float = sin(dyn_flash * 5.0 - float(i) * 0.7) * 5.0 * clampf((dyn_flash - 1.2) / 0.3, 0.0, 1.0)
-					var ox: float = cx + cwid * 0.5
-					var oy: float = by - drop + wave
-					draw_set_transform(Vector2(ox, oy), 0.0, Vector2(sc, sc))
-					var base: Color = Color("#ff2f63").lerp(Color("#ffd6e0"), clampf(float(i) / 6.0 + 0.15 * sin(dyn_flash * 6.0 - float(i)), 0.0, 1.0))
-					var pos := Vector2(-cwid * 0.5, 0.0)
-					draw_string_outline(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, 16, Color(0.22, 0.0, 0.1, 0.92 * al))
-					draw_string(font, pos + Vector2(3.0, 9.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(0.55, 0.0, 0.2, 0.9 * al))
-					draw_string(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(base.r, base.g, base.b, al))
-					var sh: float = clampf(1.0 - absf(cx + cwid * 0.5 - shine) / 55.0, 0.0, 1.0)
-					if sh > 0.0:
-						draw_string(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(1.0, 1.0, 1.0, sh * 0.9 * al))
-					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-					# chispas al aterrizar
-					if loc < 0.45:
-						var burst: float = 1.0 - loc / 0.45
-						for q in range(5):
-							var ang: float = float(q) * 1.256 + float(i)
-							draw_circle(Vector2(ox, by - 28.0) + Vector2.from_angle(ang) * (loc * 260.0), 3.0 * burst + 1.0, Color(1.0, 0.85, 0.9, burst * al))
-				cx += cwid
-		if dyn_btn > 0:
-			var r: Rect2 = dyn_rect()
-			var c: Vector2 = r.position + r.size * 0.5
-			var ready: bool = dyn_btn == 2
-			if ready:
-				draw_circle(c, 52.0 + beat * 6.0, Color(tcol.r, tcol.g, tcol.b, 0.25 + beat * 0.25))
-			draw_circle(c, 46.0, Color(0.14, 0.03, 0.07, 0.88))
-			draw_arc(c, 46.0, 0.0, TAU, 40, tcol if ready else Color(0.5, 0.52, 0.58), 4.0)
-			draw_string(font, Vector2(c.x - 44.0, c.y + (2.0 if dyn_btn == 3 else 11.0)), "MAX", HORIZONTAL_ALIGNMENT_CENTER, 88.0, 28 if dyn_btn == 3 else 32, Color.WHITE if ready else Color(0.6, 0.62, 0.68))
-			if dyn_btn == 3:
-				draw_string(font, Vector2(c.x - 44.0, c.y + 26.0), "%d:%02d" % [int(dyn_cd) / 60, int(dyn_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 88.0, 18, Color(0.85, 0.88, 0.95))
-			elif not ready:
-				draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % DYN.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
-
-	func draw_z(font: Font, vp: Vector2) -> void:
-		var tcol: Color = Color.html(String(MD.TYPE_COLOR.get(z_type, "#ffffff")))
-		if z_dim > 0.0:
-			draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0, 0.0, 0.04, z_dim))
-		if z_state == "cine":
-			var T: float = ZM.CINE_T
-			var cy: float = vp.y * 0.42
-			var open: float = _ease_out(clampf((z_t - 0.05) / 0.3, 0.0, 1.0))
-			var fade: float = clampf((T - z_t) / 0.3, 0.0, 1.0)
-			var al: float = open * fade
-			# Rayos giratorios detras del cartel
-			var rl: float = vp.x * 0.9
-			for i in range(16):
-				var ra: float = float(i) * TAU / 16.0 + z_t * 0.5
-				var w: float = 0.075
-				draw_colored_polygon(PackedVector2Array([Vector2(vp.x * 0.5, cy), Vector2(vp.x * 0.5, cy) + Vector2.from_angle(ra - w) * rl, Vector2(vp.x * 0.5, cy) + Vector2.from_angle(ra + w) * rl]), Color(tcol.r, tcol.g, tcol.b, 0.16 * al))
-			# Cartel que se abre
-			var hh: float = 66.0 * open
-			draw_rect(Rect2(0.0, cy - hh, vp.x, hh * 2.0), Color(tcol.r * 0.22, tcol.g * 0.22, tcol.b * 0.22, 0.8 * fade))
-			draw_rect(Rect2(0.0, cy - hh - 3.0, vp.x, 5.0), Color(minf(1.0, tcol.r + 0.3), minf(1.0, tcol.g + 0.3), minf(1.0, tcol.b + 0.3), fade))
-			draw_rect(Rect2(0.0, cy + hh - 2.0, vp.x, 5.0), Color(minf(1.0, tcol.r + 0.3), minf(1.0, tcol.g + 0.3), minf(1.0, tcol.b + 0.3), fade))
-			# Lineas de velocidad
-			for i in range(22):
-				var h1: float = fmod(float(i) * 0.6180339 + 0.13, 1.0)
-				var h2: float = fmod(float(i) * 0.7548776 + 0.29, 1.0)
-				var yy: float = cy - 120.0 + h1 * 240.0
-				var xx: float = fposmod(h2 * vp.x - z_t * (900.0 + h1 * 700.0), vp.x + 300.0) - 150.0
-				draw_rect(Rect2(xx, yy, 90.0 + h2 * 120.0, 2.0), Color(1, 1, 1, 0.28 * al))
-			# Cristal Z que aparece sobre el cartel y late
-			var cr_p: float = 1.0 + 0.08 * sin(z_t * 9.0)
-			var cr_c := Vector2(vp.x * 0.5, cy - 112.0 * open)
-			draw_circle(cr_c, 58.0 * cr_p, Color(tcol.r, tcol.g, tcol.b, 0.22 * al))
-			draw_circle(cr_c, 38.0 * cr_p, Color(1, 1, 1, 0.16 * al))
-			IC.draw_in(self, "zc:" + z_type, cr_c, 24.0 * 5.0 * cr_p * open, Color(1, 1, 1, al))
-			# Subtitulo con letras que se separan
-			var sub: String = L.t("MOVIMIENTO Z")
-			var sp: float = lerpf(1.0, 14.0, _ease_out(clampf((z_t - 0.1) / 0.6, 0.0, 1.0)))
-			var sx: float = vp.x * 0.5 - (font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + sp * float(sub.length() - 1)) * 0.5
-			for i in range(sub.length()):
-				var ch: String = sub.substr(i, 1)
-				draw_string(font, Vector2(sx, cy - 28.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.85 * al))
-				sx += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + sp
-			# Nombre: cada letra cae con un golpe y rebote
-			var fs: int = 60 if vp.x >= 900.0 else 40
-			var tw: float = font.get_string_size(z_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			var x0: float = vp.x * 0.5 - tw * 0.5
-			var sweep: float = vp.x * clampf((z_t - 1.0) / 0.75, 0.0, 1.0) * 1.3 - vp.x * 0.15
-			var cx: float = x0
-			var n: int = z_name.length()
-			for i in range(n):
-				var ch: String = z_name.substr(i, 1)
-				var cw: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-				var ts: float = 0.35 + float(i) * (0.5 / float(maxi(n, 1)))
-				var pr: float = clampf((z_t - ts) / 0.26, 0.0, 1.0)
-				if pr > 0.0:
-					var scl: float = lerpf(3.4, 1.0, _ease_back(pr))
-					var ca: float = clampf(pr * 5.0, 0.0, 1.0) * fade
-					var shk: Vector2 = Vector2.ZERO
-					if pr < 1.0 or z_t < ts + 0.4:
-						shk = Vector2(sin(z_t * 90.0 + float(i)) * 3.0, cos(z_t * 70.0 + float(i) * 2.0) * 3.0) * clampf(1.0 - (z_t - ts) / 0.4, 0.0, 1.0)
-					var pos: Vector2 = Vector2(cx + cw * 0.5, cy + 22.0) + shk
-					draw_set_transform(pos, 0.0, Vector2(scl, scl))
-					var shine: float = clampf(1.0 - absf((cx + cw * 0.5) - sweep) / 110.0, 0.0, 1.0)
-					var base: Color = Color(minf(1.0, tcol.r * 0.45 + 0.55), minf(1.0, tcol.g * 0.45 + 0.55), minf(1.0, tcol.b * 0.45 + 0.55), ca)
-					var fc: Color = base.lerp(Color(1, 1, 1, ca), shine)
-					for o in [Vector2(-3, 0), Vector2(3, 0), Vector2(0, -3), Vector2(0, 3)]:
-						draw_string(font, Vector2(-cw * 0.5, 0.0) + o, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(tcol.r, tcol.g, tcol.b, 0.55 * ca))
-					draw_string(font, Vector2(-cw * 0.5 + 3.0, 4.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.7 * ca))
-					draw_string(font, Vector2(-cw * 0.5, 0.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, fc)
-					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				cx += cw
-			# Destello blanco con el primer golpe
-			var fl: float = clampf(1.0 - absf(z_t - 0.38) / 0.12, 0.0, 1.0)
-			if fl > 0.0:
-				draw_rect(Rect2(Vector2.ZERO, vp), Color(1, 1, 1, 0.5 * fl))
-		if z_btn > 0:
-			var r: Rect2 = z_rect()
-			var c: Vector2 = r.position + r.size * 0.5
-			var ready: bool = z_btn == 2
-			var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * 6.0)
-			if ready:
-				draw_circle(c, 52.0 + beat * 6.0, Color(tcol.r, tcol.g, tcol.b, 0.25 + beat * 0.25))
-			draw_circle(c, 46.0, Color(0.05, 0.07, 0.14, 0.85))
-			draw_arc(c, 46.0, 0.0, TAU, 40, tcol if ready else Color(0.5, 0.52, 0.58), 4.0)
-			var zc: Color = Color.WHITE if ready else Color(0.6, 0.62, 0.68)
-			IC.draw_in(self, "zc:" + z_type, c + Vector2(0.0, -2.0 - (beat * 2.0 if ready else 0.0)), 64.0, zc)
-			if z_btn == 3:
-				draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), "%d:%02d" % [int(z_cd) / 60, int(z_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
-			elif not ready:
-				draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % ZM.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
-
-	func pause_rects() -> Array:
-		var vp: Vector2 = _vp
-		return [_rp, Rect2(vp.x * 0.5 - 160.0, vp.y * 0.5, 320.0, 58.0), Rect2(vp.x * 0.5 - 160.0, vp.y * 0.5 + 76.0, 320.0, 58.0)]
-
-	func draw_toast(font: Font, vp: Vector2) -> void:
-		if toast_t <= 0.0 or toast.is_empty():
-			return
-		var a: float = clampf(minf(toast_t, 2.8 - toast_t + 0.001) * 4.0, 0.0, 1.0)
-		var txt: String = String(toast["text"])
-		var sub: String = String(toast.get("sub", ""))
-		var cap: float = vp.x - _ins.x - _ins.z - 40.0
-		var f1: Array = _fit_txt(font, txt, 22, cap - 76.0, 12)
-		txt = String(f1[0])
-		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, int(f1[1])).x
-		var f2: Array = [sub, 16]
-		if sub != "":
-			f2 = _fit_txt(font, sub, 16, cap - 76.0, 10)
-			sub = String(f2[0])
-			tw = maxf(tw, font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, int(f2[1])).x)
-		var w: float = minf(tw + 100.0, cap)
-		var h: float = 64.0 if sub == "" else 82.0
-		var x0: float = (_ins.x + vp.x - _ins.z) * 0.5 - w * 0.5
-		var y0: float = 64.0 + _ins.y
-		var out := StyleBoxFlat.new()
-		out.bg_color = Color(0.043, 0.094, 0.22, a)
-		out.set_corner_radius_all(15)
-		draw_style_box(out, Rect2(x0 - 3.0, y0 - 3.0, w + 6.0, h + 6.0))
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.145, 0.28, 0.6, a)
-		sb.border_color = Color(1.0, 0.82, 0.25, a)
-		sb.set_border_width_all(3)
-		sb.set_corner_radius_all(12)
-		draw_style_box(sb, Rect2(x0, y0, w, h))
-		var ic: String = "medal%d" % clampi(int(toast.get("tier", 2)), 1, 3)
-		IC.draw_in(self, ic, Vector2(x0 + 36.0, y0 + h * 0.5), 36.0, Color(1, 1, 1, a))
-		var ty: float = y0 + (h * 0.5 + 8.0 if sub == "" else 34.0)
-		draw_string(font, Vector2(x0 + 66.0, ty), txt, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, int(f1[1]), Color(1.0, 0.82, 0.25, a))
-		if sub != "":
-			draw_string(font, Vector2(x0 + 66.0, y0 + 60.0), sub, HORIZONTAL_ALIGNMENT_LEFT, w - 76.0, int(f2[1]), Color(0.72, 0.8, 0.94, a))
-
-	# Linea de texto centrada en el hueco libre de su fila: si cabe centrada en la pantalla se queda ahi; si no, se
-	# desplaza al hueco y, si aun asi no cabe, se encoge (hasta 11 px) y al final se recorta con "…".
-	func _cline(font: Font, y: float, txt: String, fs: int, col: Color) -> void:
-		var bd: Vector2 = _band(y - float(fs) * 0.8, y + float(fs) * 0.3)
-		var fit: Array = _fit_txt(font, txt, fs, maxf(60.0, bd.y - bd.x), 11)
-		var t: String = String(fit[0])
-		var f: int = int(fit[1])
-		var w: float = font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f).x
-		var x0: float = clampf(_vp.x * 0.5 - w * 0.5, bd.x, maxf(bd.x, bd.y - w))
-		draw_string(font, Vector2(x0, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, col)
-
-	func _draw() -> void:
-		var font := ThemeDB.fallback_font
-		if team.size() != _team_n:
-			_relayout()
-		var vp: Vector2 = _vp
-		var ins: Vector4 = _ins
-		var oy: float = ins.y
-		# --- Medidas de lo que rodea a las filas centrales: cada fila de texto central se coloca en el hueco libre ---
-		var hp_txt: String = L.t("%s  PS %d/%d") % [poke_name, ceili(hp), ceili(max_hp)]
-		var name_w: float = font.get_string_size(hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var lvl_end: float = 16.0 + ins.x + font.get_string_size(L.t("Nv. %d") % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		if revives > 0:
-			lvl_end = maxf(lvl_end, 70.0 + ins.x + 22.0 * float(revives - 1) + 9.0)
-		if ab_name != "":
-			lvl_end = maxf(lvl_end, 132.0 + ins.x + font.get_string_size(ab_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15).x)
-		var tw: float = font.get_string_size(str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var t10w: float = font.get_string_size(str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var cw: float = font.get_string_size(str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-		var cnt_left: float = vp.x - 16.0 - ins.z - (t10w + 40.0) - (tw + 40.0) - cw - 28.0   # borde izquierdo de los contadores
-		var kills_txt: String = L.t("Derrotados: %d") % kills
-		var kills_fs: int = 20
-		var kfit: Array = _fit_txt(font, kills_txt, 20, 220.0, 12)
-		kills_txt = String(kfit[0])
-		kills_fs = int(kfit[1])
-		var kw: float = font.get_string_size(kills_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, kills_fs).x
-		_obst = [
-			Rect2(16.0 + ins.x, 16.0 + oy, 240.0, 18.0),
-			Rect2(16.0 + ins.x, 40.0 + oy, name_w, 20.0),
-			Rect2(16.0 + ins.x, 62.0 + oy, lvl_end - 16.0 - ins.x, 18.0),
-			Rect2(vp.x - 16.0 - ins.z - kw, 14.0 + oy, kw, 28.0),
-			Rect2(cnt_left, 42.0 + oy, vp.x - 16.0 - ins.z - cnt_left, 28.0),
-			_rp,
-			Rect2(mini_pos, Vector2(200.0, 200.0) * mini_scale),
-		]
-		for tr in team_rects():
-			_obst.append(tr)
-		# pila de filas centrales bajo el reloj: cada fila presente baja a la siguiente
-		var cy: float = 58.0 + oy
-		var y_l2: float = cy
-		if limit > 0.0 or tower_floor > 0 or adapt_pct > 0:
-			cy += 24.0
-		var y_wx: float = cy
-		if weather_text != "":
-			cy += 24.0
-		_y_dyn = cy
-		if dyn_left >= 0.0:
-			cy += 30.0
-		var y_down: float = cy - 2.0
-		if down:
-			cy += 74.0
-		var y_ban: float = maxf(cy + 8.0, 92.0 + oy)
-		_y_chip = 140.0 + oy
-		if banner != "":
-			_y_chip = maxf(_y_chip, y_ban + 48.0)
-		draw_z(font, vp)
-		draw_dyn(font, vp)
-		if show_fps:
-			draw_string(font, Vector2(vp.x - 130.0 - ins.z, vp.y - 12.0 - ins.w), "%d FPS" % int(Engine.get_frames_per_second()), HORIZONTAL_ALIGNMENT_RIGHT, 118.0, 20, Color(1, 1, 1, 0.85))
-		var frac: float = clampf(hp / max_hp, 0.0, 1.0)
-		var col := Color("#5fe08a")
-		if frac <= 0.25:
-			col = Color("#ff6b7a")
-		elif frac <= 0.5:
-			col = Color("#ffd33d")
-		draw_rect(Rect2(0.0, 0.0, vp.x, 8.0), Color(0, 0, 0, 0.55))
-		draw_rect(Rect2(0.0, 0.0, vp.x * clampf(xp / xp_next, 0.0, 1.0), 8.0), Color("#7fe0ff"))
-		draw_rect(Rect2(16.0 + ins.x, 16.0 + oy, 240.0, 18.0), Color(0, 0, 0, 0.55))
-		draw_rect(Rect2(18.0 + ins.x, 18.0 + oy, 236.0 * frac, 14.0), col)
-		draw_string(font, Vector2(16.0 + ins.x, 54.0 + oy), hp_txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
-		draw_string(font, Vector2(16.0 + ins.x, 76.0 + oy), L.t("Nv. %d") % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#7fe0ff"))
-		if ab_name != "":
-			draw_string(font, Vector2(132.0 + ins.x, 76.0 + oy), ab_name, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color("#ffd98a"))
-		if down:
-			var bd: Vector2 = _band(y_down - 4.0, y_down + 66.0)
-			var d1: Array = _fit_txt(font, L.t("Espectando: reviveras en %d s") % ceili(down_left), 20, bd.y - bd.x - 24.0, 11)
-			var d2: Array = _fit_txt(font, L.t("Vida de tu compañero"), 16, bd.y - bd.x - 24.0, 10)
-			var dw: float = maxf(font.get_string_size(String(d1[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(d1[1])).x, font.get_string_size(String(d2[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(d2[1])).x)
-			var bw: float = minf(maxf(300.0, dw + 24.0), bd.y - bd.x - 8.0)
-			var bx: float = clampf(vp.x * 0.5 - bw * 0.5, bd.x + 4.0, maxf(bd.x + 4.0, bd.y - 4.0 - bw))
-			var by: float = y_down
-			draw_rect(Rect2(bx - 4.0, by - 4.0, bw + 8.0, 70.0), Color(0, 0, 0, 0.5))
-			draw_string(font, Vector2(bx, by + 16.0), String(d1[0]), HORIZONTAL_ALIGNMENT_CENTER, bw, int(d1[1]), Color("#ffd2d8"))
-			draw_rect(Rect2(bx, by + 28.0, bw, 14.0), Color(0, 0, 0, 0.6))
-			draw_rect(Rect2(bx + 1.0, by + 29.0, (bw - 2.0) * pbar, 12.0), Color("#9ad0ff"))
-			draw_string(font, Vector2(bx, by + 60.0), String(d2[0]), HORIZONTAL_ALIGNMENT_CENTER, bw, int(d2[1]), Color("#cfe6ff"))
-		if show_stats and not stats.is_empty():
-			# bajo el minimapa; si no cabe encima de la barra de huecos, sube lo justo (minimo pegado al minimapa).
-			# El ancho sale del texto mas largo de cada columna (en otros idiomas "Regeneracion" no cabe en 90 px).
-			var sh: float = 18.0 * float(stats.size()) + 6.0
-			var sy: float = minf(stats_y, maxf(mini_pos.y + 200.0 * mini_scale + 4.0, vp.y - 88.0 - ins.w - 6.0 - sh))
-			var sx: float = 16.0 + ins.x
-			var lw_max := 0.0
-			var vw_max := 0.0
-			for row in stats:
-				lw_max = maxf(lw_max, font.get_string_size(String(row[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14).x)
-				vw_max = maxf(vw_max, font.get_string_size(String(row[1]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14).x)
-			var pw: float = maxf(150.0, lw_max + vw_max + 24.0)
-			draw_rect(Rect2(sx - 4.0, sy - 2.0, pw, sh), Color(0, 0, 0, 0.32))
-			for row in stats:
-				draw_string(font, Vector2(sx, sy + 13.0), String(row[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, Color(1, 1, 1, 0.75))
-				draw_string(font, Vector2(sx, sy + 13.0), String(row[1]), HORIZONTAL_ALIGNMENT_RIGHT, pw - 12.0, 14, Color("#ffe58a"))
-				sy += 18.0
-		for ri in range(revives):
-			IC.draw_in(self, "revive", Vector2(70.0 + ins.x + float(ri) * 22.0, 71.0 + oy), 18.0)
-		draw_powers(font, vp)
-		if not team.is_empty():
-			draw_team(font)
-		if weather_text != "":
-			_cline(font, y_wx, L.t(weather_text), 18, Color("#cfe2ff"))
-		if banner != "":
-			_cline(font, y_ban, L.t(banner), 20, Color("#ffffff"))
-		draw_rift(font, vp)
-		draw_rift_notice(font, vp)
-		draw_thief_notice(font, vp)
-		draw_thieves(font, vp)
-		draw_toast(font, vp)
-		var rx: float = vp.x - 16.0 - ins.z
-		draw_string(font, Vector2(rx - t10w, 62.0 + oy), str(tickets10), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#c47bff"))
-		IC.draw_in(self, "ticket10", Vector2(rx - t10w - 16.0, 56.0 + oy), 24.0)
-		rx -= t10w + 40.0
-		draw_string(font, Vector2(rx - tw, 62.0 + oy), str(tickets), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
-		IC.draw_in(self, "ticket", Vector2(rx - tw - 16.0, 56.0 + oy), 24.0)
-		rx -= tw + 40.0
-		draw_string(font, Vector2(rx - cw, 62.0 + oy), str(coins), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color("#ffd23f"))
-		IC.draw_in(self, "coin", Vector2(rx - cw - 16.0, 56.0 + oy), 24.0)
-		var pr: Array = pause_rects()
-		draw_rect(pr[0], Color(0, 0, 0, 0.45))
-		draw_rect(pr[0], Color.WHITE, false, 2.0)
-		draw_rect(Rect2(pr[0].position + Vector2(16.0, 12.0), Vector2(8.0, 22.0)), Color.WHITE)
-		draw_rect(Rect2(pr[0].position + Vector2(30.0, 12.0), Vector2(8.0, 22.0)), Color.WHITE)
-		var clock: String = "%02d:%02d" % [floori(run_time / 60.0), int(run_time) % 60]
-		if limit > 0.0:
-			var left: float = maxf(0.0, limit - run_time)
-			var lc: String = "%02d:%02d" % [floori(left / 60.0), int(left) % 60]
-			draw_string(font, Vector2(0.0, 36.0 + oy), lc, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color("#ff6b7a") if left < 30.0 else Color.WHITE)
-			_cline(font, y_l2, L.t("Grietas ganadas: %d") % rifts_n, 18, Color("#c9a6ff"))
-		else:
-			draw_string(font, Vector2(0.0, 36.0 + oy), L.t(clock), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
-		if adapt_pct > 0 and tower_floor <= 0 and limit <= 0.0:
-			var ac: Color = Color("#8fe39b") if adapt_pct < 100 else (Color("#ffd23f") if adapt_pct == 100 else Color("#ff9a5a"))
-			_cline(font, y_l2, L.t("Reto: %d%%") % adapt_pct, 16, ac)
-		if tower_floor > 0:
-			var sub: String = L.t("Piso %d / %d") % [tower_floor, TOWER_FLOORS]
-			if tower_t >= 0.0:
-				sub += "  ·  " + L.t("Jefe en %ds") % int(ceil(tower_t))
-			else:
-				sub += "  ·  " + L.t("¡Jefe!")
-			if tower_risk > 0:
-				sub += "  ·  " + L.t("Pactos: %d") % tower_risk
-			if reap_pct >= 0.0:
-				sub += "  ·  " + L.t("Sed de victoria +%s%%") % ("%.1f" % reap_pct)
-			_cline(font, y_l2, sub, 18, Color("#ffd23f"))
-		draw_string(font, Vector2(vp.x - 16.0 - ins.z - 220.0, 36.0 + oy), kills_txt, HORIZONTAL_ALIGNMENT_RIGHT, 220.0, kills_fs, Color.WHITE)
-		if dead:
-			# Camara lenta: primero se ve caer al Pokemon; despues oscurece y aparece GAME OVER.
-			var fade: float = clampf((death_t - 0.3) / 0.35, 0.0, 1.0)
-			draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.55 * fade))
-			if fade > 0.0:
-				var ga: float = fade
-				var big: String = (end_big if end_big != "" else L.t("¡TIEMPO!")) if timeup else "GAME OVER"
-				var bigc: Color = Color(1.0, 0.82, 0.25, ga) if timeup else Color(1.0, 0.36, 0.42, ga)
-				draw_string_outline(font, Vector2(0.0, vp.y * 0.36), big, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, 10, Color(0, 0, 0, ga))
-				draw_string(font, Vector2(0.0, vp.y * 0.36), big, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, bigc)
-				if timeup:
-					draw_string(font, Vector2(0.0, vp.y * 0.45 + 10.0), end_l1 if end_l1 != "" else L.t("Grietas ganadas: %d") % rifts_n, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
-					draw_string(font, Vector2(0.0, vp.y * 0.45 + 50.0), end_l2 if end_l2 != "" else L.t("Derrotaste %d Pokémon") % kills, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
-				else:
-					draw_string(font, Vector2(0.0, vp.y * 0.45 + 10.0), L.t("Has caído..."), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
-					draw_string(font, Vector2(0.0, vp.y * 0.45 + 50.0), L.t("Aguantaste %s y derrotaste %d") % [clock, kills], HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
-		if dead:
-			if show_end:
-				draw_string(font, Vector2(0.0, vp.y * 0.45 + 96.0), L.t("Pulsa una tecla, un botón o toca la pantalla para volver al menú"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffd33d"))
-
-
-# ---------------------------------------------------------------
-# Clima: tinte suave y pocas particulas (weather.js)
-# ---------------------------------------------------------------
-class WeatherFx extends Node2D:
-	var kind := ""
-	var level := 0.0
-	var def: Dictionary = {}
-	var parts: Array = []
-
-	func setup(d: Dictionary) -> void:
-		def = d
-		parts.clear()
-
-	func clear() -> void:
-		def = {}
-		parts.clear()
-		queue_redraw()
-
-	func _new_part(vp: Vector2, anywhere: bool) -> Dictionary:
-		var y: float = randf() * vp.y if anywhere else -10.0
-		if kind == "rain":
-			return {"x": randf() * (vp.x + 200.0), "y": y, "vx": -120.0, "vy": 720.0, "t": 0.0, "life": 9.0}
-		if kind == "snow":
-			return {"x": randf() * vp.x, "y": y, "vx": randf_range(-20.0, 20.0), "vy": randf_range(40.0, 80.0), "t": 0.0, "life": 20.0}
-		if kind == "sand":
-			return {"x": randf() * vp.x if anywhere else vp.x + 20.0, "y": randf() * vp.y, "vx": randf_range(-520.0, -380.0), "vy": randf_range(20.0, 60.0), "t": 0.0, "life": 9.0}
-		return {"x": randf() * vp.x, "y": randf() * vp.y if anywhere else vp.y + 5.0, "vx": randf_range(-8.0, 8.0), "vy": -randf_range(15.0, 30.0), "t": 0.0, "life": 12.0}
-
-	func _process(delta: float) -> void:
-		if kind == "" or level <= 0.0 or def.is_empty():
-			if not parts.is_empty():
-				parts.clear()
-				queue_redraw()
-			return
-		var vp: Vector2 = get_viewport_rect().size
-		var want: int = int(float(def["parts"]) * level * (vp.x / 1280.0))
-		while parts.size() < want:
-			parts.append(_new_part(vp, true))
-		if parts.size() > want + 4:
-			parts.resize(want)
-		for i in range(parts.size()):
-			var p: Dictionary = parts[i]
-			p["x"] = float(p["x"]) + float(p["vx"]) * delta
-			p["y"] = float(p["y"]) + float(p["vy"]) * delta
-			p["t"] = float(p["t"]) + delta
-			if float(p["y"]) > vp.y + 20.0 or float(p["x"]) < -40.0 or float(p["x"]) > vp.x + 40.0 or float(p["y"]) < -40.0 or float(p["t"]) > float(p["life"]):
-				parts[i] = _new_part(vp, false)
-		queue_redraw()
-
-	func _draw() -> void:
-		if kind == "" or level <= 0.0 or def.is_empty():
-			return
-		var vp: Vector2 = get_viewport_rect().size
-		var t: Array = def["tint"]
-		draw_rect(Rect2(Vector2.ZERO, vp), Color(float(t[0]), float(t[1]), float(t[2]), float(t[3]) * level))
-		var s: float = maxf(2.0, roundf(vp.x / 640.0))
-		for p in parts:
-			var pos := Vector2(float(p["x"]), float(p["y"]))
-			if kind == "rain":
-				draw_line(pos, pos + Vector2(-s * 1.2, -s * 5.0), Color(0.81, 0.89, 1.0, 0.5 * level), s * 0.5)
-			elif kind == "snow":
-				draw_rect(Rect2(pos, Vector2(s, s)), Color(1, 1, 1, 0.7 * level))
-			elif kind == "sand":
-				draw_rect(Rect2(pos, Vector2(s * 3.0, s * 0.5)), Color(0.91, 0.81, 0.56, 0.4 * level))
-			else:
-				draw_rect(Rect2(pos, Vector2(s, s)), Color(1.0, 0.95, 0.69, 0.45 * level))
-
-
-# ---------------------------------------------------------------
-# Joystick tactil flotante: aparece donde pones el dedo
-# ---------------------------------------------------------------
-# Cambio de Pokemon del Modo Equipo con la pantalla tactil: boton grande + fichas del equipo.
-class TeamUi extends Node2D:
-	var m: Node = null
-
-	func _btn_rect() -> Rect2:
-		return m.hud.team_btn_rect()   # el Hud lo coloca junto con Z y Dynamax (columna derecha)
-
-	func _live() -> bool:
-		return m != null and not m.player.dead and not m.paused and not m.choosing and m.arena_ok_for_ui()
-
-	func _input(event: InputEvent) -> void:
-		if not (event is InputEventScreenTouch and event.pressed) or not _live():
-			return
-		var p: Vector2 = event.position
-		var trs: Array = m.hud.team_rects()
-		for i in range(trs.size()):
-			if (trs[i] as Rect2).has_point(p):
-				get_viewport().set_input_as_handled()
-				m._swap_team(i)
-				return
-		if _btn_rect().has_point(p):
-			get_viewport().set_input_as_handled()
-			m._swap_team(m._team_next())
-
-	func _process(_d: float) -> void:
-		queue_redraw()
-
-	func _draw() -> void:
-		if m == null or m.team.size() < 2 or m.player.dead:
-			return
-		var r: Rect2 = _btn_rect()
-		var c: Vector2 = r.get_center()
-		var ready: bool = m.swap_cd <= 0.0 and m._team_next() >= 0
-		var a: float = 0.85 if ready else 0.4
-		draw_circle(c, 52.0, Color(0.08, 0.12, 0.25, 0.6 * a))
-		draw_arc(c, 52.0, 0.0, TAU, 48, Color(1.0, 0.82, 0.25, a), 4.0)
-		# dos flechas circulares
-		draw_arc(c, 24.0, -2.6, 0.2, 20, Color(1, 1, 1, a), 5.0)
-		draw_arc(c, 24.0, 0.54, 3.34, 20, Color(1, 1, 1, a), 5.0)
-		draw_colored_polygon(PackedVector2Array([c + Vector2(30.0, -6.0), c + Vector2(18.0, -6.0), c + Vector2(24.0, 6.0)]), Color(1, 1, 1, a))
-		draw_colored_polygon(PackedVector2Array([c + Vector2(-30.0, 6.0), c + Vector2(-18.0, 6.0), c + Vector2(-24.0, -6.0)]), Color(1, 1, 1, a))
-		var nx: int = m._team_next()
-		if nx >= 0:
-			var font := ThemeDB.fallback_font
-			draw_string(font, c + Vector2(-70.0, 74.0), String(m.team[nx]["name"]), HORIZONTAL_ALIGNMENT_CENTER, 140.0, 16, Color(1, 1, 1, a))
-		if m.swap_cd > 0.0:
-			draw_arc(c, 60.0, -PI / 2.0, -PI / 2.0 + TAU * (m.swap_cd / 3.0), 32, Color(1, 0.4, 0.4, 0.9), 4.0)
-
-
-# Pantalla de carga: fondo oscuro, texto y barra de progreso
-class LoadScreen extends Node2D:
-	var text := ""
-	var prog := 0.0
-
-	func set_prog(v: float) -> void:
-		if absf(v - prog) >= 0.005 or v >= 1.0:
-			prog = v
-			queue_redraw()
-
-	func _draw() -> void:
-		var vp: Vector2 = get_viewport_rect().size
-		draw_rect(Rect2(Vector2.ZERO, vp), Color("#0c1220"))
-		var font := ThemeDB.fallback_font
-		var fs: int = int(clampf(vp.y / 15.0, 18.0, 44.0))
-		draw_string(font, Vector2(0.0, vp.y * 0.5 - fs * 0.4), text, HORIZONTAL_ALIGNMENT_CENTER, vp.x, fs, Color.WHITE)
-		var bw: float = minf(vp.x * 0.6, 460.0)
-		var bh: float = maxf(8.0, vp.y / 50.0)
-		var r := Rect2((vp.x - bw) * 0.5, vp.y * 0.5 + fs * 0.6, bw, bh)
-		draw_rect(r.grow(2.0), Color("#8fa8cc"))
-		draw_rect(r, Color("#16233a"))
-		draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(prog, 0.0, 1.0), r.size.y)), Color("#ffd33d"))
-
-
-class Stick extends Node2D:
-	var radius := 90.0
-	var axis := Vector2.ZERO
-	var fixed := false          # joystick fijo (siempre visible abajo a la izquierda)
-	var _id := -1
-	var _origin := Vector2.ZERO
-	var _pos := Vector2.ZERO
-	var _vp := Vector2(1280.0, 720.0)
-	var _ins := Vector4.ZERO
-	var _rad := 90.0     # radio efectivo: el fijo se encoge si en una vista baja taparia el minimapa
-
-	func _ready() -> void:
-		_relayout()
-		get_viewport().size_changed.connect(_relayout)
-
-	func _relayout() -> void:
-		_vp = get_viewport_rect().size
-		_ins = DSP.insets(get_tree())
-		_rad = radius
-		if fixed:
-			var mini_bottom: float = 98.0 + _ins.y + (160.0 if _vp.y - _ins.y - _ins.w < 500.0 else 200.0)
-			_rad = clampf((_vp.y - _ins.w - 56.0 - mini_bottom) * 0.5, 56.0, radius)
-		queue_redraw()
-
-	func _home() -> Vector2:
-		return Vector2(_rad + 56.0 + _ins.x, _vp.y - _rad - 56.0 - _ins.w)
-
-	func _process(_d: float) -> void:
-		if fixed:
-			queue_redraw()
-		elif _id == -1 and visible:
-			pass
-
-	func _input(event: InputEvent) -> void:
-		if event is InputEventScreenTouch:
-			if event.pressed and _id == -1:
-				if fixed:
-					var h: Vector2 = _home()
-					if event.position.distance_to(h) > _rad * 1.8:
-						return
-					_id = event.index
-					_origin = h
-					var v0: Vector2 = event.position - h
-					if v0.length() > _rad:
-						v0 = v0.normalized() * _rad
-					_pos = h + v0
-					axis = v0 / _rad
-				else:
-					_id = event.index
-					_origin = event.position
-					_pos = event.position
-			elif not event.pressed and event.index == _id:
-				_id = -1
-				axis = Vector2.ZERO
-			queue_redraw()
-		elif event is InputEventScreenDrag and event.index == _id:
-			var v: Vector2 = event.position - _origin
-			if v.length() > _rad:
-				v = v.normalized() * _rad
-			_pos = _origin + v
-			axis = v / _rad
-			queue_redraw()
-
-	func _draw() -> void:
-		if _id == -1:
-			if fixed:
-				var h: Vector2 = _home()
-				draw_arc(h, _rad, 0.0, TAU, 48, Color(1, 1, 1, 0.2), 3.0)
-				draw_circle(h, 28.0, Color(1, 1, 1, 0.18))
-			return
-		draw_arc(_origin, _rad, 0.0, TAU, 48, Color(1, 1, 1, 0.35), 3.0)
-		draw_circle(_pos, 28.0, Color(1, 1, 1, 0.45))

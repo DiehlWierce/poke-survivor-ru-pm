@@ -3051,7 +3051,29 @@ func _show_run_summary() -> void:
 		var jb: int = int(jr["bosses"])
 		var jc := _stat_cell(L.t("Ante Arceus"), "%d:%02d · %d %s" % [jt / 60, jt % 60, jb, L.t("legendario") if jb == 1 else L.t("legendarios")], C_GOLD, true)
 		v.add_child(jc)
-	# monedas con desglose
+	var cc := _sum_coins_box(r)
+	var mid := HBoxContainer.new()
+	mid.add_theme_constant_override("separation", 8)
+	cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mid.add_child(cc)
+	v.add_child(mid)
+	if int(r["tickets"]) > 0 or int(r.get("tickets10", 0)) > 0:
+		mid.add_child(_sum_tickets_box(r))
+	var mc := _sum_moves_box(r, c)
+	v.add_child(mc)
+	if bool(r.get("record", false)):
+		var rl := _label("¡Nuevo récord de tiempo!", 22, C_GOLD)
+		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(rl)
+	var ok := _btn("Volver al menú", func(): _close_summary(), Vector2(260, 56))
+	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(ok)
+	_gf(ok)
+	_update_top()
+
+
+# Resumen de partida: monedas ganadas con desglose.
+func _sum_coins_box(r: Dictionary) -> PanelContainer:
 	var cc := PanelContainer.new()
 	cc.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.1, 0.26, 0.55), Color(0.5, 0.62, 0.9, 0.35), 2, 10))
 	var cv := VBoxContainer.new()
@@ -3069,34 +3091,36 @@ func _show_run_summary() -> void:
 		var bl := _label(L.t("Recogidas %d · Tiempo +%d · Derrotados +%d") % _bd_nums(String(r["breakdown"])), 13, Color("#9fb4dc"))
 		bl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		cv.add_child(bl)
-	var mid := HBoxContainer.new()
-	mid.add_theme_constant_override("separation", 8)
-	cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mid.add_child(cc)
-	v.add_child(mid)
-	if int(r["tickets"]) > 0 or int(r.get("tickets10", 0)) > 0:
-		var tc := PanelContainer.new()
-		tc.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.1, 0.26, 0.55), Color(0.5, 0.62, 0.9, 0.35), 2, 10))
-		var tv := VBoxContainer.new()
-		tv.add_theme_constant_override("separation", 2)
-		tc.add_child(tv)
-		tv.add_child(_label("Tickets del gacha", 16, Color("#9fb4dc")))
-		var tr := HBoxContainer.new()
-		tr.add_theme_constant_override("separation", 8)
-		if int(r["tickets"]) > 0:
-			tr.add_child(IC.rect("ticket", 26))
-			var tl1 := _label("+%d" % int(r["tickets"]), 26, Color("#ffd23f"))
-			tl1.autowrap_mode = TextServer.AUTOWRAP_OFF
-			tr.add_child(tl1)
-		if int(r.get("tickets10", 0)) > 0:
-			tr.add_child(IC.rect("ticket10", 26))
-			var tl2 := _label("+%d ×10" % int(r["tickets10"]), 26, Color("#c47bff"))
-			tl2.autowrap_mode = TextServer.AUTOWRAP_OFF
-			tr.add_child(tl2)
-		tv.add_child(tr)
-		tc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		mid.add_child(tc)
-	# movimientos de la partida
+	return cc
+
+
+# Resumen de partida: tickets del gacha ganados.
+func _sum_tickets_box(r: Dictionary) -> PanelContainer:
+	var tc := PanelContainer.new()
+	tc.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.1, 0.26, 0.55), Color(0.5, 0.62, 0.9, 0.35), 2, 10))
+	var tv := VBoxContainer.new()
+	tv.add_theme_constant_override("separation", 2)
+	tc.add_child(tv)
+	tv.add_child(_label("Tickets del gacha", 16, Color("#9fb4dc")))
+	var tr := HBoxContainer.new()
+	tr.add_theme_constant_override("separation", 8)
+	if int(r["tickets"]) > 0:
+		tr.add_child(IC.rect("ticket", 26))
+		var tl1 := _label("+%d" % int(r["tickets"]), 26, Color("#ffd23f"))
+		tl1.autowrap_mode = TextServer.AUTOWRAP_OFF
+		tr.add_child(tl1)
+	if int(r.get("tickets10", 0)) > 0:
+		tr.add_child(IC.rect("ticket10", 26))
+		var tl2 := _label("+%d ×10" % int(r["tickets10"]), 26, Color("#c47bff"))
+		tl2.autowrap_mode = TextServer.AUTOWRAP_OFF
+		tr.add_child(tl2)
+	tv.add_child(tr)
+	tc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return tc
+
+
+# Resumen de partida: dano y derrotas por movimiento (filas por porciones; c se muestra al terminar).
+func _sum_moves_box(r: Dictionary, c: Control) -> PanelContainer:
 	var mc := PanelContainer.new()
 	mc.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.1, 0.26, 0.55), Color(0.5, 0.62, 0.9, 0.35), 2, 10))
 	var mv := VBoxContainer.new()
@@ -3187,16 +3211,8 @@ func _show_run_summary() -> void:
 			ok2.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			mg.add_child(ok2))
 	_later(mg, func(): c.modulate.a = 1.0)
-	v.add_child(mc)
-	if bool(r.get("record", false)):
-		var rl := _label("¡Nuevo récord de tiempo!", 22, C_GOLD)
-		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(rl)
-	var ok := _btn("Volver al menú", func(): _close_summary(), Vector2(260, 56))
-	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(ok)
-	_gf(ok)
-	_update_top()
+	return mc
+
 
 
 func _fmt_n(n: int) -> String:
