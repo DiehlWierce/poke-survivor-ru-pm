@@ -285,9 +285,9 @@ func report_run(s: Array, tot: float, spikes: int) -> void:
 	var res := {"frames": cnt, "avg_ms": snappedf(avg, 0.01), "p95_ms": snappedf(p95, 0.01), "p99_ms": snappedf(p99, 0.01),
 		"max_ms": snappedf(s[-1], 0.1), "over45": spikes, "enemies": m.enemies.size(), "bullets": m.bullets.size(), "kills": m.kills, "orbs": m.orbs.size(), "level": m.player.level,
 		"sec_avg_ms": sec, "sec_max_ms": secmax}
-	res["chunks"] = {"speed": SPEED, "bench_blank_frames": blank_frames, "bench_blank_chunks": blank_chunks, "vis_missing": Prof.ch_vis_missing,
+	res["chunks"] = {"speed": SPEED, "bench_blank_frames": blank_frames, "bench_blank_chunks": blank_chunks, "vis_missing": Prof.ch_vis_total,
 		"sync_n": Prof.ch_sync_n, "sync_ms": snappedf(float(Prof.ch_sync_us) / 1000.0, 0.01), "sync_max_ms": snappedf(float(Prof.ch_sync_max) / 1000.0, 0.01),
-		"chunks_now": Prof.ch_n, "chunks_max": Prof.ch_n_max, "workers": Prof.bk_workers, "task_avg_ms": snappedf(float(Prof.bk_task_us) / 1000.0 / maxf(1.0, float(Prof.bk_task_n)), 0.01), "rollbacks": Prof.bk_rollbacks}
+		"chunks_now": Prof.ch_n, "chunks_max": Prof.ch_n_max, "workers": Prof.bk_workers, "task_avg_ms": snappedf(float(Prof.bk_task_us) / 1000.0 / maxf(1.0, float(Prof.bk_task_n)), 0.01), "bake_pauses": Prof.bk_pauses}
 	print("КУСКИ: скорость=%.0f px/s  кадров проверено=%d  кадров с пустотой (независимая проверка бенча)=%d  пустых кусков=%d" % [SPEED, vis_ok_frames, blank_frames, blank_chunks])
 	print("КУСКИ (Prof): " + Prof.line_chunks() + "  | память текстур макс ~%.1f МБ" % (Prof.ch_n_max * 0.25))
 	print("RESULT " + JSON.stringify(res))

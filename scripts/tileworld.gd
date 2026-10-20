@@ -971,7 +971,8 @@ func _floor_img(S: Dictionary, idx: int) -> Image:
 	return cache[key]
 
 
-# Todo lo de los trozos en un fotograma: vista, anticipo, cola y horneado con presupuesto.
+# Todo lo de los trozos en un fotograma: vista, anticipo, cola, horneado y la GARANTIA: lo que toca el rectangulo visible
+# (con FORCE_PAD) y aun no tiene textura se hornea ahora mismo en el hilo principal (antes de dibujar).
 func _chunk_frame(delta: float) -> bool:
 	var dirty := false
 	_view_update(delta)
@@ -994,7 +995,8 @@ func _chunk_frame(delta: float) -> bool:
 	if _bake_tick():
 		dirty = true
 	if view_ok:
-		_bake_visible_status() # solo telemetria: la vista sigue la cola priorizada y su presupuesto
+		if _bake_force():
+			dirty = true
 	return dirty
 
 
@@ -1002,11 +1004,57 @@ func _ready_tex(ch: Dictionary) -> bool:
 	return ch["tex"] != null and ch["tb"] == biome
 
 
+# Hornea el trozo ya, en el hilo principal. Devuelve true si hizo falta esperar/hornear (docruta sincrona).
+func _bake_now(key: Vector2i) -> bool:
+	for i in range(jobs.size()):
+		var j: BakeJob = jobs[i]
+		if j.key == key and j.biome == biome:
+			WorkerThreadPool.wait_for_task_completion(j.tid)
+			jobs.remove_at(i)
+			_job_take(j)
+			queue.erase(key)
+			return true
+	for i in range(done_jobs.size()):
+		var j: BakeJob = done_jobs[i]
+		if j.key == key and j.biome == biome:
+			done_jobs.remove_at(i)
+			_job_take(j)
+			queue.erase(key)
+			return false   # ya estaba horneado: solo faltaba crear la textura (barato)
+	if bk_key == key and bk_biome == biome:
+		_bake_rows(bk_key, bk_img, bk_liq, bk_row, N)
+		_bake_finish(bk_key, bk_img, bk_liq)
+		bk_key = Vector2i(99999, 99999)
+	else:
+		bake_chunk(key)
+	queue.erase(key)
+	return true
+
+
+# Nunca se dibuja vacio: la cola prioriza la vista, y si aun asi un trozo visible no esta listo, se termina aqui.
+func _bake_force() -> bool:
+	var did := false
+	var t0 := Time.get_ticks_usec()
+	for key in _keys_in(vis_r.grow(FORCE_PAD)):
+		var ch: Dictionary = chunks.get(key, {})
+		if ch.is_empty() or _ready_tex(ch):
+			continue
+		if ch["old"] != null and fade_t < 0.8:
+			continue   # se ve el bioma anterior fundiendo: los hilos tienen tiempo hasta casi el final del fundido
+		did = true
+		var t1 := Time.get_ticks_usec()
+		if _bake_now(key):
+			var dt := Time.get_ticks_usec() - t1
+			Prof.ch_sync_n += 1
+			Prof.ch_sync_us += dt
+			Prof.ch_sync_max = maxi(Prof.ch_sync_max, dt)
+	Prof.ch_sync_last = Time.get_ticks_usec() - t0 if did else 0
+	_bake_visible_status()
+	return did
+
+
+# Cuenta de control: trozos visibles que seguirian sin dibujar nada (tiene que ser 0).
 func _bake_visible_status() -> void:
-	# No bloquear el fotograma para garantizar texturas visibles. `_bake_tick()` procesa la cola,
-	# que `_prio()` ya ordena con prioridad para la vista y su margen; en modo sin hilos avanza
-	# por franjas. Los trozos pueden tardar unos fotogramas en aparecer, pero nunca se hornean
-	# varios completos ni se espera a un worker en el hilo principal.
 	var nv := 0
 	var missing := 0
 	for key in _keys_in(vis_r):
@@ -1017,7 +1065,6 @@ func _bake_visible_status() -> void:
 	Prof.ch_vis_missing = missing
 	Prof.ch_vis_total += missing
 	Prof.ch_vis_n = nv
-	Prof.ch_sync_last = 0
 	Prof.ch_n = chunks.size()
 	Prof.ch_n_max = maxi(Prof.ch_n_max, chunks.size())
 
