@@ -453,9 +453,16 @@ var bond_ids: Array = []
 var bond_first := ""
 
 
+static var bench_seed_override := -1
+var _far_serial := 0
+
+
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color("#16233a"))
-	randomize()
+	if bench_seed_override >= 0:
+		seed(bench_seed_override)   # solo tools/bench_frame.gd --seed: partida reproducible
+	else:
+		randomize()
 	L.apply()
 	PXF.apply()
 	DSP.apply(get_tree())
@@ -4320,7 +4327,13 @@ func _update_enemies(delta: float) -> void:
 		# Consola: los enemigos fuera de pantalla se mueven cada 3 fotogramas con el delta acumulado
 		if far2 > 0.0 and e.jump == null and not e.boss and e.position.distance_squared_to(player.position) > far2:
 			e.far_acc += delta
-			if (Actor.tick + (e.get_instance_id() % 3)) % 3 != 0:
+			var fph: int = e.get_instance_id() % 3
+			if bench_seed_override >= 0:   # bench con semilla: fase estable (los id de instancia varian entre ejecuciones)
+				if e.far_ph < 0:
+					e.far_ph = _far_serial % 3
+					_far_serial += 1
+				fph = e.far_ph
+			if (Actor.tick + fph) % 3 != 0:
 				continue
 			_enemy_step(e, e.far_acc, pow(0.0015, e.far_acc))
 			e.far_acc = 0.0
@@ -5528,7 +5541,7 @@ func _warm_terrain(k: Vector2i) -> bool:
 	while warm_i < total:
 		ground.terrain(bx + warm_i % side, by + warm_i / side)
 		warm_i += 1
-		if (warm_i & 7) == 0 and Time.get_ticks_usec() - t0 > 2200:
+		if (warm_i & 7) == 0 and bench_seed_override < 0 and Time.get_ticks_usec() - t0 > 2200:   # con semilla de bench: sin limite de tiempo (trozos al mismo fotograma siempre)
 			break
 	return warm_i >= total
 
@@ -7590,6 +7603,7 @@ class Enemy extends Actor:
 	var conf_cd := 0.0
 	var cc_imm := 0.0
 	var cc_fx := 0.0
+	var far_ph := -1
 	var far_acc := 0.0
 
 	var burn_k := 0.0

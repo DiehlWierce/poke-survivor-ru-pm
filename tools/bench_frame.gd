@@ -62,6 +62,9 @@ func _initialize() -> void:
 	if STALL:
 		Engine.max_fps = 30   # без --fixed-fps: настоящий delta, чтобы автооткат запекания его видел
 	seed(12345)
+	var bseed := _arg_int("--seed", -1)
+	if bseed >= 0:
+		preload("res://scripts/main.gd").bench_seed_override = bseed   # main._ready ставит seed() вместо randomize()
 	var SVl = load("res://scripts/save_data.gd")
 	SVl.ensure()
 	m = load("res://scenes/main.tscn").instantiate()

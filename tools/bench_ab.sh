@@ -2,8 +2,15 @@
 # Сравнивает изменённые scripts/ текущей рабочей копии с их версией в BASE_REF,
 # чередуя порядок прогонов. Все замеры идут в одном worktree и через общий lock.
 set -euo pipefail
+SEED_ARGS=()
+if [[ "${1:-}" == "--seed" ]]; then
+  [[ "${2:-}" =~ ^[0-9]+$ ]] || { echo "--seed требует число" >&2; exit 2; }
+  SEED_ARGS=(--seed "$2")
+  shift 2
+fi
 if (( $# < 1 || $# > 2 )); then
-  echo "Использование: $0 <base-ref> [пары=3]" >&2
+  echo "Использование: $0 [--seed N] <base-ref> [пары=3]" >&2
+  echo "  --seed N: обе стороны с одним сидом (нужен R1 на обеих сторонах)" >&2
   exit 2
 fi
 BASE_REF="$1"
@@ -66,7 +73,7 @@ trap cleanup EXIT INT TERM
 run_bench() {
   local label="$1" log="$2"
   echo "Запуск: $label"
-  "$LOCK" codex "$GODOT_BIN" --headless --path "$ROOT" --fixed-fps 30 --script res://tools/bench_frame.gd -- --keys-only --scenario run --prof >"$log" 2>&1
+  "$LOCK" codex "$GODOT_BIN" --headless --path "$ROOT" --fixed-fps 30 --script res://tools/bench_frame.gd -- --keys-only --scenario run --prof "${SEED_ARGS[@]+${SEED_ARGS[@]}}" >"$log" 2>&1
   local rc=$?
   cat "$log"
   if (( rc != 0 )); then echo "Бенч завершился с кодом $rc" >&2; return 1; fi
