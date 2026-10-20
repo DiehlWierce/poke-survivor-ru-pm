@@ -660,6 +660,7 @@ func _boot_ctrl() -> void:
 	if mode == "team":
 		var tu := TeamUi.new()
 		tu.m = self
+		tu.swap_requested.connect(_swap_team)
 		ui_layer.add_child(tu)
 	slots.picked.connect(_set_active)
 	cards = Cards.new()

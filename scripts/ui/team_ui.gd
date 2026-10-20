@@ -1,6 +1,7 @@
 # Cambio de Pokemon del Modo Equipo con la pantalla tactil: boton grande + fichas del equipo.
 extends Node2D
 
+signal swap_requested(slot: int)   # main lo conecta a _swap_team
 var m: Node = null
 
 func _btn_rect() -> Rect2:
@@ -17,11 +18,11 @@ func _input(event: InputEvent) -> void:
 	for i in range(trs.size()):
 		if (trs[i] as Rect2).has_point(p):
 			get_viewport().set_input_as_handled()
-			m._swap_team(i)
+			swap_requested.emit(i)
 			return
 	if _btn_rect().has_point(p):
 		get_viewport().set_input_as_handled()
-		m._swap_team(m._team_next())
+		swap_requested.emit(m._team_next())
 
 func _process(_d: float) -> void:
 	queue_redraw()
