@@ -43,6 +43,11 @@ static var bk_workers := 0       # tareas a la vez (0 = horneado sincrono)
 static var bk_task_n := 0
 static var bk_task_us := 0
 static var bk_pauses := 0
+static var pfx_us := 0
+static var pfx_max := 0
+static var pfx_n := 0
+static var pfx_parts_max := 0
+static var pfx_sprites_max := 0
 
 
 static func _init_arrays() -> void:
@@ -81,6 +86,19 @@ static func reset_period() -> void:
 		sum[i] = 0
 		mx[i] = 0
 	frames = 0
+	pfx_us = 0
+	pfx_max = 0
+	pfx_n = 0
+	pfx_parts_max = 0
+	pfx_sprites_max = 0
+
+
+static func add_pfx_time(us: int, parts_n: int, sprites_n: int) -> void:
+	pfx_us += us
+	pfx_max = maxi(pfx_max, us)
+	pfx_n += 1
+	pfx_parts_max = maxi(pfx_parts_max, parts_n)
+	pfx_sprites_max = maxi(pfx_sprites_max, sprites_n)
 
 
 static func _fmt(a: PackedInt64Array, div: float) -> String:
@@ -106,7 +124,8 @@ static func line_cur() -> String:
 
 
 static func line_counts() -> String:
-	return "счётчики: врагов=%d снарядов=%d вражьих_снарядов=%d орбов=%d эффектов=%d | %s" % [n_enemies, n_bullets, n_ebullets, n_orbs, n_fx, line_chunks()]
+	var pfx_avg: float = float(pfx_us) / 1000.0 / maxf(1.0, float(pfx_n))
+	return "счётчики: врагов=%d снарядов=%d вражьих_снарядов=%d орбов=%d эффектов=%d | PFX=%.2f/%.2f мс частей=%d спрайтов=%d | %s" % [n_enemies, n_bullets, n_ebullets, n_orbs, n_fx, pfx_avg, float(pfx_max) / 1000.0, pfx_parts_max, pfx_sprites_max, line_chunks()]
 
 
 static func line_chunks() -> String:

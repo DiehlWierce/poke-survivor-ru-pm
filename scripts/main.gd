@@ -1174,14 +1174,19 @@ func _on_ban(idx: int) -> void:
 
 func _fx_cap() -> int:
 	var k := 0.4 if _hh() else 1.0
+	var cap: int
 	match quality:
 		1:
-			return int(600.0 * k)
+			cap = int(600.0 * k)
 		2:
-			return int(160.0 * k)
+			cap = int(160.0 * k)
 		3:
-			return int(50.0 * k)
-	return int((600.0 * q_auto if q_auto > 0.2 else 50.0) * k)
+			cap = int(50.0 * k)
+		_:
+			cap = int((600.0 * q_auto if q_auto > 0.2 else 50.0) * k)
+	# El nivel seleccionado sigue controlando el aspecto, pero en el hardware PortMaster
+	# el límite efectivo evita que un ajuste Alto acumule cientos de nodos de efecto.
+	return mini(cap, 96) if _hh() else cap
 
 
 func _process(delta: float) -> void:

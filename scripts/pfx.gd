@@ -3,6 +3,9 @@ extends Node2D
 # anillos de puntos, golpes y rayos a bloques, sprites de G.VFX). Solo visual.
 const VFX = preload("res://scripts/vfx.gd")
 const PX := 2.0
+const LITE_PART_CAP := 180
+const LITE_SPRITE_CAP := 64
+const LITE_UPDATE_SEC := 1.0 / 30.0
 
 var dens := 1.0
 var lite := false
@@ -11,6 +14,7 @@ var cap_sprites := 320
 const SMALL_BUDGET := 8   # consola: maximo de particulas pequenas (chispas, polvo) nuevas por fotograma
 var _bud_frame := -1
 var _bud := 0
+var _lite_acc := 0.0
 var parts: Array = []
 var sprs: Array = []
 var rings: Array = []
@@ -24,8 +28,8 @@ func setup(quality_dens: float) -> void:
 	cap_sprites = int(320.0 * dens)
 	lite = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 	if lite:
-		cap_parts = int(cap_parts * 0.5)
-		cap_sprites = int(cap_sprites * 0.6)
+		cap_parts = mini(int(cap_parts * 0.5), LITE_PART_CAP)
+		cap_sprites = mini(int(cap_sprites * 0.6), LITE_SPRITE_CAP)
 
 
 func clear() -> void:
@@ -150,6 +154,19 @@ func beam(pos: Vector2, angle: float, length: float, width: float, vis: Dictiona
 
 # ---------------- actualizacion ----------------
 func _process(delta: float) -> void:
+	if lite:
+		_lite_acc += delta
+		if _lite_acc < LITE_UPDATE_SEC:
+			return
+		delta = _lite_acc
+		_lite_acc = 0.0
+	var t0: int = Time.get_ticks_usec() if Prof.on else 0
+	_step_particles(delta)
+	if t0 > 0:
+		Prof.add_pfx_time(Time.get_ticks_usec() - t0, parts.size(), sprs.size())
+
+
+func _step_particles(delta: float) -> void:
 	for i in range(parts.size() - 1, -1, -1):
 		var p: Dictionary = parts[i]
 		p["t"] = float(p["t"]) + delta
