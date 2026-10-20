@@ -30,6 +30,7 @@ const AbilityFx = preload("res://scripts/game/ability_fx.gd")
 const TeamUi = preload("res://scripts/ui/team_ui.gd")
 const WeatherFx = preload("res://scripts/game/weather_fx.gd")
 const LoadScreen = preload("res://scripts/ui/load_screen.gd")
+const RiftVeil = preload("res://scripts/ui/rift_veil.gd")
 const Stick = preload("res://scripts/ui/stick.gd")
 const TW = preload("res://scripts/tileworld.gd")
 const JDM = preload("res://scripts/judgment.gd")
@@ -1276,6 +1277,8 @@ func _process_body(delta: float, pt: int) -> void:
 		_z_cine(delta)
 	elif jd.cinematic() and not paused:
 		jd.cine_tick(delta)
+	elif rift_wait and not paused:
+		_rift_wait_tick()
 	elif not choosing and not paused:
 		pt = _tick_run(delta, pt)
 	_tick_hud(delta)
@@ -5436,13 +5439,19 @@ func _biome_warm() -> void:
 		bw_done = nb
 
 
+const BIOME_PREBAKE := 20.0   # секунд до смены биома, когда начинать фоновое запекание следующего
+
+
 func _update_biome() -> void:
 	if ground.fade_t < 1.0:
 		# durante el cambio de bioma los arboles y rocas se redibujan solo cerca de la camara (ver Prop._process)
 		Prop.view_r2 = pow(get_viewport_rect().size.length() * 0.5 / cam_zoom + 360.0, 2.0)
-	var b: int = int(run_time / (150.0 if mode == "rush" else 240.0)) + biome_off
+	var step: float = 150.0 if mode == "rush" else 240.0
+	var b: int = int(run_time / step) + biome_off
 	if mode == "tower":
 		b = tw_floor - 1
+	elif float(b - biome_off + 1) * step - run_time < BIOME_PREBAKE:
+		ground.prepare_biome(b + 1)   # следующий биом печётся заранее в фоне: смена будет сразу всей картой
 	if b == biome_idx:
 		return
 	biome_idx = b
@@ -6703,8 +6712,19 @@ func _update_rift(delta: float) -> void:
 			rift = null
 			_rift_drop_arena()
 		elif rift.t > 1.0 and player.position.distance_to(rift.position) < 42.0 and not player.dead:
+			var ar = rift_info.get("arena")
+			if ar != null and is_instance_valid(ar) and not ar.bake_ready():
+				# арена ещё печётся в потоке (приставка): не ждём её в этом кадре (раньше — многосекундное
+				# зависание без картинки), а сразу показываем завесу и стоим, пока поток не закончит
+				_rift_wait_begin()
+				return
 			_arena_begin()
+			_rift_wait_end()
 			return
+		elif is_instance_valid(rift):
+			var ar2 = rift_info.get("arena")
+			if ar2 != null and is_instance_valid(ar2) and ar2.bake_ready():
+				ar2.finish_bake()   # текстуры арены создаются заранее, пока игрок идёт к грете, а не в кадр входа
 	rift_check -= delta
 	if rift_check > 0.0:
 		return
@@ -6783,6 +6803,47 @@ func _open_rift(force_dex: int = -1, den: bool = false) -> void:
 	rift_info = {"dex": dex, "type": ty, "shiny": (not den) and bool(_sm(dex).get("sh", 0)) and randf() < 1.0 / 512.0, "arena": ar, "den": den}
 	Aud.sfx("rift")
 	hud.rift_notice = 0.0   # cartel grande como en el original (4,5 s)
+
+
+var rift_wait := false
+var rift_veil: Node2D = null
+
+
+func _rift_wait_begin() -> void:
+	if rift_wait:
+		return
+	rift_wait = true
+	player_vel = Vector2.ZERO
+	if rift_veil == null or not is_instance_valid(rift_veil):
+		var layer := CanvasLayer.new()
+		layer.layer = 95
+		add_child(layer)
+		rift_veil = RiftVeil.new()
+		var txt: String = L.t("Cargando...")
+		if txt == "Cargando...":
+			txt = String(LD_TXT.get(L.lang(), LD_TXT["en"]))
+		rift_veil.text = txt
+		layer.add_child(rift_veil)
+		rift_veil.tree_exited.connect(layer.queue_free)
+	rift_veil.want = 1.0
+
+
+# Пока арена допекается: мир стоит (как при выборе карты), завеса крутится; готово — вход в тот же кадр.
+func _rift_wait_tick() -> void:
+	if rift == null or not is_instance_valid(rift) or player.dead:
+		_rift_wait_end()
+		return
+	var ar = rift_info.get("arena")
+	if ar == null or not is_instance_valid(ar) or ar.bake_ready():
+		_arena_begin()
+		_rift_wait_end()
+
+
+func _rift_wait_end() -> void:
+	rift_wait = false
+	if rift_veil != null and is_instance_valid(rift_veil):
+		rift_veil.want = 0.0
+	rift_veil = null
 
 
 func _rift_drop_arena() -> void:
@@ -6913,8 +6974,16 @@ func _arena_begin() -> void:
 
 
 # El vinculo se elige dentro de la grieta, ya vencido el legendario y recogido el premio, justo antes de salir
+# Как только премия собрана (орбы долетели, уровни выбраны), окно вязи открывается сразу, без ожидания таймера.
 func _arena_bond_ready() -> bool:
-	return arena != null and String(ainfo.get("phase", "")) == "won" and float(ainfo.get("end", 9.0)) <= 2.0
+	return arena != null and String(ainfo.get("phase", "")) == "won" and (float(ainfo.get("end", 9.0)) <= 2.0 or _arena_loot_done())
+
+
+func _arena_loot_done() -> bool:
+	return orbs.is_empty() and pending_levels == 0 and not choosing
+
+
+const ARENA_BACK_DELAY := 0.4   # короткая пауза перед возвратом, когда в арене больше нечего делать
 
 
 func _arena_expel() -> void:
@@ -6946,6 +7015,9 @@ func _update_arena(delta: float) -> void:
 		if float(ainfo["end"]) <= 0.0:
 			_arena_end(false)
 	elif ph == "won":
+		if _arena_loot_done() and (bonds <= 0 or _bond_options().is_empty()):
+			# премия собрана, вязь выбрана (или её нет): обратно в мир почти сразу (раньше ждали остаток 5 с)
+			ainfo["end"] = minf(float(ainfo["end"]), ARENA_BACK_DELAY)
 		ainfo["end"] = float(ainfo["end"]) - delta
 		if float(ainfo["end"]) <= 0.0:
 			_arena_end(true)

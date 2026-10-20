@@ -227,6 +227,11 @@ func start_bake() -> void:
 	_thread.start(bake)
 
 
+# Поток запекания закончил (или его не было): finish_bake() не будет ждать.
+func bake_ready() -> bool:
+	return _thread == null or not _thread.is_alive()
+
+
 func finish_bake() -> void:
 	if _thread != null:
 		if _thread.is_started():
@@ -260,7 +265,16 @@ func _at(tx: int, ty: int) -> int:
 	return WALL if t == VOID else t
 
 
+static var slow_ms := -1   # только проверки: --arenaslow N — поток арены печёт на N мс дольше (как медленная приставка)
+
+
 func bake() -> void:
+	if slow_ms < 0:
+		var ua := OS.get_cmdline_user_args()
+		var i := ua.find("--arenaslow")
+		slow_ms = int(ua[i + 1]) if i >= 0 and i + 1 < ua.size() else 0
+	if slow_ms > 0:
+		OS.delay_msec(slow_ms)
 	var span: int = int(r) + OUTER
 	var n: int = span * 2 + 1
 	var W: int = n * T
