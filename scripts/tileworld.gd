@@ -80,6 +80,7 @@ func count() -> int:
 
 
 func setup(sd: int) -> void:
+	_bake_cancel()   # las tareas del hilo calculan con la semilla vieja
 	seed_v = sd
 
 
@@ -523,6 +524,8 @@ func chunk_of(pos: Vector2) -> Vector2i:
 
 
 func set_center(c: Vector2i) -> void:
+	if bake_thread and absi(c.x - cc.x) <= 2 and absi(c.y - cc.y) <= 2 and c != cc:
+		mv = Vector2i(signi(c.x - cc.x), signi(c.y - cc.y))
 	cc = c
 	for dx in range(-1, 2):
 		for dy in range(-1, 2):
@@ -543,11 +546,12 @@ func set_center(c: Vector2i) -> void:
 					terr.erase(k)
 					dirt.erase(k)
 					raw_c.erase(k)
-	queue.sort_custom(func(a, b): return absi(a.x - c.x) + absi(a.y - c.y) < absi(b.x - c.x) + absi(b.y - c.y))
+	_queue_sort()
 
 
 # Hornea ya los trozos pendientes (al empezar: el suelo aparece completo desde el primer fotograma)
 func flush_bake() -> void:
+	_bake_drain()
 	if bk_key != Vector2i(99999, 99999):
 		if chunks.has(bk_key) and bk_biome == biome:
 			_bake_rows(bk_key, bk_img, bk_liq, bk_row, N)
@@ -574,7 +578,7 @@ func set_biome(b: int, instant: bool = false) -> void:
 			ch["tex"] = null
 			if not queue.has(key):
 				queue.append(key)
-	queue.sort_custom(func(a, b2): return absi(a.x - cc.x) + absi(a.y - cc.y) < absi(b2.x - cc.x) + absi(b2.y - cc.y))
+	_queue_sort()
 	if is_inside_tree():
 		get_tree().call_group("fade_props", "set_process", true)   # árboles y rocas duermen salvo durante el cambio de bioma
 
@@ -597,6 +601,9 @@ const BK_ROWS := 4
 
 func _bake_step() -> bool:
 	if bk_key == Vector2i(99999, 99999):
+		if not jobs.is_empty() or not done_jobs.is_empty():
+			_bake_drain()   # carga: el que llama espera al final, aqui se esperan las tareas del hilo
+			return true
 		while not queue.is_empty():
 			var k: Vector2i = queue.pop_front()
 			if chunks.has(k):
@@ -675,6 +682,174 @@ func _bake_rows(key: Vector2i, img: Image, liq: Array, j0: int, j1: int) -> void
 				img.blend_rect(S["shadow"], Rect2i(0, 0, T, 2), Vector2i(i * T, j * T))
 
 
+# ---------------- horneado en hilo (consola) ----------------
+# El trabajo (terreno + casillas + blit) corre en WorkerThreadPool sobre un clon privado de este nodo (sin arbol,
+# con sus propias cachés terr/dirt/raw_c/sets): el hilo no toca nada del principal. Solo se queda en el principal
+# crear la textura (un trozo por fotograma), el resultado de pixeles es el mismo que el del horneado sincrono.
+class BakeJob extends RefCounted:
+	var key := Vector2i.ZERO
+	var biome := 0
+	var slot := 0
+	var tid := -1
+	var img: Image
+	var liq: Array = []
+
+const BAKE_JOBS := 2     # tareas a la vez: al hilo principal le tiene que quedar un nucleo
+const BAKE_BUDGET := 3000   # microsegundos por fotograma para terminar trozos (create_from_image)
+const CLONE_CACHE := 9000   # casillas en la caché del clon antes de vaciarla
+var bake_thread: bool = (OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args() or "--bakethread" in OS.get_cmdline_user_args()) and not "--nobakethread" in OS.get_cmdline_user_args()
+var mv := Vector2i.ZERO     # hacia donde se mueve el centro: se hornea antes lo que queda por delante
+var jobs: Array = []        # tareas en el pool
+var done_jobs: Array = []       # tareas terminadas a la espera de crear la textura
+var _clones: Array = []
+
+
+func _queue_sort() -> void:
+	var c := cc
+	var m := mv
+	var bias := 0.6 if bake_thread else 0.0
+	queue.sort_custom(func(a, b2):
+		var da: Vector2i = a - c
+		var db: Vector2i = b2 - c
+		return float(absi(da.x) + absi(da.y)) - bias * float(da.x * m.x + da.y * m.y) < float(absi(db.x) + absi(db.y)) - bias * float(db.x * m.x + db.y * m.y))
+
+
+func _job_run(job: BakeJob) -> void:
+	var cl = _clones[job.slot]
+	cl._bake_rows(job.key, job.img, job.liq, 0, N)
+
+
+func _job_covers(key: Vector2i) -> bool:
+	for j in jobs:
+		if j.key == key and j.biome == biome:
+			return true
+	for j in done_jobs:
+		if j.key == key and j.biome == biome:
+			return true
+	return false
+
+
+func _job_start(key: Vector2i) -> void:
+	var slot := 0
+	while true:
+		var used := false
+		for j in jobs:
+			if j.slot == slot:
+				used = true
+		if not used:
+			break
+		slot += 1
+	while _clones.size() < BAKE_JOBS:
+		_clones.append(get_script().new())
+	var cl = _clones[slot]
+	if cl.seed_v != seed_v or cl.terr.size() > CLONE_CACHE:
+		cl.terr.clear()
+		cl.dirt.clear()
+		cl.raw_c.clear()
+	if cl.biome != biome:
+		cl.sets.clear()
+	cl.seed_v = seed_v
+	cl.biome = biome
+	cl.liq_base = liq_base
+	cl.liq_grow = liq_grow
+	cl.wall_grow = wall_grow
+	var job := BakeJob.new()
+	job.key = key
+	job.biome = biome
+	job.slot = slot
+	job.img = Image.create(N * T, N * T, false, Image.FORMAT_RGBA8)
+	job.tid = WorkerThreadPool.add_task(_job_run.bind(job), false, "bake_chunk")
+	jobs.append(job)
+
+
+# Termina un trozo horneado en el hilo; false si ya no hace falta (se descartó o cambió el bioma): entonces se vuelve a encolar.
+func _job_take(j: BakeJob) -> bool:
+	if not chunks.has(j.key):
+		return false
+	var ch: Dictionary = chunks[j.key]
+	if j.biome != biome:
+		if ch["tex"] == null and not queue.has(j.key) and not _job_covers(j.key):
+			queue.append(j.key)
+			_queue_sort()
+		return false
+	if ch["tex"] != null and ch["tb"] == biome:
+		return false
+	_bake_finish(j.key, j.img, j.liq)
+	return true
+
+
+func _bake_tick() -> bool:
+	if not bake_thread:
+		return _bake_step()
+	var t0 := Time.get_ticks_usec()
+	var did := false
+	var i := 0
+	while i < jobs.size():
+		var j: BakeJob = jobs[i]
+		if WorkerThreadPool.is_task_completed(j.tid):
+			WorkerThreadPool.wait_for_task_completion(j.tid)
+			jobs.remove_at(i)
+			done_jobs.append(j)
+		else:
+			i += 1
+	# un trozo por fotograma (el mas cercano/adelantado), los inservibles se tiran todos
+	var best := -1
+	var bk := 1e9
+	i = 0
+	while i < done_jobs.size():
+		var j: BakeJob = done_jobs[i]
+		if not chunks.has(j.key) or j.biome != biome:
+			done_jobs.remove_at(i)
+			_job_take(j)
+			continue
+		var d: Vector2i = j.key - cc
+		var kv: float = float(absi(d.x) + absi(d.y)) - 0.6 * float(d.x * mv.x + d.y * mv.y)
+		if kv < bk:
+			bk = kv
+			best = i
+		i += 1
+	if best >= 0 and Time.get_ticks_usec() - t0 < BAKE_BUDGET:
+		var jb: BakeJob = done_jobs[best]
+		done_jobs.remove_at(best)
+		did = _job_take(jb)
+	while jobs.size() < BAKE_JOBS and done_jobs.size() < 2 and not queue.is_empty():
+		var k: Vector2i = queue.pop_front()
+		if chunks.has(k) and not _job_covers(k) and not (chunks[k]["tex"] != null and chunks[k]["tb"] == biome):
+			_job_start(k)
+	return did
+
+
+# Espera todas las tareas y termina sus trozos (flush_bake, carga, cambio de bioma instantaneo).
+func _bake_drain() -> void:
+	for j in jobs:
+		WorkerThreadPool.wait_for_task_completion(j.tid)
+		done_jobs.append(j)
+	jobs.clear()
+	for j in done_jobs:
+		_job_take(j)
+	done_jobs.clear()
+
+
+# Espera y descarta todo (cambio de semilla, salir del arbol); los trozos sin textura vuelven a la cola.
+func _bake_cancel() -> void:
+	for j in jobs:
+		WorkerThreadPool.wait_for_task_completion(j.tid)
+	var lost: Array = jobs + done_jobs
+	jobs.clear()
+	done_jobs.clear()
+	for j in lost:
+		if chunks.has(j.key) and chunks[j.key]["tex"] == null and not queue.has(j.key):
+			queue.append(j.key)
+
+
+func _exit_tree() -> void:
+	_bake_cancel()
+	for cl in _clones:
+		if is_instance_valid(cl):
+			cl.free()
+	_clones.clear()
+
+
 func _floor_img(S: Dictionary, idx: int) -> Image:
 	var cache: Dictionary = S["fimg"]
 	var key: String = "fi" + str(idx)
@@ -699,10 +874,10 @@ func _process(delta: float) -> void:
 					chunks[key]["old"] = null
 	if Prof.on:
 		var pt := Time.get_ticks_usec()
-		if _bake_step():
+		if _bake_tick():
 			dirty = true
 		Prof.lap(Prof.S_CHUNK, pt)
-	elif _bake_step():
+	elif _bake_tick():
 		dirty = true
 	# Las texturas del suelo no cambian: solo se redibuja para animar el liquido (20 veces por s).
 	_redraw_acc += delta
