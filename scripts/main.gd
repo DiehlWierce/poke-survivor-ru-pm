@@ -346,6 +346,10 @@ var mini: Node2D
 var cam_zoom := 1.65  # campo de vision: ajustable en la pausa (100-200 %), se guarda en Ajustes
 var settings_open := false
 var run_saved := false
+var _ld_snd: AudioStream = null   # sonido de Game Over ya cargado (la cache de recursos no lo suelta)
+var fin_stage := 0           # etapa pendiente de _finish_step (0 resumen, 1 guardado, 2 evento de fin, 3 logros); -1 = cerrada
+var fin_r: Dictionary = {}   # resumen de la run para SV.finish_run (lo prepara la etapa 0)
+var fin_ev: Dictionary = {}  # datos del evento runEnd
 var run_bosses := 0
 # --- modos de juego (menu "Jugar"): normal | daily | rush | party ---
 var mode := "normal"
@@ -493,6 +497,7 @@ func _boot_data() -> void:
 	shake_on = bool(SV.setting("shake"))
 	Actor.flash_k = 1.0 if shake_on else 0.35
 	Actor.lite = _hh()
+	Actor.frozen = false
 	relocate_on = Actor.lite
 	quality = int(SV.setting("quality"))
 	var hh: bool = _hh()
@@ -766,6 +771,7 @@ func _load_stage(deadline: int) -> bool:
 			# Texturas de lo que va a salir en los primeros segundos: una por llamada, para que el primer golpe no cargue de disco
 			if _ld_sub == 0:
 				_ld_list = _ld_warm_paths()
+				_ld_warm_misc()
 			while _ld_sub < _ld_list.size():
 				var path: String = _ld_list[_ld_sub]
 				_ld_sub += 1
@@ -779,6 +785,17 @@ func _load_stage(deadline: int) -> bool:
 		8:
 			_boot_spawn()
 	return true
+
+
+# Lo que antes se hacia por primera vez en plena partida (en la consola son cientos de ms de tiron): la lista de logros,
+# los 12 cuadros del portal de la grieta, el sonido de Game Over y la textura de la caida del jugador.
+func _ld_warm_misc() -> void:
+	PG.list()
+	ARENA.Portal.build_frames()
+	if ResourceLoader.exists("res://audio/sfx_gameover.ogg"):
+		_ld_snd = load("res://audio/sfx_gameover.ogg")
+	if player != null:
+		player._tex("Faint")
 
 
 # Rutas de las texturas a calentar: el jugador (todas sus animaciones de combate) y los Pokemon del primer tramo.
@@ -983,15 +1000,40 @@ func _open_settings() -> void:
 
 
 func _go_menu() -> void:
+	if run_saved and fin_stage >= 0:
+		_finish_run()   # salida con el cierre de la run a medias: se completa antes de cambiar de escena
 	PG.off = false
 	Engine.time_scale = 1.0
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
+# Cierra la run de golpe (abandono, salida al menu): completa las etapas que falten.
 func _finish_run() -> void:
-	if run_saved:
-		return
+	while fin_stage >= 0:
+		_finish_step()
+
+
+# Una etapa del cierre de la run. Al morir se reparten por fotogramas (guardar el archivo y comprobar logros es lo caro
+# en la consola); el resultado, el orden de las operaciones y los premios son los mismos que de golpe.
+func _finish_step() -> void:
+	match fin_stage:
+		0:
+			_finish_prepare()
+		1:
+			fin_stage = 2
+			SV.finish_run(fin_r)
+		2:
+			fin_stage = 3
+			PG.event("runEnd", fin_ev)
+		3:
+			fin_stage = -1
+			PG.check()
+
+
+# Etapa 0: estadisticas de la run y el resumen que guarda SV.finish_run (sin tocar el disco).
+func _finish_prepare() -> void:
 	run_saved = true
+	fin_stage = 1
 	var js: Dictionary = jd.summary()
 	if not js.is_empty():
 		var stt: Dictionary = SV.d["stats"]
@@ -1015,6 +1057,7 @@ func _finish_run() -> void:
 	if mode == "party":
 		SV.last_run = {}
 		PG.off = false
+		fin_stage = -1
 		return
 	var extra := ""
 	if mode == "daily":
@@ -1085,13 +1128,12 @@ func _finish_run() -> void:
 			st2["mn%d" % k] = maxi(int(st2.get("mn%d" % k, 0)), rmin)
 		for md_id in mods:
 			st2["mb_" + String(md_id)] = maxi(int(st2.get("mb_" + String(md_id), 0)), rmin)
-	SV.finish_run({"judge": js, "time": run_time, "kills": kills, "level": player.level, "bosses": run_bosses,
+	fin_r = {"judge": js, "time": run_time, "kills": kills, "level": player.level, "bosses": run_bosses,
 		"chests": run_chests, "coins": coins, "tickets": tickets, "tickets10": tickets10, "dex": SV.run_dex,
 		"dead": player.dead and not timeup, "moves": mv_list, "mul": mul, "extra": extra,
 		"other_dmg": int(run_dmg.get("_other", 0.0)), "other_kills": int(run_kills_by.get("_other", 0)),
-		"ally_dmg": int(ally_dmg), "ally_kills": ally_kills})
-	PG.event("runEnd", {"time": run_time, "level": player.level, "coins": coins, "types": player.types, "group": false, "mode": mode, "nmods": (0 if mode == "daily" else mods.size()), "bosses": run_bosses, "rifts": run_rifts, "floor": tw_clears})
-	PG.check()
+		"ally_dmg": int(ally_dmg), "ally_kills": ally_kills}
+	fin_ev = {"time": run_time, "level": player.level, "coins": coins, "types": player.types, "group": false, "mode": mode, "nmods": (0 if mode == "daily" else mods.size()), "bosses": run_bosses, "rifts": run_rifts, "floor": tw_clears}
 
 
 func _abandon() -> void:
@@ -1157,6 +1199,8 @@ func _process(delta: float) -> void:
 func _process_body(delta: float, pt: int) -> void:
 	Actor.tick += 1
 	_preload_step()
+	if choosing or paused:
+		_biome_warm()
 	if not _ld_keep.is_empty() and run_time > 20.0:
 		_ld_keep.clear()   # las texturas calentadas ya las tienen los actores vivos o se pueden volver a cargar
 	hud.paused = paused
@@ -1197,6 +1241,7 @@ func _process_body(delta: float, pt: int) -> void:
 	if Prof.on:
 		pt = Prof.lap(Prof.S_FX, pt)
 	if player.dead:
+		Actor.frozen = true
 		death_t += delta
 		# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
 		if death_done_t < 0.0:
@@ -1207,10 +1252,11 @@ func _process_body(delta: float, pt: int) -> void:
 			death_done_t += delta
 		if death_t >= DEATH_SLOW_T and Engine.time_scale != 1.0:
 			Engine.time_scale = 1.0
-		if not run_saved:
-			_finish_run()
-			Aud.music("")
-			Aud.sfx("gameover")
+		if fin_stage >= 0:
+			if not run_saved:
+				Aud.music("")
+				Aud.sfx("gameover")
+			_finish_step()   # una etapa por fotograma: sin un tiron de ~150 ms en la consola al morir
 	elif z_state == "cine" and not paused:
 		_z_cine(delta)
 	elif jd.cinematic() and not paused:
@@ -5238,7 +5284,34 @@ func _free_chunk(key: Vector2i) -> void:
 	chunks.erase(key)
 
 
+var bw_done := -1   # bioma (indice absoluto) cuyas baldosas y sprites ya estan preparados
+var bw_step := 0
+
+
+# El primer fotograma de un bioma nuevo construye de golpe sus baldosas y los sprites de arboles y rocas (~20 ms aqui, cientos en la consola).
+# Se prepara el siguiente un poco antes, en dos fotogramas sueltos y en un momento en que no se nota: con las cartas de nivel o la pausa abiertas.
+func _biome_warm() -> void:
+	if player.dead or arena != null or not ground.has_method("tset"):
+		return
+	var nb: int = tw_floor if mode == "tower" else biome_idx + 1
+	if mode != "tower" and float(nb - biome_off) * (150.0 if mode == "rush" else 240.0) - run_time > 90.0:
+		return
+	if bw_done == nb:
+		return
+	var bi: int = posmod(nb, ground.count())
+	if bw_step == 0:
+		ground.tset(bi)
+		bw_step = 1
+	else:
+		ground.prop_tex("tree0", bi)
+		bw_step = 0
+		bw_done = nb
+
+
 func _update_biome() -> void:
+	if ground.fade_t < 1.0:
+		# durante el cambio de bioma los arboles y rocas se redibujan solo cerca de la camara (ver Prop._process)
+		Prop.view_r2 = pow(get_viewport_rect().size.length() * 0.5 / cam_zoom + 360.0, 2.0)
 	var b: int = int(run_time / (150.0 if mode == "rush" else 240.0)) + biome_off
 	if mode == "tower":
 		b = tw_floor - 1
@@ -5250,9 +5323,11 @@ func _update_biome() -> void:
 	_say("— " + L.t(ground.biome_name(ground.biome)) + " —", 3.0)
 	_ring(player.position, 10.0, 520.0, Color.WHITE, 0.7)
 	player_lava_t = 1.5
+	# Arboles y rocas (casi todos) ya se redibujan solos en el siguiente fotograma, mientras dura el fundido (Prop._process);
+	# redibujarlos aqui todos de golpe era un tiron de ~15 ms. Solo se avisa a los demas objetos.
 	for key in chunks:
 		for p in chunks[key]["props"]:
-			if is_instance_valid(p):
+			if is_instance_valid(p) and p.kind != "tree" and p.kind != "rock":
 				p.queue_redraw()
 
 
@@ -7034,6 +7109,7 @@ class Actor extends Node2D:
 	static var flash_k := 1.0
 	static var lite := false     # consola: se redibuja y se anima menos a menudo
 	static var tick := 0         # contador de fotogramas (lo sube main)
+	static var frozen := false   # jugador caido: el mundo no avanza, las balas y peligros quietos no se redibujan
 	var stag := false            # anima solo en fotogramas alternos (con el delta acumulado)
 	var _acc_dt := 0.0
 	var flash := 0.0
@@ -7499,7 +7575,8 @@ class Hazard extends Node2D:
 	var vis := ""
 
 	func _process(_delta: float) -> void:
-		queue_redraw()
+		if not Actor.frozen:   # con el jugador caido nada avanza: el dibujo no cambia
+			queue_redraw()
 
 	func _draw() -> void:
 		if hit:
@@ -7536,7 +7613,8 @@ class EBullet extends Node2D:
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	func _process(_d: float) -> void:
-		queue_redraw()
+		if not Actor.frozen:
+			queue_redraw()
 
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
@@ -7633,6 +7711,7 @@ class Pool extends Node2D:
 
 class Prop extends Node2D:
 	static var tw: Node2D
+	static var view_r2 := 1e12   # radio^2 alrededor de la camara dentro del cual se redibuja cada fotograma durante el fundido de bioma
 	var kind := "tree"
 	var r := 15.0
 	var solid := false
@@ -7664,10 +7743,14 @@ class Prop extends Node2D:
 			# solo se redibujan mientras dura el cambio de bioma
 			var fd: bool = tw != null and tw.fade_t < 1.0
 			if fd or _fading:
-				queue_redraw()
-			elif not fd:
+				# fuera de la pantalla (con margen de sobra) basta con redibujar cada 8 fotogramas: antes de entrar en vista ya estan al dia
+				if tw == null or (tw.center - position).length_squared() < view_r2 or ((Actor.tick + get_instance_id()) & 7) == 0:
+					queue_redraw()
+					_fading = fd
+				else:
+					_fading = true
+			else:
 				set_process(false)   # _update_biome lo despierta en el siguiente cambio
-			_fading = fd
 			return
 		if kind != "spring" and kind != "altar" and kind != "chest" and kind != "trap":
 			set_process(false)
@@ -7905,7 +7988,7 @@ class Bullet extends Node2D:
 
 	func _process(_d: float) -> void:
 		# sin forma: círculos fijos; con forma: solo al cambiar el fotograma, el ángulo (giro, teledirigido, orbital) o el desvanecido
-		if shape != "":
+		if shape != "" and not Actor.frozen:   # jugador caido: age no avanza, el dibujo no cambia
 			var fr: int = int(age * 12.0)
 			var chg: bool = fr != _lf
 			_lf = fr

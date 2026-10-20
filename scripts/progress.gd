@@ -5,6 +5,7 @@ extends RefCounted
 const SV = preload("res://scripts/save_data.gd")
 const MD = preload("res://scripts/moves_data.gd")
 const TD = preload("res://scripts/types_data.gd")
+const ZM = preload("res://scripts/zmove.gd")   # antes se cargaba dentro de zcheck(): compilarlo en el primer check() costaba ~35 ms (en la consola >1 s)
 
 const CATS := [["coleccion", "Colección"], ["supervivencia", "Supervivencia"], ["combate", "Combate"], ["tipos", "Por tipo"],
 	["grietas", "Grietas"], ["legendarios", "Legendarios"], ["modos", "Modos de juego"], ["otros", "Misiones y más"]]
@@ -271,7 +272,6 @@ static func zcheck() -> void:
 		return
 	if not SV.d.has("zmis"):
 		SV.d["zmis"] = {}
-	var ZM = load("res://scripts/zmove.gd")
 	var any := false
 	for zm in zlist():
 		if (SV.d["zmis"] as Dictionary).has(String(zm["id"])):

@@ -32,6 +32,7 @@ var proc_sum := 0.0
 var spawn_t := 0.0
 var prev_pf := {}
 var DIE := _arg_int("--die", -1)   # --die N: игрок умирает на кадре N, печать кадров за 200 кадров после смерти
+var DETDIE := "--detdie" in OS.get_cmdline_user_args()   # с --die: детерминированный итог забега и печать SV.last_run / статистики / достижений
 var die_samples: Array = []
 var die_rows: Array = []
 var load_frames := 0     # кадров экрана загрузки (main.loading_done == false)
@@ -129,6 +130,13 @@ func _process(_delta: float) -> bool:
 		m.player.hp = 10.0   # смертельный удар; дальше hp не восстанавливается
 		m.player.invuln = 0.0
 		m.revives = 0
+		if DETDIE:   # фиксированный итог забега: сравнение сохранения и достижений до/после правок
+			m.run_time = 1234.0
+			m.kills = 4321
+			m.coins = 777
+			m.tickets = 3
+			m.run_bosses = 12
+			m.run_chests = 5
 		m._hurt_player(1e9, "", true)
 	if DIE >= 0 and n > DIE:
 		var dms: float = (now - last) / 1000.0
@@ -302,6 +310,15 @@ func report_die() -> void:
 			over += 1
 	var idx: Array = range(die_samples.size())
 	idx.sort_custom(func(x, y): return die_samples[x] > die_samples[y])
+	if DETDIE:
+		var SVx = load("res://scripts/save_data.gd")
+		var PGx = load("res://scripts/progress.gd")
+		var dd: Dictionary = SVx.d
+		var ks: Array = (dd.get("ach", {}) as Dictionary).keys()
+		ks.sort()
+		print("DET last_run=", JSON.stringify(SVx.last_run, "", true))
+		print("DET stats=", JSON.stringify(dd["stats"], "", true))
+		print("DET coins=", dd["coins"], " t1=", dd["tickets"], " t10=", dd.get("tickets10", 0), " ach=", ",".join(ks), " zmis=", JSON.stringify((dd.get("zmis", {}) as Dictionary).keys()), " toasts=", PGx.toasts.size(), " top=", JSON.stringify(dd.get("top", [])))
 	print("СМЕРТЬ: кадров=%d  сумма=%.1f мс  макс=%.1f мс  >10мс: %d  dead=%s  time_scale=%.2f" % [die_samples.size(), sum, mxv, over, m.player.dead, Engine.time_scale])
 	for k in range(mini(6, idx.size())):
 		var j: int = idx[k]
