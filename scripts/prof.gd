@@ -29,8 +29,9 @@ static var n_bullets := 0
 static var n_ebullets := 0
 static var n_orbs := 0
 static var n_fx := 0
-# trozos de suelo (los escribe tileworld.gd; acumulados de toda la partida, no se reinician con reset_period)
-static var ch_vis_missing := 0   # trozos visibles temporalmente sin textura, sumados por fotograma
+# trozos de suelo (los escribe tileworld.gd)
+static var ch_vis_missing := 0   # trozos visibles sin textura ahora mismo
+static var ch_vis_total := 0     # observaciones acumuladas durante la partida
 static var ch_vis_n := 0
 static var ch_n := 0
 static var ch_n_max := 0
@@ -41,7 +42,7 @@ static var ch_sync_last := 0     # us gastados en docrutas en el ultimo fotogram
 static var bk_workers := 0       # tareas a la vez (0 = horneado sincrono)
 static var bk_task_n := 0
 static var bk_task_us := 0
-static var bk_rollbacks := 0
+static var bk_pauses := 0
 
 
 static func _init_arrays() -> void:
@@ -109,4 +110,4 @@ static func line_counts() -> String:
 
 
 static func line_chunks() -> String:
-	return "куски=%d(макс %d) видимых_без_текстуры=%d докруток=%d(%.1f мс, макс %.1f) воркеров=%d задача_ср=%.1f мс откатов=%d" % [ch_n, ch_n_max, ch_vis_missing, ch_sync_n, float(ch_sync_us) / 1000.0, float(ch_sync_max) / 1000.0, bk_workers, float(bk_task_us) / 1000.0 / maxf(1.0, float(bk_task_n)), bk_rollbacks]
+	return "куски=%d(макс %d) пустых_видимых=%d/накоплено%d докруток=%d(%.1f мс, макс %.1f) задач=%d задача_ср=%.1f мс пауз_запекания=%d" % [ch_n, ch_n_max, ch_vis_missing, ch_vis_total, ch_sync_n, float(ch_sync_us) / 1000.0, float(ch_sync_max) / 1000.0, bk_workers, float(bk_task_us) / 1000.0 / maxf(1.0, float(bk_task_n)), bk_pauses]

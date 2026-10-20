@@ -613,7 +613,7 @@ var bk_img: Image
 var bk_liq: Array = []
 var bk_row := 0
 var bk_biome := -1
-const BK_ROWS := 4
+const BK_ROWS := 1
 
 
 func _bake_step() -> bool:
@@ -712,8 +712,9 @@ class BakeJob extends RefCounted:
 	var liq: Array = []
 	var dur := 0   # microsegundos que tardo la tarea (lo escribe el hilo, se lee tras esperarla)
 
-const SLOW_MS := 45.0       # fotograma "lento" para el autorrollback
-const SLOW_N := 5           # tantos seguidos con tareas en marcha: se apagan los hilos hasta el final de la partida
+const SLOW_MS := 45.0       # umbral para bajar temporalmente la carga del trabajador
+const SLOW_N := 5           # fotogramas lentos consecutivos antes de pausar nuevos trabajos
+const BAKE_PAUSE_SEC := 1.5 # da tiempo al hilo principal a recuperar fluidez
 const FORCE_PAD := 128.0    # margen (px de mundo) del rectangulo visible dentro del cual un trozo sin textura se hornea YA
 const LOOK_T := 1.5         # segundos de anticipo segun la velocidad
 const MAX_KEEP := 64        # tope de trozos vivos (256x256x4 = 256 KB de textura cada uno)
@@ -724,7 +725,7 @@ var bake_thread: bool = (OS.has_feature("handheld") or "--keys-only" in OS.get_c
 var bake_jobs: int = 1 if OS.has_feature("handheld") else 2
 var bake_delay := 0         # solo pruebas (--bakeslow)
 var slow_n := 0
-var bake_off := false       # autorrollback disparado
+var bake_pause_t := 0.0
 var view_ok := false        # ya hay rectangulo visible de la camara
 var vis_r := Rect2()        # lo que ve la camara
 var pre_r := Rect2()        # vis_r + 1 trozo en todo el borde + anticipo hacia delante: aqui los trozos tienen que estar listos
@@ -924,7 +925,7 @@ func _bake_tick() -> bool:
 		var jb: BakeJob = done_jobs[best]
 		done_jobs.remove_at(best)
 		did = _job_take(jb)
-	while jobs.size() < bake_jobs and done_jobs.size() < 2 and not queue.is_empty():
+	while bake_pause_t <= 0.0 and jobs.size() < bake_jobs and done_jobs.size() < 2 and not queue.is_empty():
 		var k: Vector2i = queue.pop_front()
 		if chunks.has(k) and not _job_covers(k) and not (chunks[k]["tex"] != null and chunks[k]["tb"] == biome):
 			_job_start(k)
@@ -974,15 +975,18 @@ func _floor_img(S: Dictionary, idx: int) -> Image:
 func _chunk_frame(delta: float) -> bool:
 	var dirty := false
 	_view_update(delta)
-	if bake_thread:   # autorrollback: el principal va a tirones mientras hay tareas -> sin hilos hasta el final
-		if delta * 1000.0 > SLOW_MS and delta < 2.0:
-			if not jobs.is_empty() or not done_jobs.is_empty():
-				slow_n += 1
-		else:
-			slow_n = 0
+	if bake_pause_t > 0.0:
+		bake_pause_t = maxf(0.0, bake_pause_t - delta)
+		slow_n = 0
+	elif bake_thread and delta * 1000.0 > SLOW_MS and delta < 2.0 and (not jobs.is_empty() or not done_jobs.is_empty()):
+		slow_n += 1
 		if slow_n >= SLOW_N:
-			_bake_rollback()
-	Prof.bk_workers = bake_jobs if bake_thread else 0
+			bake_pause_t = BAKE_PAUSE_SEC
+			slow_n = 0
+			Prof.bk_pauses += 1
+	else:
+		slow_n = 0
+	Prof.bk_workers = jobs.size()
 	sort_t += 1
 	if view_ok:
 		if _view_chunks() or (sort_t & 3) == 0:
@@ -992,21 +996,6 @@ func _chunk_frame(delta: float) -> bool:
 	if view_ok:
 		_bake_visible_status() # solo telemetria: la vista sigue la cola priorizada y su presupuesto
 	return dirty
-
-
-func _bake_rollback() -> void:
-	bake_thread = false
-	bake_off = true
-	slow_n = 0
-	Prof.bk_rollbacks += 1
-	# No crear todas las texturas terminadas en el mismo fotograma del rollback:
-	# eso provoca una pausa grande. Espera los hilos, descarta sus resultados y los trozos
-	# que sigan sin textura vuelven a la cola para procesarse por franjas.
-	_bake_cancel()
-	for cl in _clones:
-		if is_instance_valid(cl):
-			cl.free()
-	_clones.clear()
 
 
 func _ready_tex(ch: Dictionary) -> bool:
@@ -1019,11 +1008,14 @@ func _bake_visible_status() -> void:
 	# por franjas. Los trozos pueden tardar unos fotogramas en aparecer, pero nunca se hornean
 	# varios completos ni se espera a un worker en el hilo principal.
 	var nv := 0
+	var missing := 0
 	for key in _keys_in(vis_r):
 		nv += 1
 		var ch2: Dictionary = chunks.get(key, {})
 		if ch2.is_empty() or (ch2["tex"] == null and (ch2["old"] == null or fade_t >= 1.0)):
-			Prof.ch_vis_missing += 1
+			missing += 1
+	Prof.ch_vis_missing = missing
+	Prof.ch_vis_total += missing
 	Prof.ch_vis_n = nv
 	Prof.ch_sync_last = 0
 	Prof.ch_n = chunks.size()

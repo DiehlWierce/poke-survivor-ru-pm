@@ -1187,6 +1187,7 @@ func _fx_cap() -> int:
 func _process(delta: float) -> void:
 	if not loading_done:
 		_load_tick()   # carga inicial por etapas: no corre nada de la partida hasta terminar
+		Actor.tick_visuals(delta)
 		return
 	var pt := 0
 	if Prof.on:
@@ -1428,6 +1429,7 @@ func _process_body(delta: float, pt: int) -> void:
 			Prof.n_ebullets = ebullets.size()
 			Prof.n_orbs = orbs.size()
 			Prof.n_fx = fx.get_child_count()
+	Actor.tick_visuals(delta)
 
 
 func _refresh_slots() -> void:
@@ -3071,6 +3073,8 @@ func _update_fields(delta: float) -> void:
 			if f.vis.has("aura") and randf() < delta * 3.0:
 				var ap: Vector2 = f.position + Vector2(randf_range(-f.r, f.r) * 0.6, -4.0)
 				pfx.sp(String(f.vis["aura"]), String(f.vis["pal"]), ap, {"v": Vector2(0.0, -40.0), "life": 0.4})
+		if not f.is_queued_for_deletion() and (not Actor.lite or (Actor.tick & 1) == 0):
+			f.queue_redraw()
 
 
 # Enemigos: datos, reparto de la run, oleadas, jefes, eventos y comportamientos
@@ -4897,6 +4901,9 @@ func _update_hazards(delta: float) -> void:
 		if h.hit and h.t >= h.delay + 0.3:
 			h.queue_free()
 			hazards.remove_at(i)
+			continue
+		if not Actor.lite or (Actor.tick & 1) == 0:
+			h.queue_redraw()
 
 
 func _update_ebullets(delta: float) -> void:
@@ -4914,6 +4921,8 @@ func _update_ebullets(delta: float) -> void:
 		if remove:
 			b.queue_free()
 			ebullets.remove_at(i)
+		elif not Actor.lite or (Actor.tick & 1) == 0:
+			b.queue_redraw()
 
 
 # Rejilla espacial de enemigos (clave entera, listas enlazadas en arrays planos: sin alocaciones en el bucle caliente).
@@ -5846,6 +5855,7 @@ func _update_bullets(delta: float) -> void:
 				_bullet_hit(b, e)
 			if b.hit_log.size() > 300:
 				b.hit_log.clear()
+			_bullet_visual_tick(b)
 			continue
 		var remove: bool = b.age >= b.life
 		if not remove and b.boom > 0.0:
@@ -5905,9 +5915,21 @@ func _update_bullets(delta: float) -> void:
 				else:
 					remove = true
 					break
+		if not remove:
+			_bullet_visual_tick(b)
 		if remove:
 			b.queue_free()
 			bullets.remove_at(i)
+
+
+func _bullet_visual_tick(b: Bullet) -> void:
+	if b.shape == "" or Actor.frozen:
+		return
+	var fr: int = int(b.age * 12.0)
+	var changed: bool = fr != b._lf
+	b._lf = fr
+	if changed or ((b.orb or b.homing > 0.0 or b.boom > 0.0 or b.life - b.age < 0.25 or VFX.spins(b.shape)) and (not Actor.lite or (Actor.tick & 1) == 0)):
+		b.queue_redraw()
 
 
 # ---------------------------------------------------------------
@@ -7134,6 +7156,7 @@ class Actor extends Node2D:
 	static var lite := false     # consola: se redibuja y se anima menos a menudo
 	static var tick := 0         # contador de fotogramas (lo sube main)
 	static var frozen := false   # jugador caido: el mundo no avanza, las balas y peligros quietos no se redibujan
+	static var live: Array = []  # actores actualizados juntos por el nodo principal; evita una callback de SceneTree por Pokemon
 	var stag := false            # anima solo en fotogramas alternos (con el delta acumulado)
 	var _acc_dt := 0.0
 	var flash := 0.0
@@ -7143,6 +7166,17 @@ class Actor extends Node2D:
 	var bob := 0.0
 	var lift_extra := 0.0
 	var dirty := true
+
+	func _ready() -> void:
+		set_process(false)
+		live.append(self)
+
+	func _exit_tree() -> void:
+		live.erase(self)
+
+	static func tick_visuals(delta: float) -> void:
+		for actor in live:
+			actor._tick_visual(delta)
 
 	func setup(d: int, sm: Dictionary, shader: Shader, s: float = 1.0, shn: bool = false) -> void:
 		dex = d
@@ -7331,7 +7365,7 @@ class Actor extends Node2D:
 		sprite.offset = Vector2(-float(am["ax"]), -float(am["ay"]))
 		sprite.region_rect = Rect2(frame * float(am["w"]), minf(dir, float(am.get("r", 8)) - 1.0) * float(am["h"]), float(am["w"]), float(am["h"]))
 
-	func _process(delta: float) -> void:
+	func _tick_visual(delta: float) -> void:
 		bob += delta * 6.0
 		if fade >= 0.0:
 			fade -= delta
@@ -7598,9 +7632,8 @@ class Hazard extends Node2D:
 	var pure := false
 	var vis := ""
 
-	func _process(_delta: float) -> void:
-		if not Actor.frozen:   # con el jugador caido nada avanza: el dibujo no cambia
-			queue_redraw()
+	func _init() -> void:
+		set_process(false) # main actualiza el tiempo y la redibuja junto con el resto de peligros
 
 	func _draw() -> void:
 		if hit:
@@ -7635,10 +7668,7 @@ class EBullet extends Node2D:
 
 	func _init() -> void:
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-
-	func _process(_d: float) -> void:
-		if not Actor.frozen:
-			queue_redraw()
+		set_process(false) # el bucle central mueve y redibuja los disparos enemigos
 
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
@@ -8009,15 +8039,7 @@ class Bullet extends Node2D:
 
 	func _init() -> void:
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-
-	func _process(_d: float) -> void:
-		# sin forma: círculos fijos; con forma: solo al cambiar el fotograma, el ángulo (giro, teledirigido, orbital) o el desvanecido
-		if shape != "" and not Actor.frozen:   # jugador caido: age no avanza, el dibujo no cambia
-			var fr: int = int(age * 12.0)
-			var chg: bool = fr != _lf
-			_lf = fr
-			if chg or ((orb or homing > 0.0 or boom > 0.0 or life - age < 0.25 or VFX.spins(shape)) and (not Actor.lite or (Actor.tick & 1) == 0)):
-				queue_redraw()
+		set_process(false) # main mueve los proyectiles y decide cuando cambia su dibujo
 
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
@@ -8107,9 +8129,8 @@ class Field extends Node2D:
 	var kick := 0.0
 	var gone := false
 
-	func _process(_delta: float) -> void:
-		if not Actor.lite or (Actor.tick & 1) == 0:
-			queue_redraw()
+	func _init() -> void:
+		set_process(false) # main actualiza estado y redibujo de campos en el mismo recorrido
 
 	func _spr(pos: Vector2, ang: float, scl: float, frame: int, al: float) -> void:
 		if vis.is_empty():
