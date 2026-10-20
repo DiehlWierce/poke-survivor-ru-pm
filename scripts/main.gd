@@ -20,6 +20,7 @@ const DSP = preload("res://scripts/display.gd")
 const PAD = preload("res://scripts/pad.gd")
 const PADI = preload("res://scripts/padicons.gd")
 const ARENA = preload("res://scripts/arena.gd")
+const WTex = preload("res://scripts/game/wtex.gd")
 const TeamUi = preload("res://scripts/ui/team_ui.gd")
 const WeatherFx = preload("res://scripts/game/weather_fx.gd")
 const LoadScreen = preload("res://scripts/ui/load_screen.gd")
@@ -7727,17 +7728,6 @@ class EBullet extends Node2D:
 
 
 # --- dibujo ---
-class WTex:
-	const SC := 2.4   # objetos del mundo (cofres, altares, fuentes...) un 20 % mas pequenos
-	static var cache := {}
-
-	static func get_t(n: String) -> Texture2D:
-		if not cache.has(n):
-			var p: String = "res://assets/world/%s.png" % n
-			cache[n] = load(p) if ResourceLoader.exists(p) else null
-		return cache[n]
-
-
 class Decor extends Node2D:
 	var items: Array = []
 	var done := false
