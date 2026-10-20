@@ -18,6 +18,11 @@ var FRAMES := FRAMES_RUN if _arg_scenario() == "run" else FRAMES_DEFAULT
 var NOWARP := "--nobenchwarp" in OS.get_cmdline_user_args()   # выключить собственный перенос отставших бенчем (проверка переселения в main.gd)
 var NORELOC := "--noreloc" in OS.get_cmdline_user_args()      # выключить переселение в main.gd (relocate_on=false), для сравнения «до»
 var TANK := "--tank" in OS.get_cmdline_user_args()   # враги не умирают, бенч сам не спавнит: копятся отставшие (воспроизведение жалобы)
+var SPEED := _arg_float("--speed", 165.0)   # скорость бега игрока, px/s (сценарий run)
+var STALL := "--stall" in OS.get_cmdline_user_args()   # искусственные тормоза главного потока (проверка автооткатa запекания в потоках): 60 мс на кадр в кадрах 400..700
+var blank_frames := 0   # кадров, где по независимой проверке бенча виден кусок без текстуры
+var blank_chunks := 0
+var vis_ok_frames := 0
 var run_dir := Vector2(1.0, 0.25).normalized()
 var prof_rows: Array = []   # на каждый замеренный кадр: копия Prof.last (секции предыдущего, уже закрытого кадра)
 var n := 0
@@ -26,9 +31,18 @@ var samples: Array = []
 var proc_sum := 0.0
 var spawn_t := 0.0
 var prev_pf := {}
+var DIE := _arg_int("--die", -1)   # --die N: игрок умирает на кадре N, печать кадров за 200 кадров после смерти
+var die_samples: Array = []
+var die_rows: Array = []
 var load_frames := 0     # кадров экрана загрузки (main.loading_done == false)
 var load_worst := 0.0    # самый длинный кадр во время загрузки, мс
 var load_total := 0.0    # вся загрузка, мс
+
+
+static func _arg_float(name: String, def: float) -> float:
+	var a := OS.get_cmdline_user_args()
+	var i := a.find(name)
+	return float(a[i + 1]) if i >= 0 and i + 1 < a.size() else def
 
 
 static func _arg_scenario() -> String:
@@ -37,7 +51,15 @@ static func _arg_scenario() -> String:
 	return String(a[i + 1]) if i >= 0 and i + 1 < a.size() else "default"
 
 
+static func _arg_int(name: String, dflt: int) -> int:
+	var a := OS.get_cmdline_user_args()
+	var i := a.find(name)
+	return int(a[i + 1]) if i >= 0 and i + 1 < a.size() else dflt
+
+
 func _initialize() -> void:
+	if STALL:
+		Engine.max_fps = 30   # без --fixed-fps: настоящий delta, чтобы автооткат запекания его видел
 	seed(12345)
 	var SVl = load("res://scripts/save_data.gd")
 	SVl.ensure()
@@ -46,7 +68,30 @@ func _initialize() -> void:
 	last = Time.get_ticks_usec()
 
 
+func _blank_check() -> void:
+	# независимо от tileworld: куски под прямоугольником экрана вокруг игрока (позиция прошлого кадра) без текстуры и без старого биома
+	var g = m.ground
+	var half: Vector2 = m.get_viewport_rect().size * 0.5 / m.cam_zoom
+	var p: Vector2 = m.player.position
+	var x0 := floori((p.x - half.x) / g.CW)
+	var x1 := floori((p.x + half.x) / g.CW)
+	var y0 := floori((p.y - half.y) / g.CW)
+	var y1 := floori((p.y + half.y) / g.CW)
+	var bad := 0
+	for ky in range(y0, y1 + 1):
+		for kx in range(x0, x1 + 1):
+			var ch = g.chunks.get(Vector2i(kx, ky))
+			if ch == null or (ch["tex"] == null and (ch["old"] == null or g.fade_t >= 1.0)):
+				bad += 1
+	blank_chunks += bad
+	if bad > 0:
+		blank_frames += 1
+	vis_ok_frames += 1
+
+
 func _process(_delta: float) -> bool:
+	if STALL and n >= 400 and n < 700:
+		OS.delay_msec(60)
 	var now := Time.get_ticks_usec()
 	# Пока main грузит мир по кускам (экран загрузки), игры ещё нет: ждём и мерим сами кадры загрузки отдельно
 	if not m.loading_done:
@@ -80,7 +125,19 @@ func _process(_delta: float) -> bool:
 				var en = m._spawn_one()
 				en.position = m.player.position + Vector2(randf_range(-500, 500), randf_range(-500, 500))
 		m.preload_t = 1e9
-	if n > 3:
+	if DIE >= 0 and n == DIE:
+		m.player.hp = 10.0   # смертельный удар; дальше hp не восстанавливается
+		m.player.invuln = 0.0
+		m.revives = 0
+		m._hurt_player(1e9, "", true)
+	if DIE >= 0 and n > DIE:
+		var dms: float = (now - last) / 1000.0
+		die_samples.append(dms)
+		die_rows.append(Prof.last.duplicate() if Prof.on else [])
+		if n - DIE >= 200:
+			report_die()
+			return true
+	if n > 3 and (DIE < 0 or n < DIE):
 		m.player.hp = 1e9
 		m.player.invuln = 5.0
 		if n % 60 == 0 and not RUN:
@@ -91,7 +148,7 @@ func _process(_delta: float) -> bool:
 				m.pending_levels = 0
 				m.choosing = false
 				m.cards.hide_cards()
-			m.player.position += run_dir * 5.5
+			m.player.position += run_dir * (SPEED * _delta)
 			var act: Array = m._active_group()
 			for mv in m.player.moves:   # неактивные слоты тоже стреляют (в игре тикает только активная группа)
 				if not act.has(mv):
@@ -130,6 +187,7 @@ func _process(_delta: float) -> bool:
 	if n % 200 == 0 and "--dbg" in OS.get_cmdline_user_args():
 		print("DBG n=%d paused=%s choosing=%s dead=%s down=%s z=%s run_time=%.1f mode=%s arena=%s jdcine=%s" % [n, m.paused, m.choosing, m.player.dead, m.down, m.z_state, m.run_time, m.mode, m.arena, m.jd.cinematic()])
 	if n > WARM:
+		_blank_check()
 		samples.append((now - last) / 1000.0)
 		if (now - last) > 5000 and m.get("pf") != null:
 			var top := ""
@@ -219,6 +277,11 @@ func report_run(s: Array, tot: float, spikes: int) -> void:
 	var res := {"frames": cnt, "avg_ms": snappedf(avg, 0.01), "p95_ms": snappedf(p95, 0.01), "p99_ms": snappedf(p99, 0.01),
 		"max_ms": snappedf(s[-1], 0.1), "over45": spikes, "enemies": m.enemies.size(), "bullets": m.bullets.size(), "kills": m.kills, "orbs": m.orbs.size(), "level": m.player.level,
 		"sec_avg_ms": sec, "sec_max_ms": secmax}
+	res["chunks"] = {"speed": SPEED, "bench_blank_frames": blank_frames, "bench_blank_chunks": blank_chunks, "vis_missing": Prof.ch_vis_missing,
+		"sync_n": Prof.ch_sync_n, "sync_ms": snappedf(float(Prof.ch_sync_us) / 1000.0, 0.01), "sync_max_ms": snappedf(float(Prof.ch_sync_max) / 1000.0, 0.01),
+		"chunks_now": Prof.ch_n, "chunks_max": Prof.ch_n_max, "workers": Prof.bk_workers, "task_avg_ms": snappedf(float(Prof.bk_task_us) / 1000.0 / maxf(1.0, float(Prof.bk_task_n)), 0.01), "rollbacks": Prof.bk_rollbacks}
+	print("КУСКИ: скорость=%.0f px/s  кадров проверено=%d  кадров с пустотой (независимая проверка бенча)=%d  пустых кусков=%d" % [SPEED, vis_ok_frames, blank_frames, blank_chunks])
+	print("КУСКИ (Prof): " + Prof.line_chunks() + "  | память текстур макс ~%.1f МБ" % (Prof.ch_n_max * 0.25))
 	print("RESULT " + JSON.stringify(res))
 	var gnd := 0.0
 	for o in m.orbs:
@@ -226,6 +289,23 @@ func report_run(s: Array, tot: float, spikes: int) -> void:
 			gnd += o.value
 	if m.get("xp_orb_in") != null:
 		print("XP целостность: вошло в орбы=%.1f  собрано=%.1f  на земле=%.1f  разница=%.3f  (орбов=%d, пул=%d)" % [m.xp_orb_in, m.xp_orb_out, gnd, m.xp_orb_in - m.xp_orb_out - gnd, m.orbs.size(), m.orb_pool.size()])
+
+
+func report_die() -> void:
+	var sum := 0.0
+	var mxv := 0.0
+	var over := 0
+	for x in die_samples:
+		sum += x
+		mxv = maxf(mxv, x)
+		if x > 10.0:
+			over += 1
+	var idx: Array = range(die_samples.size())
+	idx.sort_custom(func(x, y): return die_samples[x] > die_samples[y])
+	print("СМЕРТЬ: кадров=%d  сумма=%.1f мс  макс=%.1f мс  >10мс: %d  dead=%s  time_scale=%.2f" % [die_samples.size(), sum, mxv, over, m.player.dead, Engine.time_scale])
+	for k in range(mini(6, idx.size())):
+		var j: int = idx[k]
+		print("  #%d после-смерти кадр %d: %.1f мс | %s" % [k + 1, j + 1, die_samples[j], _sec_line(die_rows[j]) if die_rows[j].size() > 0 else "-"])
 
 
 func report() -> void:

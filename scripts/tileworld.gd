@@ -62,6 +62,24 @@ var cc := Vector2i(99999, 99999)
 
 func _init() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if bake_thread:
+		# necesario bakethread.txt junto al ejecutable: 0 = sin hilos (horneado sincrono con presupuesto), 1/2 = tareas a la vez
+		var bf := FileAccess.open(OS.get_executable_path().get_base_dir().path_join("bakethread.txt"), FileAccess.READ)
+		if bf != null:
+			var txt: String = bf.get_as_text().strip_edges()
+			if txt.is_valid_int():
+				var nj: int = int(txt)
+				if nj <= 0:
+					bake_thread = false
+				elif nj <= 2:
+					bake_jobs = nj
+		var ua := OS.get_cmdline_user_args()
+		var ji := ua.find("--bakejobs")
+		if ji >= 0 and ji + 1 < ua.size():
+			bake_jobs = clampi(int(ua[ji + 1]), 1, 2)
+		var di := ua.find("--bakeslow")   # prueba: cada tarea espera tantos ms (emula hilos lentos y comprueba la docruta)
+		if di >= 0 and di + 1 < ua.size():
+			bake_delay = int(ua[di + 1])
 	for k in AS.THEMES.keys():
 		if k != "judgment":
 			theme_keys.append(k)
@@ -524,8 +542,6 @@ func chunk_of(pos: Vector2) -> Vector2i:
 
 
 func set_center(c: Vector2i) -> void:
-	if bake_thread and absi(c.x - cc.x) <= 2 and absi(c.y - cc.y) <= 2 and c != cc:
-		mv = Vector2i(signi(c.x - cc.x), signi(c.y - cc.y))
 	cc = c
 	for dx in range(-1, 2):
 		for dy in range(-1, 2):
@@ -533,10 +549,11 @@ func set_center(c: Vector2i) -> void:
 			if not chunks.has(key):
 				chunks[key] = {"tex": null, "old": null, "tb": -1, "liq": []}
 				queue.append(key)
-	for key in chunks.keys():
-		if absi(key.x - c.x) > 2 or absi(key.y - c.y) > 2:
-			chunks.erase(key)
-			queue.erase(key)
+	if not view_ok:   # con vista (en juego) los descarta _view_chunks por el rectangulo; sin ella, por distancia
+		for key in chunks.keys():
+			if absi(key.x - c.x) > 2 or absi(key.y - c.y) > 2:
+				chunks.erase(key)
+				queue.erase(key)
 	for key in grass.keys():
 		if absi(key.x - c.x) > 3 or absi(key.y - c.y) > 3:
 			grass.erase(key)
@@ -693,30 +710,124 @@ class BakeJob extends RefCounted:
 	var tid := -1
 	var img: Image
 	var liq: Array = []
+	var dur := 0   # microsegundos que tardo la tarea (lo escribe el hilo, se lee tras esperarla)
 
-const BAKE_JOBS := 2     # tareas a la vez: al hilo principal le tiene que quedar un nucleo
+const SLOW_MS := 45.0       # fotograma "lento" para el autorrollback
+const SLOW_N := 5           # tantos seguidos con tareas en marcha: se apagan los hilos hasta el final de la partida
+const FORCE_PAD := 128.0    # margen (px de mundo) del rectangulo visible dentro del cual un trozo sin textura se hornea YA
+const LOOK_T := 1.5         # segundos de anticipo segun la velocidad
+const MAX_KEEP := 64        # tope de trozos vivos (256x256x4 = 256 KB de textura cada uno)
 const BAKE_BUDGET := 3000   # microsegundos por fotograma para terminar trozos (create_from_image)
 const CLONE_CACHE := 9000   # casillas en la caché del clon antes de vaciarla
 var bake_thread: bool = (OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args() or "--bakethread" in OS.get_cmdline_user_args()) and not "--nobakethread" in OS.get_cmdline_user_args()
-var mv := Vector2i.ZERO     # hacia donde se mueve el centro: se hornea antes lo que queda por delante
+# tareas a la vez: en la consola 1 (4 nucleos A53: al principal le quedan el sonido y gptokeyb), en Mac 2; bakethread.txt / --bakejobs lo cambian
+var bake_jobs: int = 1 if OS.has_feature("handheld") else 2
+var bake_delay := 0         # solo pruebas (--bakeslow)
+var slow_n := 0
+var bake_off := false       # autorrollback disparado
+var view_ok := false        # ya hay rectangulo visible de la camara
+var vis_r := Rect2()        # lo que ve la camara
+var pre_r := Rect2()        # vis_r + 1 trozo en todo el borde + anticipo hacia delante: aqui los trozos tienen que estar listos
+var keep_r := Rect2()       # pre_r + medio trozo: fuera de aqui se descartan
+var vel := Vector2.ZERO     # velocidad de la camara, px/s (suavizada)
+var vdir := Vector2.ZERO
+var prev_vc := Vector2.ZERO
+var prev_ok := false
+var sort_t := 0
 var jobs: Array = []        # tareas en el pool
 var done_jobs: Array = []       # tareas terminadas a la espera de crear la textura
 var _clones: Array = []
 
 
+# Prioridad de un trozo (menor = antes): 0 los que toca la vista (con margen), 1 los de por delante segun el movimiento, 2 el resto;
+# dentro de la clase, por cercania al centro de la vista menos un premio a lo que queda por delante.
+func _prio(key: Vector2i) -> float:
+	if not view_ok:
+		var d: Vector2i = key - cc
+		return float(absi(d.x) + absi(d.y))
+	var cell := Rect2(float(key.x) * CW, float(key.y) * CW, CW, CW)
+	var dv: Vector2 = (cell.get_center() - vis_r.get_center()) / CW
+	var fwd: float = dv.dot(vdir)
+	var cls := 2
+	if cell.intersects(vis_r.grow(FORCE_PAD)):
+		cls = 0
+	elif vel.length_squared() > 400.0 and fwd > 0.0:
+		cls = 1
+	return float(cls) * 100.0 + dv.length() - 0.6 * fwd
+
+
 func _queue_sort() -> void:
-	var c := cc
-	var m := mv
-	var bias := 0.6 if bake_thread else 0.0
-	queue.sort_custom(func(a, b2):
-		var da: Vector2i = a - c
-		var db: Vector2i = b2 - c
-		return float(absi(da.x) + absi(da.y)) - bias * float(da.x * m.x + da.y * m.y) < float(absi(db.x) + absi(db.y)) - bias * float(db.x * m.x + db.y * m.y))
+	queue.sort_custom(func(a, b2): return _prio(a) < _prio(b2))
+
+
+func _keys_in(r: Rect2) -> Array:
+	var out: Array = []
+	var x0: int = floori(r.position.x / CW)
+	var y0: int = floori(r.position.y / CW)
+	var x1: int = floori((r.end.x - 0.01) / CW)
+	var y1: int = floori((r.end.y - 0.01) / CW)
+	for ky in range(y0, y1 + 1):
+		for kx in range(x0, x1 + 1):
+			out.append(Vector2i(kx, ky))
+	return out
+
+
+# Rectangulo visible de la camara (mundo), velocidad y los rectangulos de anticipo/retencion.
+func _view_update(delta: float) -> void:
+	var vp := get_viewport()
+	if vp == null:
+		return
+	var r: Rect2 = vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, vp.get_visible_rect().size)
+	if not (r.size.x > 1.0 and r.size.y > 1.0 and r.size.x < 20000.0 and is_finite(r.position.x) and is_finite(r.position.y)):
+		return
+	vis_r = r
+	var vc := r.get_center()
+	if prev_ok and delta > 0.0:
+		var v := (vc - prev_vc) / delta
+		if v.length() > 3000.0:
+			v = Vector2.ZERO   # salto (teletransporte): no es velocidad
+		vel = vel.lerp(v, 0.25)
+	prev_vc = vc
+	prev_ok = true
+	vdir = vel.normalized() if vel.length_squared() > 400.0 else Vector2.ZERO
+	var look: Vector2 = (vel * LOOK_T).limit_length(2.0 * CW)
+	var base := r.grow(CW)
+	pre_r = base.merge(Rect2(base.position + look, base.size))
+	keep_r = pre_r.grow(CW * 0.5)
+	view_ok = true
+
+
+# Crea (y encola) los trozos de pre_r y descarta los que quedan fuera de keep_r (y de los 5x5 del centro).
+func _view_chunks() -> bool:
+	var changed := false
+	for key in _keys_in(pre_r):
+		if not chunks.has(key):
+			chunks[key] = {"tex": null, "old": null, "tb": -1, "liq": []}
+			queue.append(key)
+			changed = true
+	for key in chunks.keys():
+		var cell := Rect2(float(key.x) * CW, float(key.y) * CW, CW, CW)
+		if not cell.intersects(keep_r) and (absi(key.x - cc.x) > 2 or absi(key.y - cc.y) > 2):
+			chunks.erase(key)
+			queue.erase(key)
+	if chunks.size() > MAX_KEEP:   # tope de memoria: fuera los de menor prioridad (nunca los visibles)
+		var ks: Array = chunks.keys()
+		ks.sort_custom(func(a, b2): return _prio(a) > _prio(b2))
+		for key in ks:
+			if chunks.size() <= MAX_KEEP or _prio(key) < 100.0:
+				break
+			chunks.erase(key)
+			queue.erase(key)
+	return changed
 
 
 func _job_run(job: BakeJob) -> void:
 	var cl = _clones[job.slot]
+	var t0 := Time.get_ticks_usec()
+	if bake_delay > 0:
+		OS.delay_msec(bake_delay)
 	cl._bake_rows(job.key, job.img, job.liq, 0, N)
+	job.dur = Time.get_ticks_usec() - t0
 
 
 func _job_covers(key: Vector2i) -> bool:
@@ -739,7 +850,7 @@ func _job_start(key: Vector2i) -> void:
 		if not used:
 			break
 		slot += 1
-	while _clones.size() < BAKE_JOBS:
+	while _clones.size() < bake_jobs:
 		_clones.append(get_script().new())
 	var cl = _clones[slot]
 	if cl.seed_v != seed_v or cl.terr.size() > CLONE_CACHE:
@@ -764,6 +875,8 @@ func _job_start(key: Vector2i) -> void:
 
 # Termina un trozo horneado en el hilo; false si ya no hace falta (se descartó o cambió el bioma): entonces se vuelve a encolar.
 func _job_take(j: BakeJob) -> bool:
+	Prof.bk_task_n += 1
+	Prof.bk_task_us += j.dur
 	if not chunks.has(j.key):
 		return false
 	var ch: Dictionary = chunks[j.key]
@@ -802,8 +915,7 @@ func _bake_tick() -> bool:
 			done_jobs.remove_at(i)
 			_job_take(j)
 			continue
-		var d: Vector2i = j.key - cc
-		var kv: float = float(absi(d.x) + absi(d.y)) - 0.6 * float(d.x * mv.x + d.y * mv.y)
+		var kv: float = _prio(j.key)
 		if kv < bk:
 			bk = kv
 			best = i
@@ -812,7 +924,7 @@ func _bake_tick() -> bool:
 		var jb: BakeJob = done_jobs[best]
 		done_jobs.remove_at(best)
 		did = _job_take(jb)
-	while jobs.size() < BAKE_JOBS and done_jobs.size() < 2 and not queue.is_empty():
+	while jobs.size() < bake_jobs and done_jobs.size() < 2 and not queue.is_empty():
 		var k: Vector2i = queue.pop_front()
 		if chunks.has(k) and not _job_covers(k) and not (chunks[k]["tex"] != null and chunks[k]["tb"] == biome):
 			_job_start(k)
@@ -858,6 +970,105 @@ func _floor_img(S: Dictionary, idx: int) -> Image:
 	return cache[key]
 
 
+# Todo lo de los trozos en un fotograma: vista, anticipo, cola, horneado y la GARANTIA: lo que toca el rectangulo visible
+# (con FORCE_PAD) y aun no tiene textura se hornea ahora mismo en el hilo principal (antes de dibujar).
+func _chunk_frame(delta: float) -> bool:
+	var dirty := false
+	_view_update(delta)
+	if bake_thread:   # autorrollback: el principal va a tirones mientras hay tareas -> sin hilos hasta el final
+		if delta * 1000.0 > SLOW_MS and delta < 2.0:
+			if not jobs.is_empty() or not done_jobs.is_empty():
+				slow_n += 1
+		else:
+			slow_n = 0
+		if slow_n >= SLOW_N:
+			_bake_rollback()
+	Prof.bk_workers = bake_jobs if bake_thread else 0
+	sort_t += 1
+	if view_ok:
+		if _view_chunks() or (sort_t & 3) == 0:
+			_queue_sort()
+	if _bake_tick():
+		dirty = true
+	if view_ok:
+		if _bake_force():
+			dirty = true
+	return dirty
+
+
+func _bake_rollback() -> void:
+	bake_thread = false
+	bake_off = true
+	slow_n = 0
+	Prof.bk_rollbacks += 1
+	_bake_drain()   # espera las tareas y termina sus trozos; nada se pierde
+	for cl in _clones:
+		if is_instance_valid(cl):
+			cl.free()
+	_clones.clear()
+
+
+func _ready_tex(ch: Dictionary) -> bool:
+	return ch["tex"] != null and ch["tb"] == biome
+
+
+# Hornea el trozo ya, en el hilo principal. Devuelve true si hizo falta esperar/hornear (docruta sincrona).
+func _bake_now(key: Vector2i) -> bool:
+	for i in range(jobs.size()):
+		var j: BakeJob = jobs[i]
+		if j.key == key and j.biome == biome:
+			WorkerThreadPool.wait_for_task_completion(j.tid)
+			jobs.remove_at(i)
+			_job_take(j)
+			queue.erase(key)
+			return true
+	for i in range(done_jobs.size()):
+		var j: BakeJob = done_jobs[i]
+		if j.key == key and j.biome == biome:
+			done_jobs.remove_at(i)
+			_job_take(j)
+			queue.erase(key)
+			return false   # ya estaba horneado: solo faltaba crear la textura (barato)
+	if bk_key == key and bk_biome == biome:
+		_bake_rows(bk_key, bk_img, bk_liq, bk_row, N)
+		_bake_finish(bk_key, bk_img, bk_liq)
+		bk_key = Vector2i(99999, 99999)
+	else:
+		bake_chunk(key)
+	queue.erase(key)
+	return true
+
+
+func _bake_force() -> bool:
+	var did := false
+	var t0 := Time.get_ticks_usec()
+	for key in _keys_in(vis_r.grow(FORCE_PAD)):
+		var ch: Dictionary = chunks.get(key, {})
+		if ch.is_empty() or _ready_tex(ch):
+			continue
+		if ch["old"] != null and fade_t < 0.8:
+			continue   # se ve el bioma anterior fundiendo: los hilos tienen tiempo hasta casi el final del fundido
+		did = true
+		var t1 := Time.get_ticks_usec()
+		if _bake_now(key):
+			var dt := Time.get_ticks_usec() - t1
+			Prof.ch_sync_n += 1
+			Prof.ch_sync_us += dt
+			Prof.ch_sync_max = maxi(Prof.ch_sync_max, dt)
+	Prof.ch_sync_last = Time.get_ticks_usec() - t0 if did else 0
+	# cuenta de control: trozos visibles que seguirian sin dibujar nada (debe ser 0)
+	var nv := 0
+	for key in _keys_in(vis_r):
+		nv += 1
+		var ch2: Dictionary = chunks.get(key, {})
+		if ch2.is_empty() or (ch2["tex"] == null and (ch2["old"] == null or fade_t >= 1.0)):
+			Prof.ch_vis_missing += 1
+	Prof.ch_vis_n = nv
+	Prof.ch_n = chunks.size()
+	Prof.ch_n_max = maxi(Prof.ch_n_max, chunks.size())
+	return did
+
+
 var _redraw_acc := 0.0
 var lite: bool = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 
@@ -872,13 +1083,11 @@ func _process(delta: float) -> void:
 			for key in chunks:
 				if chunks[key]["tex"] != null:
 					chunks[key]["old"] = null
-	if Prof.on:
-		var pt := Time.get_ticks_usec()
-		if _bake_tick():
-			dirty = true
-		Prof.lap(Prof.S_CHUNK, pt)
-	elif _bake_tick():
+	var pt := Time.get_ticks_usec()
+	if _chunk_frame(delta):
 		dirty = true
+	if Prof.on:
+		Prof.lap(Prof.S_CHUNK, pt)
 	# Las texturas del suelo no cambian: solo se redibuja para animar el liquido (20 veces por s).
 	_redraw_acc += delta
 	if dirty or _redraw_acc >= (0.1 if lite else 0.05):   # consola: el agua se anima a 10 Hz
