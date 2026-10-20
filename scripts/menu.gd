@@ -73,7 +73,7 @@ var gacha_region := 1
 var gacha_box: VBoxContainer
 var gacha_tabs: HFlowContainer
 var gacha_content: VBoxContainer
-var gacha_pages := {}   # region -> {"page": Control, "fp": huella, "first": Button}
+var gacha_pages := {}   # region -> {"page": Control, "fp": huella, "first": Button} (la de la region en pantalla)
 var gacha_result: Control
 var up_picker: Control = null
 var pk_gen := 0
@@ -85,6 +85,12 @@ var slots_busy := false
 var goals_tab := "m"
 var goals_box: VBoxContainer
 var up_box: VBoxContainer
+var up_tail: VBoxContainer = null    # paneles de debajo de las tarjetas (MT, veto, atajos)
+var up_tail_key := ""
+var up_sig := ""                     # estructura de las tarjetas construidas (ver _up_sig)
+var up_cards: Array = []             # [{id, u, pips, btn, extra}]
+var up_ui := {}                      # piezas de la cabecera
+var up_focus_id := ""
 var up_dex := 25
 var ban_open := false
 var tm_open := false
@@ -167,18 +173,59 @@ class Preview extends Control:
 		var nm := "Idle" if a.has("Idle") else "Walk"
 		return {"name": nm, "info": a[nm], "sm": sm}
 
+	# Rutas con carga en hilo pedida y aun no recogida: la lectura y el decodificado de la hoja salen del hilo principal.
+	static var _pend: Dictionary = {}
+	static var _drain_t := 0.0
+
+	static func _path_of(d: int, nm: String, shn: bool) -> String:
+		if shn:
+			var ps := "res://assets/pokemon/%d/s/%s.png" % [d, nm]
+			if ResourceLoader.exists(ps):
+				return ps
+		var p := "res://assets/pokemon/%d/%s.png" % [d, nm]
+		return p if ResourceLoader.exists(p) else ""
+
+	# Pide en segundo plano la hoja del icono de un Pokemon (Dex, selector, logros) antes de necesitarla.
+	static func prefetch(d: int, shn: bool) -> void:
+		var an: Dictionary = anim_of(d)
+		if an.is_empty():
+			return
+		var nm: String = String(an["name"])
+		if _tex_cache.has("%d|%s|%d" % [d, nm, 1 if shn else 0]):
+			return
+		var p := _path_of(d, nm, shn)
+		if p == "" or _pend.has(p):
+			return
+		if ResourceLoader.load_threaded_request(p) == OK:
+			_pend[p] = true
+
+	# Recoge las cargas terminadas que nadie reclamo (se cambio de pagina): si no, quedan retenidas.
+	static func drain() -> void:
+		if _pend.is_empty():
+			return
+		var now := Time.get_ticks_msec() / 1000.0
+		if now - _drain_t < 0.5:
+			return
+		_drain_t = now
+		for p in _pend.keys():
+			var st: int = ResourceLoader.load_threaded_get_status(p)
+			if st == ResourceLoader.THREAD_LOAD_LOADED:
+				ResourceLoader.load_threaded_get(p)
+				_pend.erase(p)
+			elif st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				_pend.erase(p)
+
 	static func tex_of(d: int, nm: String, shn: bool) -> Texture2D:
 		var key := "%d|%s|%d" % [d, nm, 1 if shn else 0]
 		if _tex_cache.has(key):
 			return _tex_cache[key]
 		var res: Texture2D = null
-		if shn:
-			var ps := "res://assets/pokemon/%d/s/%s.png" % [d, nm]
-			if ResourceLoader.exists(ps):
-				res = load(ps)
-		if res == null:
-			var p := "res://assets/pokemon/%d/%s.png" % [d, nm]
-			if ResourceLoader.exists(p):
+		var p := _path_of(d, nm, shn)
+		if p != "":
+			if _pend.has(p):
+				res = ResourceLoader.load_threaded_get(p) as Texture2D
+				_pend.erase(p)
+			else:
 				res = load(p)
 		if _tex_cache.size() >= 64:
 			_tex_cache.clear()
@@ -915,16 +962,9 @@ func _ready() -> void:
 	pad_hint.z_index = 49
 	pad_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(pad_hint)
-	_build_main()
-	_build_test()
-	_build_dex()
-	_build_modes()
-	_build_up()
-	_build_gacha()
-	_build_goals()
-	_build_lexicon()
-	_build_settings()
-	_build_news()
+	# Solo la pantalla principal se construye ahora; las demas, la primera vez que se abren (_ensure): volver al menu tras cada partida cuesta menos.
+	if not is_overlay:   # los Ajustes dentro de la partida no usan la pantalla principal
+		_build_main()
 	get_viewport().size_changed.connect(_fit_later)   # Callable de un metodo: se desconecta solo al liberar el menu
 	_fit_layout()
 	if is_overlay:
@@ -1307,12 +1347,8 @@ func _cost_btn(title: String, cost: String, icon: String, cost_icon: String, cb:
 	b.disabled = not enabled
 	var tcol: Color = Color.WHITE
 	if gold:
-		_gold_btn(b, enabled)
+		_gold_look(b, enabled)
 		tcol = Color.WHITE if enabled else Color.BLACK
-		if not enabled:
-			for st0 in ["normal", "hover", "pressed", "disabled"]:
-				b.add_theme_stylebox_override(st0, _sb(Color("#a89c82"), Color("#6b6250"), 3, 12))
-			b.add_theme_stylebox_override("focus", _sb_focus(Color("#b8ad94")))
 	var hb := HBoxContainer.new()
 	hb.set_anchors_preset(Control.PRESET_FULL_RECT)
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1348,10 +1384,41 @@ func _cost_btn(title: String, cost: String, icon: String, cost_icon: String, cb:
 		cl.add_theme_constant_override("outline_size", 5 if enabled else 0)
 		cl.add_theme_color_override("font_outline_color", Color("#3a2606"))
 	cr.add_child(cl)
+	b.set_meta("cl", cl)   # para cambiar el coste y el aspecto en su sitio (_cost_update)
+	b.set_meta("on", enabled)
 	holder.add_child(cr)
 	hb.add_child(holder)
 	b.add_child(hb)
 	return b
+
+
+# Estilos del boton dorado: activo (dorado) o apagado (arena; los estilos se crean una vez y se comparten).
+var _gold_off_sbs: Array = []
+
+
+func _gold_look(b: Button, enabled: bool) -> void:
+	_gold_btn(b, enabled)
+	if not enabled:
+		if _gold_off_sbs.is_empty():
+			_gold_off_sbs = [_sb(Color("#a89c82"), Color("#6b6250"), 3, 12), _sb_focus(Color("#b8ad94"))]
+		for st0 in ["normal", "hover", "pressed", "disabled"]:
+			b.add_theme_stylebox_override(st0, _gold_off_sbs[0])
+		b.add_theme_stylebox_override("focus", _gold_off_sbs[1])
+
+
+# Cambia el coste y si se puede pagar de un boton hecho con _cost_btn (gold) sin rehacerlo.
+# Solo se toca lo que cambia: cada override de tema de un nodo ya en el arbol relanza su cache de tema.
+func _cost_update(b: Button, cost: String, enabled: bool) -> void:
+	var cl: Label = b.get_meta("cl")
+	if cl.text != cost:
+		cl.text = cost
+	if b.disabled == (not enabled) and bool(b.get_meta("on", enabled)) == enabled:
+		return
+	b.set_meta("on", enabled)
+	b.disabled = not enabled
+	_gold_look(b, enabled)
+	cl.add_theme_color_override("font_color", Color.WHITE if enabled else Color.BLACK)
+	cl.add_theme_constant_override("outline_size", 5 if enabled else 0)
 
 
 # Boton dorado (se puede pagar) o marron apagado (no alcanza).
@@ -1379,11 +1446,26 @@ func _gold_on(b: Button, on: bool) -> void:
 			b.remove_theme_stylebox_override(st)
 
 
+# Estilo de tarjeta: uno solo compartido (ninguna tarjeta lo modifica).
+var _card_sb_c: StyleBoxFlat = null
+
+
 func _card_sb() -> StyleBoxFlat:
-	var sb := _sb(Color(0.08, 0.14, 0.36, 0.8), Color("#33498f"), 2, 14)
-	sb.content_margin_top = 12
-	sb.content_margin_bottom = 12
-	return sb
+	if _card_sb_c == null:
+		_card_sb_c = _sb(Color(0.08, 0.14, 0.36, 0.8), Color("#33498f"), 2, 14)
+		_card_sb_c.content_margin_top = 12
+		_card_sb_c.content_margin_bottom = 12
+	return _card_sb_c
+
+
+# Estilos compartidos de las tarjetas de logros / cristales Z (hecho o pendiente) y de las celdas de datos.
+var _flat_sbs := {}
+
+
+func _flat_sb(done: bool) -> StyleBoxFlat:
+	if not _flat_sbs.has(done):
+		_flat_sbs[done] = _sb(Color(0, 0, 0, 0.2), Color(1.0, 0.82, 0.25, 0.6) if done else Color(0.96, 0.97, 1.0, 0.1), 2, 8)
+	return _flat_sbs[done]
 
 
 # Fila [icono] texto
@@ -1496,7 +1578,25 @@ func _leave() -> void:
 		_show("main")
 
 
+# Construye la pantalla si aun no existe y le aplica el ajuste a la zona util.
+func _ensure(name: String) -> void:
+	if screens.has(name):
+		return
+	call("_build_" + name)
+	var ar: Rect2 = DSP.area(get_tree())
+	match name:
+		"main":
+			_fit_main(ar)
+			_fit_main_late.call_deferred()
+		"dex":
+			_fit_dex(ar)
+		"test":
+			_fit_test(ar)
+	gi_dirty = true
+
+
 func _show(name: String) -> void:
+	_ensure(name)
 	if name == "up" and cur != "up":
 		up_dex = int(SV.d["selected"])
 	_close_up_picker()
@@ -1530,31 +1630,30 @@ func _show(name: String) -> void:
 # Al salir de una pantalla pesada se libera su contenido (las paginas guardadas de Lexico / Gacha y la lista de Misiones):
 # no se queda oculto en el arbol haciendo crecer los nodos. Al volver a entrar se reconstruye.
 func _release_screen(name: String) -> void:
+	if not screens.has(name):
+		return
 	match name:
 		"lexicon":
-			for k in lex_pages:
-				if is_instance_valid(lex_pages[k]):
-					(lex_pages[k] as Node).queue_free()
+			_fq_cancel(lex_box, true)
 			lex_pages.clear()
 			for ch in lex_box.get_children():
 				lex_box.remove_child(ch)
+				ch.queue_free()
 		"gacha":
-			for k in gacha_pages:
-				var pg = gacha_pages[k]["page"]
-				if is_instance_valid(pg):
-					(pg as Node).queue_free()
+			_fq_cancel(gacha_content, true)
 			gacha_pages.clear()
 			for ch in gacha_content.get_children():
 				gacha_content.remove_child(ch)
+				ch.queue_free()
 		"goals":
+			_fq_cancel(goals_box, true)
 			_clear(goals_box)
 		"settings":
-			for k in settings_pages:
-				if is_instance_valid(settings_pages[k]):
-					(settings_pages[k] as Node).queue_free()
+			_fq_cancel(settings_host, true)
 			settings_pages.clear()
 			for ch in settings_host.get_children():
 				settings_host.remove_child(ch)
+				ch.queue_free()
 			settings_box = settings_host
 
 
@@ -1625,12 +1724,18 @@ func _flush_save() -> void:
 
 func _exit_tree() -> void:
 	_flush_save()
+	for e in fq:
+		if e[2] != null and is_instance_valid(e[2]):
+			(e[2] as Node).free()
+	fq.clear()
 	# las paginas guardadas que no estan en el arbol no cuelgan de nadie: hay que liberarlas a mano
 	for sn in ["lexicon", "gacha", "settings"]:
 		_release_screen(sn)
 
 
 func _process(delta: float) -> void:
+	_pump()
+	Preview.drain()
 	if save_t > 0.0:
 		save_t -= delta
 		if save_t <= 0.0:
@@ -2034,6 +2139,135 @@ func _clear(box: Node) -> void:
 	gi_dirty = true
 
 
+# ---------------------------------------------------------------
+# Construccion por porciones
+# ---------------------------------------------------------------
+# Colgar cientos de nodos del arbol de golpe (tema, minimos, texto con salto de linea) costaba 10-35 ms por pantalla.
+# Los trozos pesados (una tarjeta, una fila, un boton) son pasos de esta cola y _process ejecuta pasos hasta gastar
+# BUD_US: ningun fotograma del menu pasa de ~2 ms (en la consola x40) y lo primero que se ve sale en el mismo fotograma.
+const BUD_US := 600
+var fq: Array = []   # pasos pendientes: [duenyo (Control), Callable, nodo suelto a liberar si el duenyo muere, es_liberacion]
+
+
+var fq_f0 := -1   # fotograma en que la cola paso de vacia a con pasos: ese fotograma ya lleva la accion del usuario, no se carga mas
+
+
+func _later(owner: Control, f: Callable, junk: Node = null, retire: bool = false, weight: int = 0) -> void:
+	if fq.is_empty():
+		fq_f0 = Engine.get_process_frames()
+	fq.append([owner, f, junk, retire, weight])
+
+
+# Ejecuta pasos hasta gastar el presupuesto. Los de un duenyo fuera del arbol (pagina guardada, pantalla oculta) esperan.
+func _pump(force: bool = false) -> void:
+	if fq.is_empty() or (not force and Engine.get_process_frames() == fq_f0):
+		return
+	var t0 := Time.get_ticks_usec()
+	var i := 0
+	var did := false
+	var extra := 0   # coste que no se ve en el reloj: liberar un nodo se paga al final del fotograma
+	while i < fq.size():
+		var e: Array = fq[i]
+		var ow = e[0]
+		if not is_instance_valid(ow) or (ow as Node).is_queued_for_deletion():
+			fq.remove_at(i)
+			if e[2] != null and is_instance_valid(e[2]):
+				(e[2] as Node).queue_free()
+			continue
+		if not (ow as Control).is_visible_in_tree():
+			i += 1
+			continue
+		fq.remove_at(i)
+		(e[1] as Callable).call()
+		did = true
+		extra += int(e[4])
+		if Time.get_ticks_usec() - t0 + extra >= BUD_US:
+			break
+	if did:
+		gi_dirty = true
+
+
+# Descarta los pasos de construccion de un contenedor que se va a rehacer (los de liberacion siguen, salvo con all).
+func _fq_cancel(owner: Node, all: bool = false) -> void:
+	var i := 0
+	while i < fq.size():
+		var e: Array = fq[i]
+		if e[0] == owner and (all or not bool(e[3])):
+			fq.remove_at(i)
+			if e[2] != null and is_instance_valid(e[2]):
+				(e[2] as Node).queue_free()
+		else:
+			i += 1
+
+
+func _fq_pending(owner: Node) -> bool:
+	for e in fq:
+		if e[0] == owner:
+			return true
+	return false
+
+
+# Libera un arbol grande poco a poco (soltar 500 nodos de golpe cuesta ~3 ms): se oculta ya y se deshace por porciones.
+# holder es un contenedor que sigue en pantalla mientras tanto (de el cuelga n).
+func _retire(n: Node, holder: Control) -> void:
+	if n.has_meta("old"):
+		return
+	n.set_meta("old", true)
+	if n is CanvasItem:
+		(n as CanvasItem).visible = false
+	var units: Array = []
+	_retire_units(n, units)
+	for u in units:
+		var w: int = 6 * ((u as Node).find_children("*", "", true, false).size() + 1)
+		_later(holder, func():
+			if is_instance_valid(u):
+				var pr: Node = (u as Node).get_parent()
+				if pr != null:
+					pr.remove_child(u)
+				(u as Node).queue_free(), null, true, w)
+	_later(holder, func():
+		if is_instance_valid(n):
+			var pr2: Node = n.get_parent()
+			if pr2 != null:
+				pr2.remove_child(n)
+			n.queue_free(), null, true, 60)
+
+
+func _retire_units(n: Node, out: Array) -> void:
+	for c in n.get_children():
+		if c.get_child_count() > 0 and c.find_children("*", "", true, false).size() > 24:
+			_retire_units(c, out)
+		else:
+			out.append(c)
+
+
+# Pasa los hijos de src (suelto, fuera del arbol, ya construido) a dst (en el arbol) poco a poco.
+# Un hijo con meta "drip" (una cuadricula) se cuelga vacio y sus celdas van detras, una a una.
+func _drip(src: Node, dst: Control) -> void:
+	var hold := Node.new()   # aparca las celdas de las cuadriculas mientras tanto (cuelga de src: se libera con el)
+	src.add_child(hold)
+	for k in src.get_children():
+		if k == hold:
+			continue
+		if k.has_meta("drip") and k.get_child_count() > 1:
+			var cells: Array = k.get_children()
+			for c in cells:
+				k.remove_child(c)
+				hold.add_child(c)
+			_later(dst, func():
+				src.remove_child(k)
+				dst.add_child(k), src)
+			for c2 in cells:
+				_later(dst, func():
+					hold.remove_child(c2)
+					(k as Node).add_child(c2), src)
+		else:
+			_later(dst, func():
+				src.remove_child(k)
+				dst.add_child(k), src)
+	_later(dst, func(): src.queue_free(), src)
+
+
 func _name_of(dex: int) -> String:
 	return L.t(String(SV.dex_by[dex]["name"]))
 
@@ -2258,105 +2492,119 @@ var modes_cols_now := 0
 
 
 func _refresh_modes() -> void:
-	_clear(modes_box)
+	_fq_cancel(modes_box)
+	for c in modes_box.get_children():
+		_retire(c, modes_box)
+	gi_dirty = true
 	var mcols: int = _modes_cols()
 	modes_cols_now = mcols
 	var mg: GridContainer = _modes_grid(mcols)
 	SV.run_mods = Array(SV.d.get("mods", []))
+	# La primera tarjeta ya (recibe el foco); las demas, una por paso.
 	var first: Button = _mode_card(L.t("Partida normal"), L.t("La experiencia de siempre, igual que el juego original."), func(): _start_mode("normal"), "flag")
 	_mode_cell(mg, first)
-	var ds: int = SV.daily_seed()
-	var dd: Dictionary = SV.d.get("daily", {})
-	var best: int = int(dd.get("best", 0)) if int(dd.get("date", 0)) == ds else 0
-	var dm: String = SV.daily_mod(ds)
-	var dtxt: String = L.t("Hoy: %s con la regla «%s» (misma para todos). +25%% de monedas.") % [_name_of(SV.daily_dex(ds)), L.t(String(MOD_INFO[dm][0]))]
-	dtxt += "  " + (L.t("Tu mejor tiempo de hoy: %s") % ("%d:%02d" % [best / 60, best % 60]) if best > 0 else L.t("Aún no lo has jugado hoy."))
-	_mode_cell(mg, _mode_card(L.t("Desafío diario"), dtxt, func(): _start_mode("daily"), "m_daily"))
-	var rb: int = int(SV.d.get("rush_best", 0))
-	_mode_cell(mg, _mode_card(L.t("Rush de Jefes"), L.t("Solo jefes y legendarios, uno tras otro, cada vez más fuertes. Récord: %d jefes.") % rb, func(): _start_mode("rush"), "m_rush"))
-	var pd: int = SV.party_dex
-	var pb: Button = _mode_aux(L.t("Elegir Pokémon de la fiesta"), func():
-		dex_pick_party = true
-		toast(L.t("Toca un Pokémon para la fiesta"))
-		_show("dex"))
-	_mode_cell(mg, _mode_card(L.t("Modo Fiesta"), L.t("Cualquier Pokémon, no puedes morir y no se guarda progreso. Pokémon: %s") % _name_of(pd), func(): _start_mode("party"), "m_party"), pb)
-	var cdx: int = int(SV.d.get("coop_dex", 0))
-	if cdx <= 0 or not SV.dex_by.has(cdx):
-		cdx = 133
-		for x in SV.team_list():
-			if int(x) != int(SV.d["selected"]):
-				cdx = int(x)
-				break
-	var cb2: Button = _mode_aux(L.t("Elegir compañero"), func():
-		dex_pick_coop = true
-		toast(L.t("Toca el Pokémon que será tu compañero"))
-		_show("dex"))
-	_mode_cell(mg, _mode_card(L.t("Modo Cooperativo"), L.t("Un segundo Pokémon te acompaña y ataca solo. Si conectas un segundo mando, el jugador 2 lo mueve con su stick izquierdo. Comparte tus mejoras. -20%% de monedas. Compañero: %s") % _name_of(cdx), func(): _start_mode("coop"), "m_coop"), cb2)
-	var tw: Dictionary = SV.d.get("tower", {})
-	var tbest: int = int(tw.get("best", 0))
-	var rel: int = SV.tower_relics()
-	var tstarts: Array = [1]
-	var tcl: Dictionary = tw.get("claimed", {})
-	for k in range(5, TOWER_FLOORS_M, 5):
-		if tcl.has(str(k)):
-			tstarts.append(k + 1)
-	var tcur: int = int(SV.d.get("tower_start", 1))
-	if not tstarts.has(tcur):
-		tcur = 1
-		SV.d["tower_start"] = 1
-	var tsb: Button = null
-	if tstarts.size() > 1:
-		tsb = _mode_aux(L.t("Piso inicial: %d") % tcur, func():
-			var i: int = tstarts.find(int(SV.d.get("tower_start", 1)))
-			SV.d["tower_start"] = int(tstarts[(i + 1) % tstarts.size()])
+	_later(modes_box, func():
+		var ds: int = SV.daily_seed()
+		var dd: Dictionary = SV.d.get("daily", {})
+		var best: int = int(dd.get("best", 0)) if int(dd.get("date", 0)) == ds else 0
+		var dm: String = SV.daily_mod(ds)
+		var dtxt: String = L.t("Hoy: %s con la regla «%s» (misma para todos). +25%% de monedas.") % [_name_of(SV.daily_dex(ds)), L.t(String(MOD_INFO[dm][0]))]
+		dtxt += "  " + (L.t("Tu mejor tiempo de hoy: %s") % ("%d:%02d" % [best / 60, best % 60]) if best > 0 else L.t("Aún no lo has jugado hoy."))
+		_mode_cell(mg, _mode_card(L.t("Desafío diario"), dtxt, func(): _start_mode("daily"), "m_daily")))
+	_later(modes_box, func():
+		var rb: int = int(SV.d.get("rush_best", 0))
+		_mode_cell(mg, _mode_card(L.t("Rush de Jefes"), L.t("Solo jefes y legendarios, uno tras otro, cada vez más fuertes. Récord: %d jefes.") % rb, func(): _start_mode("rush"), "m_rush")))
+	_later(modes_box, func():
+		var pd: int = SV.party_dex
+		var pb: Button = _mode_aux(L.t("Elegir Pokémon de la fiesta"), func():
+			dex_pick_party = true
+			toast(L.t("Toca un Pokémon para la fiesta"))
+			_show("dex"))
+		_mode_cell(mg, _mode_card(L.t("Modo Fiesta"), L.t("Cualquier Pokémon, no puedes morir y no se guarda progreso. Pokémon: %s") % _name_of(pd), func(): _start_mode("party"), "m_party"), pb))
+	_later(modes_box, func():
+		var cdx: int = int(SV.d.get("coop_dex", 0))
+		if cdx <= 0 or not SV.dex_by.has(cdx):
+			cdx = 133
+			for x in SV.team_list():
+				if int(x) != int(SV.d["selected"]):
+					cdx = int(x)
+					break
+		var cb2: Button = _mode_aux(L.t("Elegir compañero"), func():
+			dex_pick_coop = true
+			toast(L.t("Toca el Pokémon que será tu compañero"))
+			_show("dex"))
+		_mode_cell(mg, _mode_card(L.t("Modo Cooperativo"), L.t("Un segundo Pokémon te acompaña y ataca solo. Si conectas un segundo mando, el jugador 2 lo mueve con su stick izquierdo. Comparte tus mejoras. -20%% de monedas. Compañero: %s") % _name_of(cdx), func(): _start_mode("coop"), "m_coop"), cb2))
+	_later(modes_box, func():
+		var tw: Dictionary = SV.d.get("tower", {})
+		var tbest: int = int(tw.get("best", 0))
+		var rel: int = SV.tower_relics()
+		var tstarts: Array = [1]
+		var tcl: Dictionary = tw.get("claimed", {})
+		for k in range(5, TOWER_FLOORS_M, 5):
+			if tcl.has(str(k)):
+				tstarts.append(k + 1)
+		var tcur: int = int(SV.d.get("tower_start", 1))
+		if not tstarts.has(tcur):
+			tcur = 1
+			SV.d["tower_start"] = 1
+		var tsb: Button = null
+		if tstarts.size() > 1:
+			tsb = _mode_aux(L.t("Piso inicial: %d") % tcur, func():
+				var i: int = tstarts.find(int(SV.d.get("tower_start", 1)))
+				SV.d["tower_start"] = int(tstarts[(i + 1) % tstarts.size()])
+				SV.save()
+				_refresh_modes())
+		_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6."), [tbest, rel]), func(): _start_mode("tower"), "m_tower"), tsb))
+	_later(modes_box, func():
+		var rbest: int = int(SV.d.get("rifts_best", 0))
+		_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock")))
+	_later(modes_box, func():
+		var ty: String = String(SV.d.get("mode_type", "fire"))
+		if not TYPE_IDS.has(ty):
+			ty = "fire"
+		var tb: Button = _mode_aux(L.t("Cambiar tipo: %s") % L.t(String(MD.TYPE_NAME[ty])), func():
+			SV.d["mode_type"] = String(TYPE_IDS[(TYPE_IDS.find(ty) + 1) % TYPE_IDS.size()])
 			SV.save()
 			_refresh_modes())
-	_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6."), [tbest, rel]), func(): _start_mode("tower"), "m_tower"), tsb)
-	var rbest: int = int(SV.d.get("rifts_best", 0))
-	_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock"))
-	var ty: String = String(SV.d.get("mode_type", "fire"))
-	if not TYPE_IDS.has(ty):
-		ty = "fire"
-	var tb: Button = _mode_aux(L.t("Cambiar tipo: %s") % L.t(String(MD.TYPE_NAME[ty])), func():
-		SV.d["mode_type"] = String(TYPE_IDS[(TYPE_IDS.find(ty) + 1) % TYPE_IDS.size()])
-		SV.save()
-		_refresh_modes())
-	_mode_cell(mg, _mode_card(L.t("Supervivencia por tipo"), L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % L.t(String(MD.TYPE_NAME[ty])), func(): _start_mode("type"), "m_type"), tb)
-	var tl: Array = SV.team_list()
-	var names: Array = []
-	for x in tl:
-		names.append(_name_of(int(x)))
-	if SV.owned_count() >= 2:
-		var eb: Button = _mode_aux(L.t("Elegir equipo (hasta 3)"), func():
-			dex_pick_team = true
-			SV.d["team"] = []
-			toast(L.t("Toca hasta 3 Pokémon tuyos para el equipo"))
-			_show("dex"))
-		_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Lleva hasta 3 Pokémon y cámbialos en plena partida (botón táctil de la derecha, tocando su ficha, R3 o Tab). Si uno cae, entra el siguiente; los de banca se recuperan. Equipo: %s") % ", ".join(names), func(): _start_mode("team"), "m_team"), eb)
-	else:
-		_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Necesitas al menos 2 Pokémon para formar un equipo."), func(): toast(L.t("Consigue otro Pokémon primero")), "m_team"))
-	var mh := _label(L.t("Modificadores (todos los modos menos Diario y Fiesta): +25% de monedas por cada uno activo"), 22, C_GOLD)
-	modes_box.add_child(mh)
-	var mm: GridContainer = _modes_grid(mcols)
+		_mode_cell(mg, _mode_card(L.t("Supervivencia por tipo"), L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % L.t(String(MD.TYPE_NAME[ty])), func(): _start_mode("type"), "m_type"), tb))
+	_later(modes_box, func():
+		var tl: Array = SV.team_list()
+		var names: Array = []
+		for x in tl:
+			names.append(_name_of(int(x)))
+		if SV.owned_count() >= 2:
+			var eb: Button = _mode_aux(L.t("Elegir equipo (hasta 3)"), func():
+				dex_pick_team = true
+				SV.d["team"] = []
+				toast(L.t("Toca hasta 3 Pokémon tuyos para el equipo"))
+				_show("dex"))
+			_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Lleva hasta 3 Pokémon y cámbialos en plena partida (botón táctil de la derecha, tocando su ficha, R3 o Tab). Si uno cae, entra el siguiente; los de banca se recuperan. Equipo: %s") % ", ".join(names), func(): _start_mode("team"), "m_team"), eb)
+		else:
+			_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Necesitas al menos 2 Pokémon para formar un equipo."), func(): toast(L.t("Consigue otro Pokémon primero")), "m_team")))
+	var mm: Array = [null]
+	_later(modes_box, func():
+		modes_box.add_child(_label(L.t("Modificadores (todos los modos menos Diario y Fiesta): +25% de monedas por cada uno activo"), 22, C_GOLD))
+		mm[0] = _modes_grid(mcols))
 	for id in SV.MOD_IDS:
-		var cb := CheckButton.new()
-		cb.text = L.t(String(MOD_INFO[id][0])) + " — " + L.t(String(MOD_INFO[id][1]))
-		cb.focus_mode = Control.FOCUS_ALL
-		cb.icon = IC.btn_tex(String(MOD_ICON[id]), 32)
-		cb.add_theme_constant_override("icon_max_width", 32)
-		cb.add_theme_font_size_override("font_size", 18 if compact else 20)
-		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cb.custom_minimum_size = Vector2(0, 48)
-		cb.button_pressed = SV.run_mods.has(id)
-		cb.toggled.connect(func(on: bool):
-			if on and not SV.run_mods.has(id):
-				SV.run_mods.append(id)
-			elif not on:
-				SV.run_mods.erase(id)
-			SV.d["mods"] = SV.run_mods.duplicate()
-			SV.save())
-		mm.add_child(cb)
+		_later(modes_box, func():
+			var cb := CheckButton.new()
+			cb.text = L.t(String(MOD_INFO[id][0])) + " — " + L.t(String(MOD_INFO[id][1]))
+			cb.focus_mode = Control.FOCUS_ALL
+			cb.icon = IC.btn_tex(String(MOD_ICON[id]), 32)
+			cb.add_theme_constant_override("icon_max_width", 32)
+			cb.add_theme_font_size_override("font_size", 18 if compact else 20)
+			cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			cb.custom_minimum_size = Vector2(0, 48)
+			cb.button_pressed = SV.run_mods.has(id)
+			cb.toggled.connect(func(on: bool):
+				if on and not SV.run_mods.has(id):
+					SV.run_mods.append(id)
+				elif not on:
+					SV.run_mods.erase(id)
+				SV.d["mods"] = SV.run_mods.duplicate()
+				SV.save())
+			(mm[0] as Control).add_child(cb))
 	focus_first = first
 
 
@@ -2524,49 +2772,56 @@ func _show_run_summary() -> void:
 		h3.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		h3.autowrap_mode = TextServer.AUTOWRAP_OFF
 		mg.add_child(h3)
+	# Las filas entran por porciones (cada una lleva icono y tres textos); el cuadro se muestra cuando estan todas,
+	# para que no se mueva al ir creciendo.
+	c.modulate.a = 0.0
 	for m in mlist:
-		var mr := HBoxContainer.new()
-		mr.add_theme_constant_override("separation", 6)
-		mr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		mr.add_child(IC.rect(("evo:" if bool(m.get("evo", false)) else "move:") + String(m["id"]), 20))
-		var ml := _label("%s Nv.%d" % [L.t(String(m["name"])), int(m["lvl"])], 17)
-		ml.autowrap_mode = TextServer.AUTOWRAP_OFF
-		mr.add_child(ml)
-		mg.add_child(mr)
-		var md_: int = int(m.get("dmg", 0))
-		var pct: int = roundi(100.0 * float(md_) / float(maxi(1, tot_dmg)))
-		var dl := _label("%s (%d%%)" % [_fmt_n(md_), pct], 17, Color("#ffd23f"))
-		dl.autowrap_mode = TextServer.AUTOWRAP_OFF
-		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		mg.add_child(dl)
-		var kl := _label(str(int(m.get("kills", 0))), 17)
-		kl.autowrap_mode = TextServer.AUTOWRAP_OFF
-		kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		mg.add_child(kl)
+		_later(mg, func():
+			var mr := HBoxContainer.new()
+			mr.add_theme_constant_override("separation", 6)
+			mr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			mr.add_child(IC.rect(("evo:" if bool(m.get("evo", false)) else "move:") + String(m["id"]), 20))
+			var ml := _label("%s Nv.%d" % [L.t(String(m["name"])), int(m["lvl"])], 17)
+			ml.autowrap_mode = TextServer.AUTOWRAP_OFF
+			mr.add_child(ml)
+			mg.add_child(mr)
+			var md_: int = int(m.get("dmg", 0))
+			var pct: int = roundi(100.0 * float(md_) / float(maxi(1, tot_dmg)))
+			var dl := _label("%s (%d%%)" % [_fmt_n(md_), pct], 17, Color("#ffd23f"))
+			dl.autowrap_mode = TextServer.AUTOWRAP_OFF
+			dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			mg.add_child(dl)
+			var kl := _label(str(int(m.get("kills", 0))), 17)
+			kl.autowrap_mode = TextServer.AUTOWRAP_OFF
+			kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			mg.add_child(kl))
 	if int(r.get("ally_dmg", 0)) > 0 or int(r.get("ally_kills", 0)) > 0:
-		var al := _label("Compañero / equipo", 17, Color("#8fe3b0"))
-		al.autowrap_mode = TextServer.AUTOWRAP_OFF
-		mg.add_child(al)
-		var ad := _label("%s (%d%%)" % [_fmt_n(int(r.get("ally_dmg", 0))), roundi(100.0 * float(int(r.get("ally_dmg", 0))) / float(maxi(1, tot_dmg)))], 17, Color("#8fe3b0"))
-		ad.autowrap_mode = TextServer.AUTOWRAP_OFF
-		ad.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		mg.add_child(ad)
-		var ak := _label(str(int(r.get("ally_kills", 0))), 17, Color("#8fe3b0"))
-		ak.autowrap_mode = TextServer.AUTOWRAP_OFF
-		ak.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		mg.add_child(ak)
+		_later(mg, func():
+			var al := _label("Compañero / equipo", 17, Color("#8fe3b0"))
+			al.autowrap_mode = TextServer.AUTOWRAP_OFF
+			mg.add_child(al)
+			var ad := _label("%s (%d%%)" % [_fmt_n(int(r.get("ally_dmg", 0))), roundi(100.0 * float(int(r.get("ally_dmg", 0))) / float(maxi(1, tot_dmg)))], 17, Color("#8fe3b0"))
+			ad.autowrap_mode = TextServer.AUTOWRAP_OFF
+			ad.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			mg.add_child(ad)
+			var ak := _label(str(int(r.get("ally_kills", 0))), 17, Color("#8fe3b0"))
+			ak.autowrap_mode = TextServer.AUTOWRAP_OFF
+			ak.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			mg.add_child(ak))
 	if int(r.get("other_dmg", 0)) > 0 or int(r.get("other_kills", 0)) > 0:
-		var ol := _label("Otros (estados, trampas, objetos)", 15, Color("#9fb4dc"))
-		ol.autowrap_mode = TextServer.AUTOWRAP_OFF
-		mg.add_child(ol)
-		var od := _label(_fmt_n(int(r.get("other_dmg", 0))), 15, Color("#9fb4dc"))
-		od.autowrap_mode = TextServer.AUTOWRAP_OFF
-		od.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		mg.add_child(od)
-		var ok2 := _label(str(int(r.get("other_kills", 0))), 15, Color("#9fb4dc"))
-		ok2.autowrap_mode = TextServer.AUTOWRAP_OFF
-		ok2.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		mg.add_child(ok2)
+		_later(mg, func():
+			var ol := _label("Otros (estados, trampas, objetos)", 15, Color("#9fb4dc"))
+			ol.autowrap_mode = TextServer.AUTOWRAP_OFF
+			mg.add_child(ol)
+			var od := _label(_fmt_n(int(r.get("other_dmg", 0))), 15, Color("#9fb4dc"))
+			od.autowrap_mode = TextServer.AUTOWRAP_OFF
+			od.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			mg.add_child(od)
+			var ok2 := _label(str(int(r.get("other_kills", 0))), 15, Color("#9fb4dc"))
+			ok2.autowrap_mode = TextServer.AUTOWRAP_OFF
+			ok2.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			mg.add_child(ok2))
+	_later(mg, func(): c.modulate.a = 1.0)
 	v.add_child(mc)
 	if bool(r.get("record", false)):
 		var rl := _label("¡Nuevo récord de tiempo!", 22, C_GOLD)
@@ -2822,72 +3077,86 @@ func _refresh_dex() -> void:
 	var list: Array = _dex_filtered()
 	var pages: int = maxi(1, ceili(float(list.size()) / float(PER_PAGE)))
 	dex_page = clampi(dex_page, 0, pages - 1)
+	_fq_cancel(dex_grid)
 	_clear(dex_grid)
+	var lo: int = dex_page * PER_PAGE
+	var hi: int = mini(list.size(), (dex_page + 1) * PER_PAGE)
+	# las hojas de los iconos se leen y decodifican en segundo plano mientras se van colgando los botones
+	for i in range(lo, hi):
+		var dxp: int = int(list[i]["dex"])
+		Preview.prefetch(dxp, SV.owns(dxp) and bool(SV.d["owned"][str(dxp)]["shiny"]) and bool(SV.d["shiny_on"]))
 	var first: Button = null
-	for i in range(dex_page * PER_PAGE, mini(list.size(), (dex_page + 1) * PER_PAGE)):
-		var p: Dictionary = list[i]
-		var dx: int = int(p["dex"])
-		var owned: bool = SV.owns(dx)
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(118, 96)
-		b.focus_mode = Control.FOCUS_ALL
-		var shn: bool = owned and bool(SV.d["owned"][str(dx)]["shiny"]) and bool(SV.d["shiny_on"])
-		var tx: Texture2D = _icon_tex(dx, shn)
-		if tx != null:
-			b.icon = tx
-			b.expand_icon = true
-			b.add_theme_constant_override("icon_max_width", 48)
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-		b.text = ("#%d %s" % [dx, L.t(String(p["name"]))]) if (owned or dex_pick_party) else "#%d ???" % dx
-		b.add_theme_font_size_override("font_size", 13)
-		b.clip_text = true   # el nombre largo (otros idiomas) se recorta con "..." en vez de ensanchar la columna
-		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		if not owned and not dex_pick_party:
-			for k in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
-				b.add_theme_color_override(k, Color(0, 0, 0, 0.85))
-		if dx == int(SV.d["selected"]):
-			b.add_theme_stylebox_override("normal", _sb(Color("#3a6a2e"), C_GOLD, 3))
-		if dex_pick_party:
-			b.pressed.connect(func():
-				SV.party_dex = dx
-				dex_pick_party = false
-				toast(L.t("Pokémon de la fiesta: %s") % _name_of(dx))
-				_show("modes"))
-		elif dex_pick_coop:
-			b.pressed.connect(func():
-				SV.d["coop_dex"] = dx
-				SV.save()
-				dex_pick_coop = false
-				toast(L.t("Compañero: %s") % _name_of(dx))
-				_show("modes"))
-		elif dex_pick_team:
-			if Array(SV.d.get("team", [])).has(dx):
-				b.add_theme_stylebox_override("normal", _sb(Color("#2e6a5a"), C_GOLD, 3))
-			b.pressed.connect(func():
-				var tm: Array = Array(SV.d.get("team", []))
-				if tm.has(dx):
-					tm.erase(dx)
-				elif tm.size() < 3:
-					tm.append(dx)
-				SV.d["team"] = tm
-				SV.save()
-				if tm.size() >= 3:
-					dex_pick_team = false
-					toast(L.t("¡Equipo listo!"))
-					_show("modes")
-				else:
-					toast(L.t("Equipo: %d / 3") % tm.size())
-					_refresh_dex())
+	for i in range(lo, hi):
+		var mk := func():
+			var p: Dictionary = list[i]
+			var dx: int = int(p["dex"])
+			var owned: bool = SV.owns(dx)
+			var b := Button.new()
+			b.custom_minimum_size = Vector2(118, 96)
+			b.focus_mode = Control.FOCUS_ALL
+			var shn: bool = owned and bool(SV.d["owned"][str(dx)]["shiny"]) and bool(SV.d["shiny_on"])
+			var tx: Texture2D = _icon_tex(dx, shn)
+			if tx != null:
+				b.icon = tx
+				b.expand_icon = true
+				b.add_theme_constant_override("icon_max_width", 48)
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			b.text = ("#%d %s" % [dx, L.t(String(p["name"]))]) if (owned or dex_pick_party) else "#%d ???" % dx
+			b.add_theme_font_size_override("font_size", 13)
+			b.clip_text = true   # el nombre largo (otros idiomas) se recorta con "..." en vez de ensanchar la columna
+			b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			if not owned and not dex_pick_party:
+				for k in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
+					b.add_theme_color_override(k, Color(0, 0, 0, 0.85))
+			if dx == int(SV.d["selected"]):
+				b.add_theme_stylebox_override("normal", _sb(Color("#3a6a2e"), C_GOLD, 3))
+			if dex_pick_party:
+				b.pressed.connect(func():
+					SV.party_dex = dx
+					dex_pick_party = false
+					toast(L.t("Pokémon de la fiesta: %s") % _name_of(dx))
+					_show("modes"))
+			elif dex_pick_coop:
+				b.pressed.connect(func():
+					SV.d["coop_dex"] = dx
+					SV.save()
+					dex_pick_coop = false
+					toast(L.t("Compañero: %s") % _name_of(dx))
+					_show("modes"))
+			elif dex_pick_team:
+				if Array(SV.d.get("team", [])).has(dx):
+					b.add_theme_stylebox_override("normal", _sb(Color("#2e6a5a"), C_GOLD, 3))
+				b.pressed.connect(func():
+					var tm: Array = Array(SV.d.get("team", []))
+					if tm.has(dx):
+						tm.erase(dx)
+					elif tm.size() < 3:
+						tm.append(dx)
+					SV.d["team"] = tm
+					SV.save()
+					if tm.size() >= 3:
+						dex_pick_team = false
+						toast(L.t("¡Equipo listo!"))
+						_show("modes")
+					else:
+						toast(L.t("Equipo: %d / 3") % tm.size())
+						_refresh_dex())
+			else:
+				b.pressed.connect(func(): dex_sel = dx; _dex_detail())
+			dex_grid.add_child(b)
+			return b
+		if i == lo:
+			first = mk.call()   # el primero ya, para dar foco; el resto por porciones
 		else:
-			b.pressed.connect(func(): dex_sel = dx; _dex_detail())
-		dex_grid.add_child(b)
-		if first == null:
-			first = b
+			_later(dex_grid, mk)
+		if i == lo:
+			_later(dex_grid, func(): _dex_detail())   # la ficha va justo despues del primer boton
 	dex_page_lbl.text = L.t("Página %d / %d  (%d)") % [dex_page + 1, pages, list.size()]
 	if not SV.dex_by.has(dex_sel) or not SV.owns(dex_sel):
 		dex_sel = int(SV.d["selected"])
-	_dex_detail()
+	if hi <= lo:
+		_dex_detail()
 	focus_first = first
 
 
@@ -2971,7 +3240,7 @@ func _build_up() -> void:
 const UP_ICON := {"hp": "heart", "atk": "fist", "spd": "boot", "cd": "clock", "def": "shield", "regen": "sprout", "magnet": "magnet", "xp": "book", "coins": "coin", "moves": "cards", "crit": "star", "size": "size", "reroll": "bond", "ban": "ban", "revive": "revive", "bag": "bag", "tm": "tm"}
 
 
-# Reconstruye la pantalla de mejoras sin perder la seleccion del mando ni el scroll.
+# Actualiza la pantalla de mejoras sin perder la seleccion del mando ni el scroll.
 func _refresh_up_keep(key: String) -> void:
 	var sc: ScrollContainer = null
 	var p: Node = up_box.get_parent()
@@ -2983,6 +3252,11 @@ func _refresh_up_keep(key: String) -> void:
 	_refresh_up()
 	await get_tree().process_frame
 	await get_tree().process_frame
+	# la reconstruccion llega por porciones: se espera a que termine (como mucho ~2 s)
+	var guard := 0
+	while (_fq_pending(up_box) or _fq_pending(up_tail)) and guard < 90:
+		guard += 1
+		await get_tree().process_frame
 	if not is_instance_valid(up_box) or cur != "up":
 		return
 	if sc != null:
@@ -2990,7 +3264,8 @@ func _refresh_up_keep(key: String) -> void:
 	var cand: Array = []
 	for b in up_box.find_children("*", "Control", true, false):
 		if b is BaseButton or b is OptionButton:
-			cand.append(b)
+			if not b.is_queued_for_deletion() and b.is_visible_in_tree():
+				cand.append(b)
 	var target: Control = null
 	var idx_key := -1
 	for i in range(cand.size()):
@@ -3017,11 +3292,49 @@ func _refresh_up_keep(key: String) -> void:
 			sc.ensure_control_visible(target)
 
 
+# Lo que decide la estructura de las tarjetas: si coincide con lo construido solo se actualizan los valores.
+func _up_sig(cols: int) -> String:
+	var sg := "%d_%d_%d_%d_%d" % [lay_gen, cols, int(up_dex == int(SV.d["selected"])), int(SV.up_level("tm", up_dex) > 0), int(SV.up_level("ban", up_dex) > 0)]
+	for u in SV.UPGRADES:
+		sg += "1" if SV.up_level(String(u["id"]), up_dex) >= int(u["max"]) else "0"
+	return sg
+
+
 func _refresh_up() -> void:
-	_clear(up_box)
 	if not SV.owns(up_dex):
 		up_dex = int(SV.d["selected"])
-	var first: Button = null
+	var cols: int = maxi(2, DSP.cols(_content_w(), 340.0, 10.0, 3))
+	var sg := _up_sig(cols)
+	if sg == up_sig and up_box.get_child_count() > 0 and not _fq_pending(up_box):
+		_up_update()
+	else:
+		_up_build(cols, sg)
+	_up_tail()
+
+
+func _up_head_text() -> String:
+	var par0: String = L.t(" (compañero)") if up_dex == int(SV.d["selected"]) else ""
+	return L.t("%s%s · %d niveles") % [_name_of(up_dex), par0, SV.up_total(up_dex)] + "  ▾"
+
+
+func _up_type_col() -> Color:
+	var tcol := Color("#ff7b3d")
+	var types: Array = SV.dex_by[up_dex]["types"]
+	if not types.is_empty():
+		tcol = Color.html(String(MD.TYPE_COLOR.get(String(types[0]), "#ff7b3d")))
+	return tcol
+
+
+# Primera construccion (o cambio de estructura): cabecera ya, tarjetas por porciones.
+func _up_build(cols: int, sg: String) -> void:
+	_fq_cancel(up_box)
+	for c in up_box.get_children():
+		_retire(c, up_box)
+	up_sig = sg
+	up_cards = []
+	up_ui = {}
+	up_tail_key = ""
+	focus_first = null
 	# --- cabecera: retrato animado + selector de Pokemon
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 16)
@@ -3029,11 +3342,7 @@ func _refresh_up() -> void:
 	var por := Portrait.new()
 	por.custom_minimum_size = Vector2(190, 160)
 	head.add_child(por)
-	var tcol := Color("#ff7b3d")
-	var types: Array = SV.dex_by[up_dex]["types"]
-	if not types.is_empty():
-		tcol = Color.html(String(MD.TYPE_COLOR.get(String(types[0]), "#ff7b3d")))
-	por.setup(up_dex, tcol)
+	por.setup(up_dex, _up_type_col())
 	var hv := VBoxContainer.new()
 	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hv.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -3042,12 +3351,10 @@ func _refresh_up() -> void:
 	var orow := HBoxContainer.new()
 	hv.add_child(orow)
 	var owned: Array = _up_owned()
-	var cur_i: int = maxi(owned.find(up_dex), 0)
 	var prev_b := _btn("◀", func(): _up_step(-1), Vector2(64, 56))
 	prev_b.set_meta("fk", "upprev")
 	orow.add_child(prev_b)
-	var par0: String = L.t(" (compañero)") if up_dex == int(SV.d["selected"]) else ""
-	var pick_b := _btn(L.t("%s%s · %d niveles") % [_name_of(up_dex), par0, SV.up_total(up_dex)] + "  ▾", _open_up_picker, Vector2(120 if compact else 360, 56))
+	var pick_b := _btn(_up_head_text(), _open_up_picker, Vector2(120 if compact else 360, 56))
 	pick_b.set_meta("fk", "uppick")
 	pick_b.clip_text = true   # el nombre largo se recorta en vez de ensanchar la pantalla
 	pick_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -3066,86 +3373,111 @@ func _refresh_up() -> void:
 			hv.add_child(pb)
 		else:
 			orow.add_child(pb)
+	up_ui = {"por": por, "pick": pick_b, "prev": prev_b, "next": next_b, "dex": up_dex}
 	# --- tarjetas de mejoras
 	var grid := GridContainer.new()
-	grid.columns = maxi(2, DSP.cols(_content_w(), 340.0, 10.0, 3))
+	grid.columns = cols
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 12)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	up_box.add_child(grid)
-	var up_anchors: Array = []
-	var up_extra: Array = []
-	for u in SV.UPGRADES:
-		var id: String = String(u["id"])
-		var lv: int = SV.up_level(id, up_dex)
-		var mx: int = int(u["max"])
-		var card := PanelContainer.new()
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.add_theme_stylebox_override("panel", _card_sb())
-		grid.add_child(card)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		card.add_child(row)
-		var uic := IC.rect(String(UP_ICON.get(id, "star")), 36)
-		uic.custom_minimum_size.x = 44
-		row.add_child(uic)
-		var col := VBoxContainer.new()
-		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		col.add_theme_constant_override("separation", 2)
-		row.add_child(col)
-		col.add_child(_label(String(u["name"]), 22))
-		col.add_child(_label(String(u["unit"]), 16, Color("#c8d6ee")))
-		var pips := Pips.new()
-		pips.setup(lv, mx)
-		col.add_child(pips)
-		var btn: Button
-		if lv >= mx:
-			btn = _btn("Máximo", func(): pass, Vector2(120, 52))
-			btn.disabled = true
-			btn.add_theme_stylebox_override("disabled", _sb(Color("#2b3452"), Color("#4a5578"), 3, 12))
-		else:
-			var cost: int = SV.up_cost(id, lv)
-			btn = _cost_btn("", str(cost), "", "coin", func(): _buy(id), Vector2(120, 52), int(SV.d["coins"]) >= cost, false, true)
-			btn.set_meta("fk", "u:" + id)
-			if first == null and not btn.disabled:
-				first = btn
-		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		up_anchors.append(btn if not btn.disabled else null)
-		up_extra.append(null)
-		if id == "tm" and lv > 0:
-			var tmcol := VBoxContainer.new()
-			tmcol.add_theme_constant_override("separation", 6)
-			tmcol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			var et := _btn(L.t("Elegir"), func(): tm_open = not tm_open; _refresh_up_keep("tmelegir"), Vector2(120, 44))
-			et.set_meta("fk", "tmelegir")
-			up_extra[up_extra.size() - 1] = et
-			tmcol.add_child(et)
-			tmcol.add_child(btn)
-			row.add_child(tmcol)
-		elif id == "ban" and lv > 0:
-			var bcol := VBoxContainer.new()
-			bcol.add_theme_constant_override("separation", 6)
-			bcol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			var nb: int = mini(SV.ban_list(up_dex).size(), lv)
-			var eb := _btn(L.t("Elegir (%d/%d)") % [nb, lv], func(): ban_open = not ban_open; _refresh_up_keep("elegir"), Vector2(120, 44))
-			eb.set_meta("fk", "elegir")
-			up_extra[up_extra.size() - 1] = eb
-			bcol.add_child(eb)
-			bcol.add_child(btn)
-			row.add_child(bcol)
-		else:
-			row.add_child(btn)
-	focus_first = first
-	# Izquierda/derecha: cicla dentro de la fila de tarjetas (con vuelta al otro extremo).
-	var ncol: int = grid.columns
+	up_tail = VBoxContainer.new()
+	up_tail.add_theme_constant_override("separation", 12)
+	up_box.add_child(up_tail)
+	# la primera mejora que se puede pagar recibe el foco cuando se construye su tarjeta
+	up_focus_id = ""
+	for u0 in SV.UPGRADES:
+		var lv0: int = SV.up_level(String(u0["id"]), up_dex)
+		if lv0 < int(u0["max"]) and int(SV.d["coins"]) >= SV.up_cost(String(u0["id"]), lv0):
+			up_focus_id = String(u0["id"])
+			break
+	var n_cards: int = SV.UPGRADES.size()
+	for ci in range(n_cards):
+		_later(up_box, func(): _up_card(grid, SV.UPGRADES[ci]))
+	_later(up_box, func(): _up_wire(cols))
+
+
+func _up_card(grid: GridContainer, u: Dictionary) -> void:
+	var id: String = String(u["id"])
+	var lv: int = SV.up_level(id, up_dex)
+	var mx: int = int(u["max"])
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", _card_sb())
+	grid.add_child(card)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	card.add_child(row)
+	var uic := IC.rect(String(UP_ICON.get(id, "star")), 36)
+	uic.custom_minimum_size.x = 44
+	row.add_child(uic)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 2)
+	row.add_child(col)
+	col.add_child(_label(String(u["name"]), 22))
+	col.add_child(_label(String(u["unit"]), 16, Color("#c8d6ee")))
+	var pips := Pips.new()
+	pips.setup(lv, mx)
+	col.add_child(pips)
+	var btn: Button
+	if lv >= mx:
+		btn = _btn("Máximo", func(): pass, Vector2(120, 52))
+		btn.disabled = true
+		btn.add_theme_stylebox_override("disabled", _sb(Color("#2b3452"), Color("#4a5578"), 3, 12))
+	else:
+		var cost: int = SV.up_cost(id, lv)
+		btn = _cost_btn("", str(cost), "", "coin", func(): _buy(id), Vector2(120, 52), int(SV.d["coins"]) >= cost, false, true)
+		btn.set_meta("fk", "u:" + id)
+		if id == up_focus_id:
+			focus_first = btn
+			up_focus_id = ""
+			if cur == "up" and get_viewport().gui_get_focus_owner() == null:
+				_gf(btn)
+	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var ent := {"id": id, "u": u, "pips": pips, "btn": btn, "extra": null}
+	if id == "tm" and lv > 0:
+		var tmcol := VBoxContainer.new()
+		tmcol.add_theme_constant_override("separation", 6)
+		tmcol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var et := _btn(L.t("Elegir"), func(): tm_open = not tm_open; _refresh_up_keep("tmelegir"), Vector2(120, 44))
+		et.set_meta("fk", "tmelegir")
+		ent["extra"] = et
+		tmcol.add_child(et)
+		tmcol.add_child(btn)
+		row.add_child(tmcol)
+	elif id == "ban" and lv > 0:
+		var bcol := VBoxContainer.new()
+		bcol.add_theme_constant_override("separation", 6)
+		bcol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var nb: int = mini(SV.ban_list(up_dex).size(), lv)
+		var eb := _btn(L.t("Elegir (%d/%d)") % [nb, lv], func(): ban_open = not ban_open; _refresh_up_keep("elegir"), Vector2(120, 44))
+		eb.set_meta("fk", "elegir")
+		ent["extra"] = eb
+		bcol.add_child(eb)
+		bcol.add_child(btn)
+		row.add_child(bcol)
+	else:
+		row.add_child(btn)
+	up_cards.append(ent)
+
+
+# Izquierda/derecha: cicla dentro de la fila de tarjetas (con vuelta al otro extremo).
+func _up_wire(ncol: int) -> void:
 	var ri := 0
-	while ri < up_anchors.size():
+	while ri < up_cards.size():
 		var rowb: Array = []
 		var rowx: Array = []
 		for ci in range(ncol):
-			if ri + ci < up_anchors.size() and up_anchors[ri + ci] != null:
-				rowb.append(up_anchors[ri + ci])
-				rowx.append(up_extra[ri + ci])
+			if ri + ci < up_cards.size():
+				var ent: Dictionary = up_cards[ri + ci]
+				var bt: Button = ent["btn"]
+				if not bt.disabled:
+					rowb.append(bt)
+					rowx.append(ent["extra"])
+				else:
+					bt.focus_neighbor_left = NodePath()
+					bt.focus_neighbor_right = NodePath()
 		for k in range(rowb.size()):
 			var nxt: Control = rowb[(k + 1) % rowb.size()]
 			var prv: Control = rowb[posmod(k - 1, rowb.size())]
@@ -3155,12 +3487,53 @@ func _refresh_up() -> void:
 				bb.focus_neighbor_right = bb.get_path_to(nxt)
 				bb.focus_neighbor_left = bb.get_path_to(prv)
 		ri += ncol
-	if SV.up_level("tm", up_dex) > 0 and tm_open:
-		up_box.add_child(_tm_panel())
+
+
+# Misma estructura que la construida: solo cambian los valores (niveles, costes, nombre), sin tocar el arbol.
+func _up_update() -> void:
+	var owned: Array = _up_owned()
+	if int(up_ui["dex"]) != up_dex:
+		up_ui["dex"] = up_dex
+		(up_ui["por"] as Portrait).setup(up_dex, _up_type_col())
+	(up_ui["pick"] as Button).text = _up_head_text()
+	(up_ui["prev"] as Button).disabled = owned.size() < 2
+	(up_ui["next"] as Button).disabled = owned.size() < 2
+	focus_first = null
+	for ent in up_cards:
+		var u: Dictionary = ent["u"]
+		var id: String = String(ent["id"])
+		var lv: int = SV.up_level(id, up_dex)
+		if (ent["pips"] as Pips).lv != lv:
+			(ent["pips"] as Pips).setup(lv, int(u["max"]))
+		var bt: Button = ent["btn"]
+		if lv < int(u["max"]):
+			var cost: int = SV.up_cost(id, lv)
+			_cost_update(bt, str(cost), int(SV.d["coins"]) >= cost)
+			if focus_first == null and not bt.disabled:
+				focus_first = bt
+		if id == "ban" and ent["extra"] != null:
+			(ent["extra"] as Button).text = L.t("Elegir (%d/%d)") % [mini(SV.ban_list(up_dex).size(), lv), lv]
+	_up_wire(maxi(2, DSP.cols(_content_w(), 340.0, 10.0, 3)))
+	gi_dirty = true
+
+
+# Paneles de debajo (MT, veto, atajos): se rehacen solo si lo que muestran cambia, por porciones.
+func _up_tail() -> void:
+	var show_tm: bool = SV.up_level("tm", up_dex) > 0 and tm_open
 	var ban_lv: int = SV.up_level("ban", up_dex)
-	if ban_lv > 0 and ban_open:
-		up_box.add_child(_ban_panel(ban_lv))
-	up_box.add_child(_bind_panel())
+	var show_ban: bool = ban_lv > 0 and ban_open
+	var key := "%d_%d_%d_%d_%d_%s_%s_%s" % [up_dex, lay_gen, int(show_tm), int(show_ban), ban_lv, SV.start_move_of(up_dex) if show_tm else "", ",".join(PackedStringArray(SV.ban_list(up_dex))) if show_ban else "", ",".join(PackedStringArray(SV.bind_list(up_dex)))]
+	if key == up_tail_key:
+		return
+	up_tail_key = key
+	_fq_cancel(up_tail)
+	for c in up_tail.get_children():
+		_retire(c, up_tail)
+	if show_tm:
+		_later(up_tail, func(): up_tail.add_child(_tm_panel()))
+	if show_ban:
+		_later(up_tail, func(): up_tail.add_child(_ban_panel(ban_lv)))
+	_later(up_tail, func(): _bind_panel_into(up_tail))
 
 
 # MT: elige el movimiento con el que empiezas cada partida (gratis cambiarlo cuando quieras).
@@ -3227,7 +3600,8 @@ func _ban_panel(max_n: int) -> Control:
 
 
 # Atajos: que movimiento va siempre en cada hueco (teclas 1-4 o iconos de abajo).
-func _bind_panel() -> Control:
+# Cuelga el panel de parent y crea los 4 desplegables (cada uno con su ventana emergente) uno por paso.
+func _bind_panel_into(parent: Control) -> void:
 	var pc := PanelContainer.new()
 	pc.add_theme_stylebox_override("panel", _card_sb())
 	var v := VBoxContainer.new()
@@ -3241,41 +3615,43 @@ func _bind_panel() -> Control:
 	ids.append(SV.start_move_of(up_dex))
 	ids.sort_custom(func(a, b): return L.t(String(MD.MOVES[a]["name"])) < L.t(String(MD.MOVES[b]["name"])))
 	var cur: Array = SV.bind_list(up_dex)
+	var dex_b: int = up_dex
 	# 4 desplegables: en una fila, o 2x2 si la zona util es estrecha (cambia solo en _fit_layout)
 	var row := GridContainer.new()
 	row.columns = 4 if compact else 8
 	row.add_theme_constant_override("h_separation", 10)
 	row.add_theme_constant_override("v_separation", 8)
 	v.add_child(row)
+	parent.add_child(pc)
 	for i in range(4):
-		var num := _label(str(i + 1), 22, C_GOLD)
-		row.add_child(num)
-		var ob := OptionButton.new()
-		ob.custom_minimum_size = Vector2(110, 46)
-		ob.fit_to_longest_item = false   # si no, el ancho minimo es el del movimiento con el nombre mas largo
-		ob.clip_text = true
-		ob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		ob.focus_mode = Control.FOCUS_ALL
-		# lista del desplegable comoda con mando/dedo: filas altas, letra grande, y no mas alta que la pantalla
-		var pop: PopupMenu = ob.get_popup()
-		pop.add_theme_constant_override("v_separation", 12)
-		pop.add_theme_font_size_override("font_size", 20)
-		ob.add_item(L.t("Libre"), 0)
-		var sel := 0
-		for k in range(ids.size()):
-			ob.add_item(L.t(String(MD.MOVES[ids[k]]["name"])), k + 1)
-			if String(cur[i]) == String(ids[k]):
-				sel = k + 1
-		ob.select(sel)
 		var slot: int = i
-		ob.item_selected.connect(func(idx: int):
-			var pick: String = "" if idx == 0 else String(ids[idx - 1])
-			SV.bind_set(up_dex, slot, pick)
-			Aud.sfx("select")
-			_refresh_up_keep("bind%d" % slot))
-		ob.set_meta("fk", "bind%d" % slot)
-		row.add_child(ob)
-	return pc
+		_later(parent, func():
+			var num := _label(str(slot + 1), 22, C_GOLD)
+			row.add_child(num)
+			var ob := OptionButton.new()
+			ob.custom_minimum_size = Vector2(110, 46)
+			ob.fit_to_longest_item = false   # si no, el ancho minimo es el del movimiento con el nombre mas largo
+			ob.clip_text = true
+			ob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ob.focus_mode = Control.FOCUS_ALL
+			# lista del desplegable comoda con mando/dedo: filas altas, letra grande, y no mas alta que la pantalla
+			var pop: PopupMenu = ob.get_popup()
+			pop.add_theme_constant_override("v_separation", 12)
+			pop.add_theme_font_size_override("font_size", 20)
+			ob.add_item(L.t("Libre"), 0)
+			var sel := 0
+			for k in range(ids.size()):
+				ob.add_item(L.t(String(MD.MOVES[ids[k]]["name"])), k + 1)
+				if String(cur[slot]) == String(ids[k]):
+					sel = k + 1
+			ob.select(sel)
+			ob.item_selected.connect(func(idx: int):
+				var pick: String = "" if idx == 0 else String(ids[idx - 1])
+				SV.bind_set(dex_b, slot, pick)
+				Aud.sfx("select")
+				_refresh_up_keep("bind%d" % slot))
+			ob.set_meta("fk", "bind%d" % slot)
+			row.add_child(ob))
 
 
 func _up_owned() -> Array:
@@ -3298,7 +3674,7 @@ func _up_step(d: int) -> void:
 
 func _close_up_picker() -> void:
 	if up_picker != null and is_instance_valid(up_picker):
-		up_picker.queue_free()
+		_retire(up_picker, self)   # se oculta ya y se libera por porciones (cientos de botones)
 	up_picker = null
 
 
@@ -3311,12 +3687,14 @@ func _open_up_picker() -> void:
 	_build_up_picker()
 
 
-func _pk_filter_row(parent: Control, items: Array, cur_val, on_pick: Callable, prefix: String) -> void:
+func _pk_filter_row(parent: Control, items: Array, cur_val, on_pick: Callable, prefix: String, at: int = -1) -> void:
 	var sc := _new_scroll()
 	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.custom_minimum_size = Vector2(0, 58)
 	sc.get_h_scroll_bar().custom_minimum_size.y = 12
 	parent.add_child(sc)
+	if at >= 0:
+		parent.move_child(sc, at)
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 6)
 	sc.add_child(hb)
@@ -3378,11 +3756,12 @@ func _build_up_picker() -> void:
 	var gens: Array = [{"v": 0, "t": L.t("Todas")}]
 	for gi in range(SV.REGIONS.size()):
 		gens.append({"v": gi + 1, "t": "%d · %s" % [gi + 1, L.t(SV.REGIONS[gi])]})
-	_pk_filter_row(v, gens, pk_gen, func(x): pk_gen = int(x); _build_up_picker(), "g")
+	# las dos filas de filtros entran en pasos propios (en su hueco: tras el buscador)
+	_later(root, func(): _pk_filter_row(v, gens, pk_gen, func(x): pk_gen = int(x); _build_up_picker(), "g", 2))
 	var tys: Array = [{"v": "", "t": L.t("Todas")}]
 	for tk in MD.TYPE_NAME.keys():
 		tys.append({"v": String(tk), "t": L.t(String(MD.TYPE_NAME[tk])), "c": String(MD.TYPE_COLOR.get(tk, "#ffffff"))})
-	_pk_filter_row(v, tys, pk_type, func(x): pk_type = String(x); _build_up_picker(), "t")
+	_later(root, func(): _pk_filter_row(v, tys, pk_type, func(x): pk_type = String(x); _build_up_picker(), "t", 3))
 	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -3394,37 +3773,18 @@ func _build_up_picker() -> void:
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	sc.add_child(grid)
-	var focus_b: Button = null
 	var shown := 0
+	var ds: Array = []   # los que pasan el filtro, en orden
 	for dx in _up_owned():
-		var d: int = int(dx)
-		var info: Dictionary = SV.dex_by[d]
-		if pk_gen != 0 and int(info["gen"]) != pk_gen:
+		var info0: Dictionary = SV.dex_by[int(dx)]
+		if pk_gen != 0 and int(info0["gen"]) != pk_gen:
 			continue
-		if pk_type != "" and not Array(info["types"]).has(pk_type):
+		if pk_type != "" and not Array(info0["types"]).has(pk_type):
 			continue
-		shown += 1
-		var par: String = L.t(" (compañero)") if d == int(SV.d["selected"]) else ""
-		var mark: String = "✔ " if d == up_dex else ""
-		var b := _btn(mark + L.t("%s%s · %d niveles") % [_name_of(d), par, SV.up_total(d)], func():
-			up_dex = d
-			_close_up_picker()
-			Aud.sfx("select")
-			_refresh_up_keep("uppick"), Vector2(0, 76))
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_font_size_override("font_size", 19)
-		b.clip_text = true
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		var tx: Texture2D = _icon_tex(d, false)
-		if tx != null:
-			b.icon = tx
-			b.expand_icon = true
-			b.add_theme_constant_override("icon_max_width", 56)
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.set_meta("q", (_name_of(d) + " " + String(info["name"]) + " " + str(d)).to_lower())
-		grid.add_child(b)
-		if d == up_dex and pk_focus == "":
-			focus_b = b
+		ds.append(int(dx))
+	shown = ds.size()
+	for k in range(mini(ds.size(), 16)):
+		Preview.prefetch(int(ds[k]), false)   # las primeras hojas se leen en segundo plano
 	var none_l := _label("Ninguno coincide con el filtro.", 20, Color("#c8d6ee"))
 	none_l.visible = shown == 0
 	grid.add_child(none_l)
@@ -3439,15 +3799,45 @@ func _build_up_picker() -> void:
 			ch.visible = ok
 			if ok:
 				vis += 1
-		none_l.visible = vis == 0
+		none_l.visible = vis == 0 and not _fq_pending(grid)
 	search.text_changed.connect(apply_q)
-	if pk_q != "":
-		apply_q.call(pk_q)
-	if focus_b != null and pk_q == "":
-		await get_tree().process_frame
-		if is_instance_valid(focus_b):
-			focus_b.grab_focus()
-			sc.ensure_control_visible(focus_b)
+	# los botones van llegando por porciones (cientos de iconos con texto en un solo fotograma tardaban ~200 ms)
+	for k in range(ds.size()):
+		var d: int = int(ds[k])
+		_later(grid, func():
+			if k + 16 < ds.size():
+				Preview.prefetch(int(ds[k + 16]), false)
+			var info: Dictionary = SV.dex_by[d]
+			var par: String = L.t(" (compañero)") if d == int(SV.d["selected"]) else ""
+			var mark: String = "✔ " if d == up_dex else ""
+			var b := _btn(mark + L.t("%s%s · %d niveles") % [_name_of(d), par, SV.up_total(d)], func():
+				up_dex = d
+				_close_up_picker()
+				Aud.sfx("select")
+				_refresh_up_keep("uppick"), Vector2(0, 76))
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.add_theme_font_size_override("font_size", 19)
+			b.clip_text = true
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			var tx: Texture2D = _icon_tex(d, false)
+			if tx != null:
+				b.icon = tx
+				b.expand_icon = true
+				b.add_theme_constant_override("icon_max_width", 56)
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			var mq: String = (_name_of(d) + " " + String(info["name"]) + " " + str(d)).to_lower()
+			b.set_meta("q", mq)
+			if pk_q != "":
+				b.visible = mq.contains(pk_q.strip_edges().to_lower())
+			grid.add_child(b)
+			if d == up_dex and pk_focus == "" and pk_q == "":
+				(func():
+					await get_tree().process_frame
+					await get_tree().process_frame
+					if is_instance_valid(b) and b.is_visible_in_tree() and up_picker == root:
+						b.grab_focus()
+						sc.ensure_control_visible(b)).call())
+	_later(grid, func(): apply_q.call(pk_q))
 
 
 func _buy(id: String) -> void:
@@ -3485,6 +3875,12 @@ func _build_gacha() -> void:
 	gacha_content = VBoxContainer.new()
 	gacha_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gacha_box.add_child(gacha_content)
+
+
+# Capa oscura de los cuadros (resultado del gacha, favoritos, tarjeta): se crea la primera vez que hace falta.
+func _ensure_result() -> void:
+	if gacha_result != null and is_instance_valid(gacha_result):
+		return
 	gacha_result = ColorRect.new()
 	gacha_result.color = Color(0, 0, 0, 0.7)
 	gacha_result.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -3533,16 +3929,15 @@ func _refresh_gacha() -> void:
 			tb.remove_theme_stylebox_override("normal")
 			tb.remove_theme_color_override("font_color")
 	tab_row = gacha_tabs
-	# pagina de la region: se reutiliza si tickets / pity / coleccion no han cambiado; si no, se reconstruye
+	# La pagina de la region se rehace cada vez, por porciones: volver a colgar una pagina guardada costaba casi lo mismo
+	# que construirla (el coste esta en entrar al arbol), pero de golpe.
 	var fp := "%d_%d_%d_%d" % [int(SV.d["tickets"]), int(SV.d.get("tickets10", 0)), int(SV.d["pity"].get(str(gacha_region), 0)), SV.owned_count()]
+	_fq_cancel(gacha_content)
 	for ch in gacha_content.get_children():
-		gacha_content.remove_child(ch)
-	var ent: Dictionary = gacha_pages.get(gacha_region, {})
-	if ent.is_empty() or String(ent["fp"]) != fp or not is_instance_valid(ent["page"]) or int(ent.get("gen", -1)) != lay_gen:
-		if not ent.is_empty() and is_instance_valid(ent["page"]):
-			(ent["page"] as Node).queue_free()
-		ent = _build_gacha_page(fp)
-		gacha_pages[gacha_region] = ent
+		_retire(ch, gacha_content)
+	gacha_pages.clear()
+	var ent: Dictionary = _build_gacha_page(fp)
+	gacha_pages[gacha_region] = ent
 	gacha_content.add_child(ent["page"])
 	gi_dirty = true
 	var gits: Array = NAVG.focusables(ent["page"])
@@ -3555,6 +3950,7 @@ func _build_gacha_page(fp: String) -> Dictionary:
 	pg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pg.add_theme_constant_override("separation", 12)
 	var first: Button = null
+	var region: int = gacha_region
 	# --- escenario + probabilidades
 	var main := HBoxContainer.new()
 	main.add_theme_constant_override("separation", 16)
@@ -3563,29 +3959,36 @@ func _build_gacha_page(fp: String) -> Dictionary:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 12)
 	main.add_child(left)
-	var bd: Dictionary = BANNERS[gacha_region - 1]
-	var banner := Banner.new()
-	banner.c1 = Color.html(String(bd["c1"]))
-	banner.c2 = Color.html(String(bd["c2"]))
-	banner.custom_minimum_size = Vector2(0, 360)
-	banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.add_child(banner)
-	var cnt: Vector2i = _region_counts(gacha_region)
-	var tx := VBoxContainer.new()
-	tx.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	tx.offset_left = 22
-	tx.offset_top = 16
-	tx.offset_right = -22
-	tx.add_theme_constant_override("separation", 6)
-	banner.add_child(tx)
-	var ttl := _label(L.t("Misterio de %s") % L.t(SV.REGIONS[gacha_region - 1]), 44, C_GOLD)
-	ttl.autowrap_mode = TextServer.AUTOWRAP_OFF
-	tx.add_child(ttl)
-	tx.add_child(_label(L.t("Los %d Pokémon de la generación %d. ¡Los legendarios te esperan!") % [cnt.y, gacha_region], 22))
-	tx.add_child(_label(L.t("Tienes %d de %d") % [cnt.x, cnt.y], 20, Color("#cfd9f5")))
-	banner.add_mon(int(bd["legs"][0]), 3.2, 0.0, 0.36)
-	banner.add_mon(int(bd["star"]), 3.2, 0.34, 0.66)
-	banner.add_mon(int(bd["legs"][1]), 3.2, 0.64, 1.0)
+	var bd: Dictionary = BANNERS[region - 1]
+	for bdx in [int(bd["legs"][0]), int(bd["star"]), int(bd["legs"][1])]:
+		Preview.prefetch(bdx, false)
+	# el escenario (con sus tres Pokemon animados) es lo mas pesado: entra en pasos y se coloca el primero
+	var bh: Array = [null]
+	_later(pg, func():
+		var banner := Banner.new()
+		banner.c1 = Color.html(String(bd["c1"]))
+		banner.c2 = Color.html(String(bd["c2"]))
+		banner.custom_minimum_size = Vector2(0, 360)
+		banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		left.add_child(banner)
+		left.move_child(banner, 0)
+		bh[0] = banner
+		var cnt: Vector2i = _region_counts(region)
+		var tx := VBoxContainer.new()
+		tx.set_anchors_preset(Control.PRESET_TOP_WIDE)
+		tx.offset_left = 22
+		tx.offset_top = 16
+		tx.offset_right = -22
+		tx.add_theme_constant_override("separation", 6)
+		banner.add_child(tx)
+		var ttl := _label(L.t("Misterio de %s") % L.t(SV.REGIONS[region - 1]), 44, C_GOLD)
+		ttl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		tx.add_child(ttl)
+		tx.add_child(_label(L.t("Los %d Pokémon de la generación %d. ¡Los legendarios te esperan!") % [cnt.y, region], 22))
+		tx.add_child(_label(L.t("Tienes %d de %d") % [cnt.x, cnt.y], 20, Color("#cfd9f5"))))
+	_later(pg, func(): (bh[0] as Node).call("add_mon", int(bd["legs"][0]), 3.2, 0.0, 0.36))
+	_later(pg, func(): (bh[0] as Node).call("add_mon", int(bd["star"]), 3.2, 0.34, 0.66))
+	_later(pg, func(): (bh[0] as Node).call("add_mon", int(bd["legs"][1]), 3.2, 0.64, 1.0))
 	# --- botones de tirada
 	var brow := HBoxContainer.new()
 	brow.add_theme_constant_override("separation", 12)
@@ -3596,22 +3999,23 @@ func _build_gacha_page(fp: String) -> Dictionary:
 	for b in [b1, b10, bt]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		brow.add_child(b)
-	var have := HBoxContainer.new()
-	have.add_theme_constant_override("separation", 8)
-	_nw(have, _label(L.t("Tienes"), 20, Color("#c8d6ee")))
-	have.add_child(IC.rect("ticket", 24))
-	_nw(have, _label(str(int(SV.d["tickets"])), 22, Color("#ffd23f")))
-	_nw(have, _label(L.t("tickets y"), 20, Color("#c8d6ee")))
-	have.add_child(IC.rect("ticket10", 24))
-	_nw(have, _label(str(int(SV.d.get("tickets10", 0))), 22, Color("#c47bff")))
-	_nw(have, _label(L.t("tickets ×10"), 20, Color("#c8d6ee")))
-	left.add_child(have)
-	var pity: int = int(SV.d["pity"].get(str(gacha_region), 0))
-	left.add_child(_label(L.t("Tiradas sin legendario en %s: %d / %d") % [L.t(SV.REGIONS[gacha_region - 1]), pity, SV.PITY_5], 18, Color("#c8d6ee")))
+	_later(pg, func():
+		var have := HBoxContainer.new()
+		have.add_theme_constant_override("separation", 8)
+		_nw(have, _label(L.t("Tienes"), 20, Color("#c8d6ee")))
+		have.add_child(IC.rect("ticket", 24))
+		_nw(have, _label(str(int(SV.d["tickets"])), 22, Color("#ffd23f")))
+		_nw(have, _label(L.t("tickets y"), 20, Color("#c8d6ee")))
+		have.add_child(IC.rect("ticket10", 24))
+		_nw(have, _label(str(int(SV.d.get("tickets10", 0))), 22, Color("#c47bff")))
+		_nw(have, _label(L.t("tickets ×10"), 20, Color("#c8d6ee")))
+		left.add_child(have)
+		var pity: int = int(SV.d["pity"].get(str(region), 0))
+		left.add_child(_label(L.t("Tiradas sin legendario en %s: %d / %d") % [L.t(SV.REGIONS[region - 1]), pity, SV.PITY_5], 18, Color("#c8d6ee"))))
 	if first == null:
 		first = b1
 	# --- panel de probabilidades
-	var pool: Array = SV.region_pool(gacha_region)
+	var pool: Array = SV.region_pool(region)
 	var counts: Array = [0, 0, 0, 0, 0]
 	for p in pool:
 		counts[clampi(int(p["rarity"]) - 1, 0, 4)] += 1
@@ -3624,53 +4028,57 @@ func _build_gacha_page(fp: String) -> Dictionary:
 	op.add_child(ov)
 	ov.add_child(_label("Probabilidades", 26))
 	for j in range(4, -1, -1):
-		var rr := HBoxContainer.new()
-		rr.add_theme_constant_override("separation", 8)
-		rr.add_child(IC.rect(String(RARITY_BALL[j]), 24))
-		var rn := _label(SV.RARITY_NAME[j], 20, Color.html(String(RARITY_COL[j])))
-		rn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		rn.autowrap_mode = TextServer.AUTOWRAP_OFF
-		rr.add_child(rn)
-		var pc := _label("%s%% · %d" % [str(SV.PULL_RATES[j]), int(counts[j])], 20, Color("#dfe8ff"))
-		pc.autowrap_mode = TextServer.AUTOWRAP_OFF
-		rr.add_child(pc)
-		ov.add_child(rr)
-	var sr := HBoxContainer.new()
-	sr.add_theme_constant_override("separation", 8)
-	sr.add_child(IC.rect("shiny", 24))
-	var sn := _label("Shiny", 20)
-	sn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sr.add_child(sn)
-	var s32 := _label("1%", 20, Color("#dfe8ff"))
-	s32.autowrap_mode = TextServer.AUTOWRAP_OFF
-	sr.add_child(s32)
-	ov.add_child(sr)
-	# Cristales Z: probabilidad y cuales ya tienes (los desbloqueados brillan, el resto se ve apagado)
-	var zr := HBoxContainer.new()
-	zr.add_theme_constant_override("separation", 8)
-	zr.add_child(IC.rect("zc:" + String(ZM.ORDER[0]), 24))
-	var zn := _label("Cristal Z", 20, Color("#7fe0ff"))
-	zn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	zn.autowrap_mode = TextServer.AUTOWRAP_OFF
-	zr.add_child(zn)
-	var zp := _label("%d%% · ×10" % roundi(SV.Z_CRYSTAL_P * 100.0), 20, Color("#dfe8ff"))
-	zp.autowrap_mode = TextServer.AUTOWRAP_OFF
-	zr.add_child(zp)
-	ov.add_child(zr)
+		_later(pg, func():
+			var rr := HBoxContainer.new()
+			rr.add_theme_constant_override("separation", 8)
+			rr.add_child(IC.rect(String(RARITY_BALL[j]), 24))
+			var rn := _label(SV.RARITY_NAME[j], 20, Color.html(String(RARITY_COL[j])))
+			rn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			rn.autowrap_mode = TextServer.AUTOWRAP_OFF
+			rr.add_child(rn)
+			var pc := _label("%s%% · %d" % [str(SV.PULL_RATES[j]), int(counts[j])], 20, Color("#dfe8ff"))
+			pc.autowrap_mode = TextServer.AUTOWRAP_OFF
+			rr.add_child(pc)
+			ov.add_child(rr))
+	_later(pg, func():
+		var sr := HBoxContainer.new()
+		sr.add_theme_constant_override("separation", 8)
+		sr.add_child(IC.rect("shiny", 24))
+		var sn := _label("Shiny", 20)
+		sn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sr.add_child(sn)
+		var s32 := _label("1%", 20, Color("#dfe8ff"))
+		s32.autowrap_mode = TextServer.AUTOWRAP_OFF
+		sr.add_child(s32)
+		ov.add_child(sr)
+		# Cristales Z: probabilidad y cuales ya tienes (los desbloqueados brillan, el resto se ve apagado)
+		var zr := HBoxContainer.new()
+		zr.add_theme_constant_override("separation", 8)
+		zr.add_child(IC.rect("zc:" + String(ZM.ORDER[0]), 24))
+		var zn := _label("Cristal Z", 20, Color("#7fe0ff"))
+		zn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		zn.autowrap_mode = TextServer.AUTOWRAP_OFF
+		zr.add_child(zn)
+		var zp := _label("%d%% · ×10" % roundi(SV.Z_CRYSTAL_P * 100.0), 20, Color("#dfe8ff"))
+		zp.autowrap_mode = TextServer.AUTOWRAP_OFF
+		zr.add_child(zp)
+		ov.add_child(zr))
 	var zg := GridContainer.new()
 	zg.columns = 9
 	zg.add_theme_constant_override("h_separation", 2)
 	zg.add_theme_constant_override("v_separation", 2)
+	_later(pg, func(): ov.add_child(zg))
 	for zt in ZM.ORDER:
-		var zi = IC.rect("zc:" + String(zt), 32)
-		if not ZM.unlocked(String(zt), SV.d["stats"]):
-			zi.modulate = Color(0.35, 0.35, 0.4, 0.45)
-		zg.add_child(zi)
-	ov.add_child(zg)
-	ov.add_child(_label(L.t("· La tirada ×10 garantiza al menos un Pokémon muy raro."), 16, Color("#c8d6ee")))
-	ov.add_child(_label(L.t("· A las %d tiradas sin legendario en un banner, la siguiente lo es.") % SV.PITY_5, 16, Color("#c8d6ee")))
-	ov.add_child(_label(L.t("· Los repetidos dan Pokémonedas. Los shiny no se repiten."), 16, Color("#c8d6ee")))
-	ov.add_child(_label(L.t("· Los tickets se consiguen jugando: algunos Pokémon los sueltan al caer, y los jefes y los cofres a veces dan tickets ×10."), 16, Color("#c8d6ee")))
+		_later(pg, func():
+			var zi = IC.rect("zc:" + String(zt), 32)
+			if not ZM.unlocked(String(zt), SV.d["stats"]):
+				zi.modulate = Color(0.35, 0.35, 0.4, 0.45)
+			zg.add_child(zi))
+	_later(pg, func():
+		ov.add_child(_label(L.t("· La tirada ×10 garantiza al menos un Pokémon muy raro."), 16, Color("#c8d6ee")))
+		ov.add_child(_label(L.t("· A las %d tiradas sin legendario en un banner, la siguiente lo es.") % SV.PITY_5, 16, Color("#c8d6ee")))
+		ov.add_child(_label(L.t("· Los repetidos dan Pokémonedas. Los shiny no se repiten."), 16, Color("#c8d6ee")))
+		ov.add_child(_label(L.t("· Los tickets se consiguen jugando: algunos Pokémon los sueltan al caer, y los jefes y los cofres a veces dan tickets ×10."), 16, Color("#c8d6ee"))))
 	return {"page": pg, "fp": fp, "first": first, "gen": lay_gen}
 
 
@@ -3713,6 +4121,7 @@ func _play_slots(results: Array) -> void:
 
 
 func _show_pulls(results: Array) -> void:
+	_ensure_result()
 	_clear(gacha_result)
 	var c := CenterContainer.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -3872,19 +4281,18 @@ func _lex_card(icon: Control, title: String, sub: String, sub_col: Color, desc: 
 	return card
 
 
-func _lex_grid(cols: int) -> GridContainer:
+func _lex_grid(page: Control, cols: int) -> GridContainer:
 	var g := GridContainer.new()
 	g.columns = cols
 	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	g.add_theme_constant_override("h_separation", 10)
 	g.add_theme_constant_override("v_separation", 10)
-	lex_tgt.add_child(g)
+	page.add_child(g)
 	return g
 
 
-# Paginas del lexico ya construidas (clave = pestana): cambiar de pestana solo las cambia de sitio.
+# Pagina del lexico en pantalla (clave = pestana).
 var lex_pages := {}
-var lex_tgt: VBoxContainer = null
 
 
 func _refresh_lexicon() -> void:
@@ -3895,22 +4303,17 @@ func _refresh_lexicon() -> void:
 		if key == lex_tab:
 			tab_sel = tbs[i]
 	tab_row = lex_tabs
-	# saca la pagina anterior (sin liberarla) y pone la de esta pestana; solo se construye la primera vez
+	# La pagina anterior se libera y la de esta pestana se construye por porciones: volver a colgar una pagina entera
+	# guardada costaba lo mismo que construirla (el coste esta en entrar al arbol), pero de golpe.
 	for ch in lex_box.get_children():
-		lex_box.remove_child(ch)
-	var page: VBoxContainer = lex_pages.get(lex_tab)
-	if page != null and is_instance_valid(page) and int(page.get_meta("gen", -1)) != lay_gen:
-		page.queue_free()   # se construyo con otro modo de pantalla (columnas): se rehace
-		page = null
-	if page == null or not is_instance_valid(page):
-		page = VBoxContainer.new()
-		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		page.add_theme_constant_override("separation", 8)
-		page.set_meta("gen", lay_gen)
-		lex_tgt = page
-		_lex_fill()
-		lex_pages[lex_tab] = page
+		_retire(ch, lex_box)
+	lex_pages.clear()
+	var page := VBoxContainer.new()
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", 8)
+	lex_pages[lex_tab] = page
 	lex_box.add_child(page)
+	_lex_fill(page, lex_tab)   # las tarjetas van llegando por porciones (_pump)
 	gi_dirty = true
 	focus_first = tab_sel
 	_update_top()
@@ -3929,19 +4332,20 @@ func _fmt_d(tpl: String, vals: Array) -> String:
 	return out + rest
 
 
-func _lex_fill() -> void:
+func _lex_fill(page: VBoxContainer, tab: String) -> void:
 	var cols: int = DSP.cols(_content_w(), 420.0, 10.0, 3)
-	if lex_tab == "i":
+	if tab == "i":
 		var found: Dictionary = SV.d.get("itemsFound", {})
-		lex_tgt.add_child(_label(L.t("Objetos: %d / %d encontrados") % [found.size(), TD.ITEMS.size()], 24, C_GOLD))
-		var g := _lex_grid(cols)
+		page.add_child(_label(L.t("Objetos: %d / %d encontrados") % [found.size(), TD.ITEMS.size()], 24, C_GOLD))
+		var g := _lex_grid(page, cols)
 		for it in TD.ITEMS:
-			var id: String = String(it["id"])
-			var ok: bool = found.has(id)
-			g.add_child(_lex_card(IC.rect(id, 40), L.t(String(it["name"])), L.t("✔ Encontrado") if ok else L.t("Aún sin encontrar"), Color("#8fe3b0") if ok else Color("#8fa3c4"), L.t(String(it["desc"])), not ok))
-	elif lex_tab == "m":
+			_later(page, func():
+				var id: String = String(it["id"])
+				var ok: bool = found.has(id)
+				g.add_child(_lex_card(IC.rect(id, 40), L.t(String(it["name"])), L.t("✔ Encontrado") if ok else L.t("Aún sin encontrar"), Color("#8fe3b0") if ok else Color("#8fa3c4"), L.t(String(it["desc"])), not ok)))
+	elif tab == "m":
 		var moves: Dictionary = MD.MOVES
-		lex_tgt.add_child(_label(L.t("Movimientos: %d") % moves.size(), 24, C_GOLD))
+		page.add_child(_label(L.t("Movimientos: %d") % moves.size(), 24, C_GOLD))
 		for ty in TYPE_IDS:
 			var ids: Array = []
 			for mid in MD.ORDER:
@@ -3950,43 +4354,49 @@ func _lex_fill() -> void:
 			if ids.is_empty():
 				continue
 			var tcol: Color = Color.html(String(MD.TYPE_COLOR.get(ty, "#ffffff")))
-			lex_tgt.add_child(_label(L.t(String(MD.TYPE_NAME[ty])), 22, tcol))
-			var g2 := _lex_grid(cols)
+			var gh: Array = [null]   # la cuadricula de este tipo se crea en su primer paso
+			_later(page, func():
+				page.add_child(_label(L.t(String(MD.TYPE_NAME[ty])), 22, tcol))
+				gh[0] = _lex_grid(page, cols))
 			for mid in ids:
-				var m: Dictionary = moves[mid]
-				var desc: String = L.t(String(m["desc"]))
-				if MD.EVO.has(mid):
-					desc += "\n" + L.t("Evoluciona en: %s") % L.t(String(MD.EVO[mid][0]))
-				if MD.EVO_ALT.has(mid):
-					desc += "\n" + L.t("Evoluciona en: %s") % L.t(String(MD.EVO_ALT[mid][0]))
-				g2.add_child(_lex_card(IC.rect("move:" + String(mid), 36), L.t(String(m["name"])), L.t(String(MD.TYPE_NAME[ty])), tcol, desc))
-	elif lex_tab == "z":
-		lex_tgt.add_child(_label(L.t("Movimientos Z: %d") % ZM.ORDER.size(), 24, C_GOLD))
-		lex_tgt.add_child(_label(L.t("Se recargan cada 4 minutos, desde el nivel %d. Se desbloquean derrotando %d Pokémon de ese tipo.") % [ZM.MIN_LEVEL, ZM.NEED], 16, Color("#c8d6ee")))
+				_later(page, func():
+					var m: Dictionary = moves[mid]
+					var desc: String = L.t(String(m["desc"]))
+					if MD.EVO.has(mid):
+						desc += "\n" + L.t("Evoluciona en: %s") % L.t(String(MD.EVO[mid][0]))
+					if MD.EVO_ALT.has(mid):
+						desc += "\n" + L.t("Evoluciona en: %s") % L.t(String(MD.EVO_ALT[mid][0]))
+					(gh[0] as Control).add_child(_lex_card(IC.rect("move:" + String(mid), 36), L.t(String(m["name"])), L.t(String(MD.TYPE_NAME[ty])), tcol, desc)))
+	elif tab == "z":
+		page.add_child(_label(L.t("Movimientos Z: %d") % ZM.ORDER.size(), 24, C_GOLD))
+		page.add_child(_label(L.t("Se recargan cada 4 minutos, desde el nivel %d. Se desbloquean derrotando %d Pokémon de ese tipo.") % [ZM.MIN_LEVEL, ZM.NEED], 16, Color("#c8d6ee")))
 		var dn: int = int(SV.d["stats"].get("dens", 0))
 		var dok: bool = dn >= 1
-		var gd := _lex_grid(cols)
-		gd.add_child(_lex_card(null, "Dynamax", L.t("Desbloqueado") if dok else L.t("Vence una guarida Dynamax: %d/1") % dn, Color("#ff7a9a"),
-			_fmt_d(L.t("Cada 4 minutos (desde el nivel %d): tu Pokémon se vuelve gigante %d s con +30% a todos sus atributos y lanza ondas Max de su tipo. Cada guarida Dynamax vencida lo recarga al instante."), [DYN.MIN_LEVEL, int(DYN.DUR)]), not dok))
-		var gz := _lex_grid(cols)
+		var gd := _lex_grid(page, cols)
+		_later(page, func():
+			gd.add_child(_lex_card(null, "Dynamax", L.t("Desbloqueado") if dok else L.t("Vence una guarida Dynamax: %d/1") % dn, Color("#ff7a9a"),
+				_fmt_d(L.t("Cada 4 minutos (desde el nivel %d): tu Pokémon se vuelve gigante %d s con +30% a todos sus atributos y lanza ondas Max de su tipo. Cada guarida Dynamax vencida lo recarga al instante."), [DYN.MIN_LEVEL, int(DYN.DUR)]), not dok)))
+		var gz := _lex_grid(page, cols)
 		for zt in ZM.ORDER:
-			var zd: Dictionary = ZM.DEF[zt]
-			var zn: int = int(SV.d["stats"].get("tk_" + zt, 0))
-			var zok: bool = ZM.unlocked(zt, SV.d["stats"])
-			var zcol: Color = Color.html(String(MD.TYPE_COLOR.get(zt, "#ffffff")))
-			var zsub: String = L.t(String(MD.TYPE_NAME[zt])) + " · " + (L.t("Desbloqueado") if zok else L.t("Derrota %d Pokémon de tipo %s: %d/%d") % [ZM.NEED, L.t(String(MD.TYPE_NAME[zt])), zn, ZM.NEED])
-			gz.add_child(_lex_card(IC.rect("zc:" + zt, 48), L.t(String(zd["name"])), zsub, zcol, L.t(String(zd["desc"])), not zok))
-	elif lex_tab == "a":
-		lex_tgt.add_child(_label(L.t("Habilidades: %d") % AB.FX.size(), 24, C_GOLD))
-		var g4 := _lex_grid(cols)
+			_later(page, func():
+				var zd: Dictionary = ZM.DEF[zt]
+				var zn: int = int(SV.d["stats"].get("tk_" + zt, 0))
+				var zok: bool = ZM.unlocked(zt, SV.d["stats"])
+				var zcol: Color = Color.html(String(MD.TYPE_COLOR.get(zt, "#ffffff")))
+				var zsub: String = L.t(String(MD.TYPE_NAME[zt])) + " · " + (L.t("Desbloqueado") if zok else L.t("Derrota %d Pokémon de tipo %s: %d/%d") % [ZM.NEED, L.t(String(MD.TYPE_NAME[zt])), zn, ZM.NEED])
+				gz.add_child(_lex_card(IC.rect("zc:" + zt, 48), L.t(String(zd["name"])), zsub, zcol, L.t(String(zd["desc"])), not zok)))
+	elif tab == "a":
+		page.add_child(_label(L.t("Habilidades: %d") % AB.FX.size(), 24, C_GOLD))
+		var g4 := _lex_grid(page, cols)
 		for aid in AB.FX:
-			var ad: Dictionary = AB.FX[aid]
-			g4.add_child(_lex_card(null, L.t(String(ad["name"])), "", Color.WHITE, L.t(String(ad["desc"]))))
+			_later(page, func():
+				var ad: Dictionary = AB.FX[aid]
+				g4.add_child(_lex_card(null, L.t(String(ad["name"])), "", Color.WHITE, L.t(String(ad["desc"])))))
 	else:
-		lex_tgt.add_child(_label(L.t("Estados alterados"), 24, C_GOLD))
-		var g3 := _lex_grid(cols)
+		page.add_child(_label(L.t("Estados alterados"), 24, C_GOLD))
+		var g3 := _lex_grid(page, cols)
 		for st in LEX_STATUS:
-			g3.add_child(_lex_card(null, L.t(String(st[1])), "", Color.WHITE, L.t(String(st[2]))))
+			_later(page, func(): g3.add_child(_lex_card(null, L.t(String(st[1])), "", Color.WHITE, L.t(String(st[2])))))
 
 
 func _reward_box(r: Dictionary, w: float = 170.0) -> HBoxContainer:
@@ -4014,7 +4424,10 @@ func _reward_box(r: Dictionary, w: float = 170.0) -> HBoxContainer:
 func _refresh_goals() -> void:
 	PG.ensure()
 	PG.check()
-	_clear(goals_box)
+	_fq_cancel(goals_box)
+	for c in goals_box.get_children():
+		_retire(c, goals_box)   # se oculta ya y se libera por porciones
+	gi_dirty = true
 	var first: Button = null
 	var tbs: Array = goals_tabs.get_children()
 	for i in range(tbs.size()):
@@ -4077,22 +4490,31 @@ func _mission_row(m: Dictionary, weekly: bool, idx: int) -> Button:
 
 
 func _goals_missions() -> Button:
-	var first: Button = null
 	var M: Dictionary = SV.d["missions"]
-	goals_box.add_child(_label("Misiones diarias", 28, C_GOLD))
+	# Hasta la primera fila con boton (la que recibe el foco) se construye en el acto; lo demas, por porciones.
+	var st: Array = [null]
+	var run := func(f: Callable):
+		if st[0] != null:
+			_later(goals_box, f)
+		else:
+			f.call()
+	run.call(func(): goals_box.add_child(_label("Misiones diarias", 28, C_GOLD)))
 	var i := 0
 	for m in M["daily"]:
-		var b: Button = _mission_row(m, false, i)
-		if first == null and b != null:
-			first = b
+		var idx: int = i
+		run.call(func():
+			var b: Button = _mission_row(m, false, idx)
+			if st[0] == null and b != null:
+				st[0] = b)
 		i += 1
-	goals_box.add_child(_label("Misiones semanales", 28, C_GOLD))
-	for m in M["weekly"]:
-		var b2: Button = _mission_row(m, true, 0)
-		if first == null and b2 != null:
-			first = b2
-	goals_box.add_child(_label("Cambian a las 00:00 (hora de Puerto Rico). Puedes cambiar una diaria al día.", 16, Color("#c8d6ee")))
-	return first
+	run.call(func(): goals_box.add_child(_label("Misiones semanales", 28, C_GOLD)))
+	for m2 in M["weekly"]:
+		run.call(func():
+			var b2: Button = _mission_row(m2, true, 0)
+			if st[0] == null and b2 != null:
+				st[0] = b2)
+	run.call(func(): goals_box.add_child(_label("Cambian a las 00:00 (hora de Puerto Rico). Puedes cambiar una diaria al día.", 16, Color("#c8d6ee"))))
+	return st[0]
 
 
 func _reroll(i: int) -> void:
@@ -4144,7 +4566,7 @@ func _goals_ach() -> Button:
 	for a in all:
 		if String(a["cat"]) != ach_cat or int(a["dex"]) > 0:
 			continue
-		grid.add_child(_ach_card(a, ach.has(String(a["id"]))))
+		_later(goals_box, func(): grid.add_child(_ach_card(a, ach.has(String(a["id"])))))
 	if ach_cat == "legendarios":
 		var legs: Array = []
 		var beaten := 0
@@ -4161,26 +4583,27 @@ func _goals_ach() -> Button:
 		lg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		goals_box.add_child(lg)
 		for a in legs:
-			var ok: bool = ach.has(String(a["id"]))
-			var cell := PanelContainer.new()
-			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			cell.add_theme_stylebox_override("panel", _sb(Color(0, 0, 0, 0.25), Color(1.0, 0.82, 0.25, 0.5) if ok else Color.TRANSPARENT, 2, 8))
-			var cv := VBoxContainer.new()
-			cv.alignment = BoxContainer.ALIGNMENT_CENTER
-			cell.add_child(cv)
-			var tr := TextureRect.new()
-			tr.texture = _icon_tex(int(a["dex"]), false)
-			tr.custom_minimum_size = Vector2(0, 56)
-			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			if not ok:
-				tr.modulate = Color(0.0, 0.0, 0.0, 0.55)
-			cv.add_child(tr)
-			var nl := _label(String(a["arg"]) if ok else "???", 12, Color("#b9cbf0"))
-			nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			cv.add_child(nl)
-			lg.add_child(cell)
+			_later(goals_box, func():
+				var ok: bool = ach.has(String(a["id"]))
+				var cell := PanelContainer.new()
+				cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				cell.add_theme_stylebox_override("panel", _sb(Color(0, 0, 0, 0.25), Color(1.0, 0.82, 0.25, 0.5) if ok else Color.TRANSPARENT, 2, 8))
+				var cv := VBoxContainer.new()
+				cv.alignment = BoxContainer.ALIGNMENT_CENTER
+				cell.add_child(cv)
+				var tr := TextureRect.new()
+				tr.texture = _icon_tex(int(a["dex"]), false)
+				tr.custom_minimum_size = Vector2(0, 56)
+				tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+				if not ok:
+					tr.modulate = Color(0.0, 0.0, 0.0, 0.55)
+				cv.add_child(tr)
+				var nl := _label(String(a["arg"]) if ok else "???", 12, Color("#b9cbf0"))
+				nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				cv.add_child(nl)
+				lg.add_child(cell))
 	return first
 
 
@@ -4200,7 +4623,7 @@ func _goals_zcrystals() -> Button:
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	goals_box.add_child(grid)
 	for zm in zl:
-		grid.add_child(_zmis_card(zm, PG.zdone(zm)))
+		_later(goals_box, func(): grid.add_child(_zmis_card(zm, PG.zdone(zm))))
 	return null
 
 
@@ -4209,7 +4632,7 @@ func _zmis_card(zm: Dictionary, done: bool) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
-	card.add_theme_stylebox_override("panel", _sb(Color(0, 0, 0, 0.2), Color(1.0, 0.82, 0.25, 0.6) if done else Color(0.96, 0.97, 1.0, 0.1), 2, 8))
+	card.add_theme_stylebox_override("panel", _flat_sb(done))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	card.add_child(row)
@@ -4249,7 +4672,7 @@ func _ach_card(a: Dictionary, done: bool) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
-	card.add_theme_stylebox_override("panel", _sb(Color(0, 0, 0, 0.2), Color(1.0, 0.82, 0.25, 0.6) if done else Color(0.96, 0.97, 1.0, 0.1), 2, 8))
+	card.add_theme_stylebox_override("panel", _flat_sb(done))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	card.add_child(row)
@@ -4301,6 +4724,9 @@ func _nick() -> String:
 
 
 func _goals_profile() -> Button:
+	for pf in Array(SV.d.get("favs", [0, 0, 0])) + [int(SV.d.get("selected", 25))]:
+		if int(pf) > 0 and SV.dex_by.has(int(pf)):
+			Preview.prefetch(int(pf), false)   # las hojas se leen en segundo plano mientras se arma la pagina
 	goals_box.add_child(_label("Así te ve el juego: tu tarjeta de entrenador.", 20, Color("#c8d6ee")))
 	var row: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()   # estrecho: la tarjeta va debajo de los datos
 	row.add_theme_constant_override("separation", 24)
@@ -4406,6 +4832,7 @@ func _goals_profile() -> Button:
 
 # Elegir uno de tus Pokemon para un hueco de favoritos.
 func _fav_picker(slot: int) -> void:
+	_ensure_result()
 	_clear(gacha_result)
 	var c := CenterContainer.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4475,6 +4902,7 @@ func _set_fav(slot: int, dex: int) -> void:
 
 # Tarjeta de entrenador: lo que antes era "ver mi perfil publico", pero sin conexion.
 func _show_card() -> void:
+	_ensure_result()
 	_clear(gacha_result)
 	var c := CenterContainer.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4697,34 +5125,37 @@ func _news_tag(text: String, col: Color) -> Control:
 
 
 func _refresh_news() -> void:
+	_fq_cancel(news_box)
 	for c in news_box.get_children():
-		news_box.remove_child(c)
-		c.queue_free()
+		_retire(c, news_box)
 	var first_entry := true
 	for e in PN.ENTRIES:
-		if not first_entry:
-			news_box.add_child(HSeparator.new())
+		var sep: bool = not first_entry
 		first_entry = false
-		var t := _label(L.t(String(e["title"])), 30, C_GOLD)
-		t.add_theme_constant_override("outline_size", 0)
-		news_box.add_child(t)
-		news_box.add_child(_label("%s  ·  v%s" % [PN.fmt_date(String(e["date"]), L.lang()), String(e["ver"])], 20, Color("#aebbd6")))
+		_later(news_box, func():
+			if sep:
+				news_box.add_child(HSeparator.new())
+			var t := _label(L.t(String(e["title"])), 30, C_GOLD)
+			t.add_theme_constant_override("outline_size", 0)
+			news_box.add_child(t)
+			news_box.add_child(_label("%s  ·  v%s" % [PN.fmt_date(String(e["date"]), L.lang()), String(e["ver"])], 20, Color("#aebbd6"))))
 		for sec in [["new", "Nuevo", Color("#5ddc8a")], ["changes", "Cambios", Color("#4db3ff")], ["fixes", "Arreglos", Color("#ffb347")]]:
 			var lines: Array = e.get(String(sec[0]), [])
 			if lines.is_empty():
 				continue
-			news_box.add_child(_news_tag(L.t(String(sec[1])), sec[2]))
+			_later(news_box, func(): news_box.add_child(_news_tag(L.t(String(sec[1])), sec[2])))
 			for ln in lines:
-				var brow := HBoxContainer.new()
-				brow.add_theme_constant_override("separation", 10)
-				var dot := _label("•", 22)
-				dot.autowrap_mode = TextServer.AUTOWRAP_OFF
-				dot.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-				brow.add_child(dot)
-				var bl := _label(L.t(String(ln)), 22)
-				bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				brow.add_child(bl)
-				news_box.add_child(brow)
+				_later(news_box, func():
+					var brow := HBoxContainer.new()
+					brow.add_theme_constant_override("separation", 10)
+					var dot := _label("•", 22)
+					dot.autowrap_mode = TextServer.AUTOWRAP_OFF
+					dot.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+					brow.add_child(dot)
+					var bl := _label(L.t(String(ln)), 22)
+					bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					brow.add_child(bl)
+					news_box.add_child(brow))
 	news_scroll.scroll_vertical = 0
 	for b in news_box.get_parent().get_parent().find_children("*", "Button", true, false):
 		focus_first = b
@@ -4929,40 +5360,46 @@ func _refresh_settings() -> void:
 # Pone la pagina de la pestana actual; solo se construye la primera vez (los controles se actualizan en su sitio).
 # La de Cuenta se rehace siempre para quitar los avisos "pulsa otra vez".
 func _settings_content() -> void:
+	_fq_cancel(settings_host)
 	for ch in settings_host.get_children():
-		settings_host.remove_child(ch)
-	if set_tab == 3 and settings_pages.has(3):
-		(settings_pages[3] as Node).queue_free()
-		settings_pages.erase(3)
-	var page: VBoxContainer = settings_pages.get(set_tab)
+		_retire(ch, settings_host)
+	settings_pages.clear()
 	focus_first = null
-	if page != null and is_instance_valid(page) and int(page.get_meta("gen", -1)) != lay_gen:
-		page.queue_free()
-		page = null
-	if page == null or not is_instance_valid(page):
-		page = VBoxContainer.new()
-		page.set_meta("gen", lay_gen)
-		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		page.add_theme_constant_override("separation", 8)
-		settings_box = page
-		match set_tab:
-			0:
-				_set_sound()
-			1:
-				_set_graphics()
-			2:
-				_set_controls()
-			3:
-				_set_account()
-			4:
-				_set_about()
-		settings_pages[set_tab] = page
+	# La pagina se hace de nuevo en cada visita y por porciones (_sx): guardarla y volver a colgarla costaba casi lo mismo.
+	var page := VBoxContainer.new()
+	page.set_meta("gen", lay_gen)
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", 8)
 	settings_box = page
 	settings_host.add_child(page)
+	match set_tab:
+		0:
+			_set_sound()
+		1:
+			_set_graphics()
+		2:
+			_set_controls()
+		3:
+			_set_account()
+		4:
+			_set_about()
+	settings_pages[set_tab] = page
+	settings_box = page
+	_pump(true)   # lo primero (con el foco) ya; el resto llega en los siguientes fotogramas
 	gi_dirty = true
 	if focus_first == null or not is_instance_valid(focus_first):
 		var items: Array = NAVG.focusables(page)
 		focus_first = items[0] if not items.is_empty() else tab_sel
+
+
+# Un trozo de la pagina de Ajustes que se construye mas tarde, apuntando a su pagina aunque ya se haya cambiado de pestana.
+func _sx(f: Callable) -> void:
+	var pg: VBoxContainer = settings_box
+	_later(pg, func():
+		var keep: VBoxContainer = settings_box
+		settings_box = pg
+		f.call()
+		settings_box = keep)
 
 
 # Rehace la pagina de la pestana manteniendo el foco en el mismo lugar (para cambios que afectan a otros controles).
@@ -5010,71 +5447,81 @@ func _set_sound() -> void:
 
 
 func _set_graphics() -> void:
-	_sec("Idioma")
-	settings_box.add_child(_label("El juego se recarga al cambiarlo.", 18, Color("#c8d6ee")))
-	var lg := GridContainer.new()
-	lg.columns = 2
-	lg.add_theme_constant_override("h_separation", 8)
-	lg.add_theme_constant_override("v_separation", 8)
-	var cur_lang: String = L.lang()
+	var lgh: Array = [null]
+	_sx(func():
+		_sec("Idioma")
+		settings_box.add_child(_label("El juego se recarga al cambiarlo.", 18, Color("#c8d6ee")))
+		var lg := GridContainer.new()
+		lg.columns = 2
+		lg.add_theme_constant_override("h_separation", 8)
+		lg.add_theme_constant_override("v_separation", 8)
+		settings_box.add_child(lg)
+		lgh[0] = lg)
 	for entry in L.LANGS:
 		var code: String = entry[0]
-		var lb := _btn(String(entry[1]), func():
+		_sx(func():
+			var lb := _btn(String(entry[1]), func():
+				if code == L.lang():
+					return
+				SV.d["settings"]["lang"] = code
+				SV.save()
+				L.apply()
+				SV.reopen = "settings"
+				get_tree().reload_current_scene(), Vector2(0, 46))
+			lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			lb.add_theme_font_size_override("font_size", 20)
 			if code == L.lang():
-				return
-			SV.d["settings"]["lang"] = code
-			SV.save()
-			L.apply()
-			SV.reopen = "settings"
-			get_tree().reload_current_scene(), Vector2(0, 46))
-		lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		lb.add_theme_font_size_override("font_size", 20)
-		if code == cur_lang:
-			for st in ["normal", "hover", "pressed"]:
-				lb.add_theme_stylebox_override(st, _sb(C_BTN_H, C_GOLD, 3, 22))
-			lb.add_theme_color_override("font_color", C_GOLD)
-		lg.add_child(lb)
-	settings_box.add_child(lg)
-	_sec("Calidad")
-	_srow("Efectos y partículas", "Cuántos efectos se dibujan. Auto los baja solo si el juego va a tirones.", _seg(["Auto", "Alta", "Media", "Baja"], int(SV.d["settings"]["quality"]), func(i: int):
-		SV.d["settings"]["quality"] = i
-		SV.save()))
-	_sec("Pantalla")
-	_view_row()
-	_srow("Números de daño", "Los números que salen al golpear o ser golpeado.", _toggle_set("dmg_numbers"))
-	_srow("Menos sacudidas y destellos", "La cámara tiembla menos y los destellos son más suaves.", _toggle_set("shake", true))
-	_srow("Vibración", "Vibra el móvil cuando te golpean.", _toggle_set("vibration"))
-	_srow("Mostrar FPS", "Cuadros por segundo, en la esquina.", _toggle_set("fps"))
-	_srow("Caja de estadísticas", "Muestra tus estadísticas (daño, velocidad…) arriba a la izquierda.", _toggle_set("stats_box"))
-	_srow("Dificultad adaptativa", "En la partida normal, el juego empieza fácil y se pone más difícil según tus mejoras: más vida y daño, más enemigos, hordas más seguidas y más experiencia por nivel.", _toggle_set("adaptive"))
+				for st in ["normal", "hover", "pressed"]:
+					lb.add_theme_stylebox_override(st, _sb(C_BTN_H, C_GOLD, 3, 22))
+				lb.add_theme_color_override("font_color", C_GOLD)
+			(lgh[0] as Control).add_child(lb))
+	_sx(func():
+		_sec("Calidad")
+		_srow("Efectos y partículas", "Cuántos efectos se dibujan. Auto los baja solo si el juego va a tirones.", _seg(["Auto", "Alta", "Media", "Baja"], int(SV.d["settings"]["quality"]), func(i: int):
+			SV.d["settings"]["quality"] = i
+			SV.save())))
+	_sx(func():
+		_sec("Pantalla")
+		_view_row())
+	_sx(func(): _srow("Números de daño", "Los números que salen al golpear o ser golpeado.", _toggle_set("dmg_numbers")))
+	_sx(func(): _srow("Menos sacudidas y destellos", "La cámara tiembla menos y los destellos son más suaves.", _toggle_set("shake", true)))
+	_sx(func(): _srow("Vibración", "Vibra el móvil cuando te golpean.", _toggle_set("vibration")))
+	_sx(func(): _srow("Mostrar FPS", "Cuadros por segundo, en la esquina.", _toggle_set("fps")))
+	_sx(func(): _srow("Caja de estadísticas", "Muestra tus estadísticas (daño, velocidad…) arriba a la izquierda.", _toggle_set("stats_box")))
+	_sx(func(): _srow("Dificultad adaptativa", "En la partida normal, el juego empieza fácil y se pone más difícil según tus mejoras: más vida y daño, más enemigos, hordas más seguidas y más experiencia por nivel.", _toggle_set("adaptive")))
 
 
 func _set_controls() -> void:
 	pad_btns = {}
-	_sec("En móvil o tableta")
-	settings_box.add_child(_label("Pon el dedo en cualquier parte y arrástralo para moverte: el joystick aparece donde tocas. Toca un movimiento abajo para cambiar a él y el botón de arriba a la derecha para pausar. Juega en horizontal.", 20, Color("#c8d6ee")))
-	_srow("Tamaño del joystick", "Cuánto tienes que arrastrar el dedo.", _seg(["Pequeño", "Mediano", "Grande"], clampi(int(SV.d["settings"]["stick"]), 0, 2), func(i: int):
+	_sx(func():
+		_sec("En móvil o tableta")
+		settings_box.add_child(_label("Pon el dedo en cualquier parte y arrástralo para moverte: el joystick aparece donde tocas. Toca un movimiento abajo para cambiar a él y el botón de arriba a la derecha para pausar. Juega en horizontal.", 20, Color("#c8d6ee"))))
+	_sx(func(): _srow("Tamaño del joystick", "Cuánto tienes que arrastrar el dedo.", _seg(["Pequeño", "Mediano", "Grande"], clampi(int(SV.d["settings"]["stick"]), 0, 2), func(i: int):
 		SV.d["settings"]["stick"] = i
-		SV.save()))
-	_srow("Joystick fijo", "El joystick se queda siempre abajo a la izquierda en vez de aparecer donde tocas.", _toggle_set("stick_fixed"))
-	_sec("Mando")
-	settings_box.add_child(_label("Stick izquierdo o cruceta: moverte y navegar por los menús. Pulsa un botón de la lista y luego el botón del mando que quieras asignarle.", 20, Color("#c8d6ee")))
-	_srow("Tipo de mando", "Cambia los nombres de los botones y restablece la asignación.", _seg(PAD.NAMES, PAD.layout(), func(i: int):
+		SV.save())))
+	_sx(func(): _srow("Joystick fijo", "El joystick se queda siempre abajo a la izquierda en vez de aparecer donde tocas.", _toggle_set("stick_fixed")))
+	_sx(func():
+		_sec("Mando")
+		settings_box.add_child(_label("Stick izquierdo o cruceta: moverte y navegar por los menús. Pulsa un botón de la lista y luego el botón del mando que quieras asignarle.", 20, Color("#c8d6ee"))))
+	_sx(func(): _srow("Tipo de mando", "Cambia los nombres de los botones y restablece la asignación.", _seg(PAD.NAMES, PAD.layout(), func(i: int):
 		PAD.reset(i)
-		_refresh_listen(), false))
+		_refresh_listen(), false)))
 	for a in PAD.ACTIONS:
 		var act: String = a
-		var cb := _btn("", func():
-			listening = "" if listening == act else act
-			last_act = act
-			_refresh_listen(), Vector2(190, 46))
-		pad_btns[act] = cb
-		_pad_btn_look(act)
-		_srow(PAD.LABELS[act], "", cb)
-		if act == last_act:
-			focus_first = cb
-	var rb := _btn("Restablecer asignación", func(): PAD.reset(); last_act = ""; _refresh_listen(), Vector2(280, 46))
-	settings_box.add_child(rb)
+		_sx(func():
+			var cb := _btn("", func():
+				listening = "" if listening == act else act
+				last_act = act
+				_refresh_listen(), Vector2(190, 46))
+			pad_btns[act] = cb
+			_pad_btn_look(act)
+			_srow(PAD.LABELS[act], "", cb)
+			if act == last_act:
+				focus_first = cb
+				_gf(cb))
+	_sx(func():
+		var rb := _btn("Restablecer asignación", func(): PAD.reset(); last_act = ""; _refresh_listen(), Vector2(280, 46))
+		settings_box.add_child(rb))
 
 
 # Botones de asignacion de la pestana Controles (accion -> boton): se repintan en su sitio.
