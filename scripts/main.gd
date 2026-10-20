@@ -4143,11 +4143,23 @@ func _update_enemies(delta: float) -> void:
 			var a = cell[ai]
 			for bi in range(ai + 1, cn):
 				_sep_pair(a, cell[bi])
-			for nk in [gk + 1048576, gk - 1048576 + 1, gk + 1, gk + 1048576 + 1]:
-				var nl = grid.get(nk)
-				if nl != null:
-					for b in nl:
-						_sep_pair(a, b)
+			# 4 vecinas "hacia delante" desenrolladas (sin array literal por enemigo)
+			var nl = grid.get(gk + 1048576)
+			if nl != null:
+				for b in nl:
+					_sep_pair(a, b)
+			nl = grid.get(gk - 1048576 + 1)
+			if nl != null:
+				for b in nl:
+					_sep_pair(a, b)
+			nl = grid.get(gk + 1)
+			if nl != null:
+				for b in nl:
+					_sep_pair(a, b)
+			nl = grid.get(gk + 1048576 + 1)
+			if nl != null:
+				for b in nl:
+					_sep_pair(a, b)
 
 
 func _sep_pair(a, b) -> void:
@@ -4777,9 +4789,81 @@ func _update_ebullets(delta: float) -> void:
 			ebullets.remove_at(i)
 
 
+# Rejilla espacial de enemigos (clave entera, listas enlazadas en arrays planos: sin alocaciones en el bucle caliente).
+# Se reconstruye una vez por fotograma al primer uso (o si cambia el numero de enemigos); el indice es el de `enemies`,
+# asi se conserva el orden de comprobacion de siempre. Las consultas llevan margen por lo que se muevan en el fotograma.
+const EG_INV := 1.0 / 128.0
+const EG_MARGIN := 24.0
+var _eg_head := {}
+var _eg_next := PackedInt32Array()
+var _eg_cand := PackedInt32Array()
+var _eg_frame := -1
+var _eg_n := -1
+
+
+func _eg_ensure() -> void:
+	var fr: int = Engine.get_process_frames()
+	var n: int = enemies.size()
+	if fr == _eg_frame and n == _eg_n:
+		return
+	_eg_frame = fr
+	_eg_n = n
+	_eg_head.clear()
+	_eg_next.resize(n)
+	for i in range(n):
+		var e = enemies[i]
+		if e.dead:
+			continue
+		var p: Vector2 = e.position
+		var gk: int = (floori(p.x * EG_INV) + 32768) * 65536 + floori(p.y * EG_INV) + 32768
+		_eg_next[i] = _eg_head.get(gk, -1)
+		_eg_head[gk] = i
+
+
+# Candidatos (indices de `enemies`, ordenados) cuya posicion cae en la caja ampliada; devuelve el nº en _eg_cand.
+func _eg_query(x0: float, y0: float, x1: float, y1: float) -> int:
+	_eg_ensure()
+	_eg_cand.resize(0)
+	var cx0: int = floori(x0 * EG_INV) + 32768
+	var cx1: int = floori(x1 * EG_INV) + 32768
+	var cy0: int = floori(y0 * EG_INV) + 32768
+	var cy1: int = floori(y1 * EG_INV) + 32768
+	for cx in range(cx0, cx1 + 1):
+		for cy in range(cy0, cy1 + 1):
+			var i: int = _eg_head.get(cx * 65536 + cy, -1)
+			while i >= 0:
+				_eg_cand.append(i)
+				i = _eg_next[i]
+	if _eg_cand.size() > 1:
+		_eg_cand.sort()
+	return _eg_cand.size()
+
+
 func _nearest_enemy(from: Vector2, reach: float) -> Node2D:
 	var best: Node2D = null
 	var best_d2: float = reach * reach
+	var rr: float = reach + EG_MARGIN
+	if rr * EG_INV < 1.5:
+		# alcance corto: solo celdas vecinas (con alcance largo el bucle lineal sale mas barato que recorrer tantas celdas). En empate gana el de mayor indice (como el bucle lineal con <=).
+		_eg_ensure()
+		var best_i: int = -1
+		var cx0: int = floori((from.x - rr) * EG_INV) + 32768
+		var cx1: int = floori((from.x + rr) * EG_INV) + 32768
+		var cy0: int = floori((from.y - rr) * EG_INV) + 32768
+		var cy1: int = floori((from.y + rr) * EG_INV) + 32768
+		for cx in range(cx0, cx1 + 1):
+			for cy in range(cy0, cy1 + 1):
+				var i: int = _eg_head.get(cx * 65536 + cy, -1)
+				while i >= 0:
+					var e = enemies[i]
+					if not e.dead:
+						var d2: float = from.distance_squared_to(e.position)
+						if d2 < best_d2 or (d2 == best_d2 and i > best_i):
+							best_d2 = d2
+							best = e
+							best_i = i
+					i = _eg_next[i]
+		return best
 	for e in enemies:
 		if e.dead:
 			continue
@@ -5589,7 +5673,10 @@ func _update_bullets(delta: float) -> void:
 		if b.orb:
 			b.oa += b.ospeed * delta
 			b.position = player.position + Vector2(cos(b.oa) * b.orad, sin(b.oa) * b.orad * 0.7)
-			for e in enemies:
+			var oq: float = enemy_maxr + b.r + EG_MARGIN
+			var onc: int = _eg_query(b.position.x - oq, b.position.y - oq, b.position.x + oq, b.position.y + oq)
+			for ci in range(onc):
+				var e = enemies[_eg_cand[ci]]
 				if e.dead:
 					continue
 				var rr: float = e.radius + b.r
@@ -5639,7 +5726,12 @@ func _update_bullets(delta: float) -> void:
 				else:
 					remove = true
 		if not remove:
-			for e in enemies:
+			var bp0: Vector2 = b.ppos
+			var bp1: Vector2 = b.position
+			var bq: float = enemy_maxr + b.r + EG_MARGIN
+			var bnc: int = _eg_query(minf(bp0.x, bp1.x) - bq, minf(bp0.y, bp1.y) - bq, maxf(bp0.x, bp1.x) + bq, maxf(bp0.y, bp1.y) + bq)
+			for ci in range(bnc):
+				var e = enemies[_eg_cand[ci]]
 				if e.dead or b.hits.has(e):
 					continue
 				var rr2: float = e.radius + b.r

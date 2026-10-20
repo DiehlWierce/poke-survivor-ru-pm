@@ -188,7 +188,7 @@ func report_run(s: Array, tot: float, spikes: int) -> void:
 		sec[Prof.NAMES[i]] = snappedf(float(ra[i]) / 1000.0, 0.01)
 		secmax[Prof.NAMES[i]] = snappedf(float(rm[i]) / 1000.0, 0.1)
 	var res := {"frames": cnt, "avg_ms": snappedf(avg, 0.01), "p95_ms": snappedf(p95, 0.01), "p99_ms": snappedf(p99, 0.01),
-		"max_ms": snappedf(s[-1], 0.1), "over45": spikes, "enemies": m.enemies.size(), "bullets": m.bullets.size(),
+		"max_ms": snappedf(s[-1], 0.1), "over45": spikes, "enemies": m.enemies.size(), "bullets": m.bullets.size(), "kills": m.kills, "orbs": m.orbs.size(), "level": m.player.level,
 		"sec_avg_ms": sec, "sec_max_ms": secmax}
 	print("RESULT " + JSON.stringify(res))
 
