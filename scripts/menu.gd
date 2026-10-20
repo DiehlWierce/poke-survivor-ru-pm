@@ -2572,7 +2572,7 @@ func _pump(force: bool = false) -> void:
 			if e[2] != null and is_instance_valid(e[2]):
 				(e[2] as Node).queue_free()
 			continue
-		if not (ow as Control).is_visible_in_tree():
+		if not (ow as Control).is_visible_in_tree() and not _bg_ok(ow as Control):
 			i += 1
 			continue
 		fq.remove_at(i)
@@ -2581,6 +2581,31 @@ func _pump(force: bool = false) -> void:
 		extra += int(e[4])
 		if Time.get_ticks_usec() - t0 + extra >= BUD_US:
 			break
+	if did:
+		gi_dirty = true
+
+
+# Pagina oculta que se prepara en segundo plano (meta "bg", p. ej. las pestanas de Ajustes): sus pasos corren
+# mientras su contenedor se vea.
+func _bg_ok(ow: Control) -> bool:
+	if not ow.has_meta("bg"):
+		return false
+	var pr: Control = ow.get_parent() as Control
+	return pr != null and pr.is_visible_in_tree()
+
+
+# Ejecuta ya todos los pasos pendientes de un contenedor (en orden), sin presupuesto.
+func _fq_flush(owner: Node) -> void:
+	var i := 0
+	var did := false
+	while i < fq.size():
+		var e: Array = fq[i]
+		if e[0] == owner and not bool(e[3]):
+			fq.remove_at(i)
+			(e[1] as Callable).call()
+			did = true
+		else:
+			i += 1
 	if did:
 		gi_dirty = true
 
@@ -5971,22 +5996,51 @@ func _refresh_settings() -> void:
 	_settings_content()
 
 
-# Pone la pagina de la pestana actual; solo se construye la primera vez (los controles se actualizan en su sitio).
-# La de Cuenta se rehace siempre para quitar los avisos "pulsa otra vez".
+# Pone la pagina de la pestana actual al instante. Antes cada cambio de pestana tiraba la pagina y la rehacia por porciones
+# (_sx): durante varios fotogramas se veia la pagina vacia o a medias ("parpadeo"). Ahora las cinco paginas se hacen una
+# vez por visita a Ajustes: la marcada entera antes de mostrarse y las demas ocultas, en segundo plano con el presupuesto
+# de _pump; cambiar de pestana solo cambia la visible (si la pagina aun no estaba lista se termina en ese momento).
 func _settings_content() -> void:
-	_fq_cancel(settings_host)
-	for ch in settings_host.get_children():
-		_retire(ch, settings_host)
-	settings_pages.clear()
 	focus_first = null
-	# La pagina se hace de nuevo en cada visita y por porciones (_sx): guardarla y volver a colgarla costaba casi lo mismo.
+	var page: VBoxContainer = settings_pages.get(set_tab) as VBoxContainer
+	if page == null or not is_instance_valid(page) or page.is_queued_for_deletion():
+		page = _settings_make(set_tab)
+	_fq_flush(page)   # lo que quede por construir de esta pagina, ya: nunca se ve a medias
+	for k in settings_pages:
+		var pg: Control = settings_pages[k]
+		if is_instance_valid(pg):
+			pg.visible = pg == page
+	settings_box = page
+	if page.has_meta("on_show"):
+		(page.get_meta("on_show") as Callable).call()   # p. ej. Cuenta: quitar los avisos "pulsa otra vez"
+	var ff: Control = page.get_meta("ff") as Control if page.has_meta("ff") else null
+	if ff != null and is_instance_valid(ff) and page.is_ancestor_of(ff):
+		focus_first = ff
+	else:
+		var items: Array = NAVG.focusables(page)
+		focus_first = items[0] if not items.is_empty() else tab_sel
+	gi_dirty = true
+	# el resto de pestanas, ocultas y por porciones (sin tirones): al cambiar a ellas ya estan hechas
+	for i in range(SET_TABS.size()):
+		if not settings_pages.has(i):
+			_settings_make(i)
+
+
+# Crea (oculta) la pagina de la pestana i y encola su construccion; los pasos corren aunque este oculta (meta "bg").
+func _settings_make(i: int) -> VBoxContainer:
 	var page := VBoxContainer.new()
 	page.set_meta("gen", lay_gen)
+	page.set_meta("bg", true)
+	page.visible = false
 	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	page.add_theme_constant_override("separation", 8)
-	settings_box = page
 	settings_host.add_child(page)
-	match set_tab:
+	settings_pages[i] = page
+	var keep_box: VBoxContainer = settings_box
+	var keep_ff: Control = focus_first
+	focus_first = null
+	settings_box = page
+	match i:
 		0:
 			_set_sound()
 		1:
@@ -5997,13 +6051,11 @@ func _settings_content() -> void:
 			_set_account()
 		4:
 			_set_about()
-	settings_pages[set_tab] = page
-	settings_box = page
-	_pump(true)   # lo primero (con el foco) ya; el resto llega en los siguientes fotogramas
-	gi_dirty = true
-	if focus_first == null or not is_instance_valid(focus_first):
-		var items: Array = NAVG.focusables(page)
-		focus_first = items[0] if not items.is_empty() else tab_sel
+	if focus_first != null:
+		page.set_meta("ff", focus_first)
+	focus_first = keep_ff
+	settings_box = keep_box
+	return page
 
 
 # Un trozo de la pagina de Ajustes que se construye mas tarde, apuntando a su pagina aunque ya se haya cambiado de pestana.
@@ -6011,8 +6063,14 @@ func _sx(f: Callable) -> void:
 	var pg: VBoxContainer = settings_box
 	_later(pg, func():
 		var keep: VBoxContainer = settings_box
+		var keep_ff: Control = focus_first
 		settings_box = pg
+		focus_first = null
 		f.call()
+		if focus_first != null:
+			pg.set_meta("ff", focus_first)
+			if not pg.visible:
+				focus_first = keep_ff
 		settings_box = keep)
 
 
@@ -6026,8 +6084,10 @@ func _settings_rebuild() -> void:
 	var keep_scroll: int = sc.scroll_vertical if sc != null else 0
 	var keep_listen := listening
 	if settings_pages.has(set_tab):
-		(settings_pages[set_tab] as Node).queue_free()
+		var old: Node = settings_pages[set_tab]
 		settings_pages.erase(set_tab)
+		settings_host.remove_child(old)
+		old.queue_free()
 	_settings_content()
 	listening = keep_listen
 	if sc != null:
@@ -6058,6 +6118,7 @@ func _set_sound() -> void:
 		_update_top())
 	mb.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	settings_box.add_child(mb)
+	settings_box.set_meta("on_show", mute_look)   # el sonido se puede silenciar tambien desde la barra superior
 
 
 func _set_graphics() -> void:
@@ -6250,6 +6311,12 @@ func _set_account() -> void:
 			SV.reset_all()
 			_show("test"))
 	settings_box.add_child(rb)
+	# la pagina se guarda entre pestanas: al volver a ella los botones vuelven a su texto normal
+	settings_box.set_meta("on_show", func():
+		if is_instance_valid(ib):
+			ib.text = "Pegar código de guardado"   # como en _btn: el boton lo traduce solo
+		if is_instance_valid(rb):
+			rb.text = "Borrar todo el progreso")
 
 
 func _danger(b: Button) -> void:
