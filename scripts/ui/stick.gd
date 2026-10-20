@@ -1,3 +1,4 @@
+# Joystick tactil flotante: aparece donde pones el dedo
 extends Node2D
 const DSP = preload("res://scripts/display.gd")
 
