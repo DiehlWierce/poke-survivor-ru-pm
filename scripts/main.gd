@@ -1132,6 +1132,17 @@ func _process(delta: float) -> void:
 	if not loading_done:
 		_load_tick()   # carga inicial por etapas: no corre nada de la partida hasta terminar
 		return
+	var pt := 0
+	if Prof.on:
+		pt = Time.get_ticks_usec()
+		var pt0 := pt
+		_process_body(delta, pt0)
+		Prof.lap(Prof.S_TOTAL, pt0)
+		return
+	_process_body(delta, 0)
+
+
+func _process_body(delta: float, pt: int) -> void:
 	Actor.tick += 1
 	_preload_step()
 	if not _ld_keep.is_empty() and run_time > 20.0:
@@ -1171,6 +1182,8 @@ func _process(delta: float) -> void:
 			if ch is Fx and not ch.is_queued_for_deletion():
 				ch.queue_free()
 				over -= 1
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
 	if player.dead:
 		death_t += delta
 		# Game Over solo cuando la animacion de muerte termina completa (con tope de seguridad)
@@ -1227,10 +1240,16 @@ func _process(delta: float) -> void:
 				dyn.stop()
 			elif dyn.active:
 				dyn.tick(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_PLAYER, pt)
 		if arena == null:
 			_update_world(delta)
 			_update_biome()
+			if Prof.on:
+				pt = Prof.lap(Prof.S_WORLD, pt)
 			_update_spawner(delta)
+			if Prof.on:
+				pt = Prof.lap(Prof.S_SPAWN, pt)
 			_update_rift(delta)
 			jd.update(delta)
 			if run_time >= JDM.ARC_AT and not jd.done and pending_levels == 0 and mode != "rush" and mode != "tower":
@@ -1240,13 +1259,27 @@ func _process(delta: float) -> void:
 			if jd.active():
 				jd.update(delta)
 		_update_weather(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_PLAYER, pt)
 		_update_enemies(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_ENEMIES, pt)
 		_update_hazards(delta)
 		_update_ebullets(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_HAZ_EB, pt)
 		_update_fields(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_FIELDS, pt)
 		_update_bullets(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_BULLETS, pt)
 		_update_orbs(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_ORBS, pt)
 		_cleanup_enemies()
+		if Prof.on:
+			pt = Prof.lap(Prof.S_CLEAN, pt)
 		if pending_levels > 0 and not choosing:
 			_open_cards()
 		elif bonds > 0 and not choosing and (arena == null or _arena_bond_ready()):
@@ -1324,6 +1357,14 @@ func _process(delta: float) -> void:
 	wx.kind = wx_kind
 	wx.level = _wx_level()
 	_refresh_slots()
+	if Prof.on:
+		Prof.lap(Prof.S_HUD, pt)
+		if (Actor.tick % 30) == 0:
+			Prof.n_enemies = enemies.size()
+			Prof.n_bullets = bullets.size()
+			Prof.n_ebullets = ebullets.size()
+			Prof.n_orbs = orbs.size()
+			Prof.n_fx = fx.get_child_count()
 
 
 func _refresh_slots() -> void:

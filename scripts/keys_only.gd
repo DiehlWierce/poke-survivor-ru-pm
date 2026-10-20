@@ -22,6 +22,7 @@ var _rcpu := 0.0
 func _ready() -> void:
 	active = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 	set_process_input(active)
+	Prof.on = active
 	set_process(false)
 	if not active:
 		return
@@ -58,6 +59,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if Prof.on:
+		Prof.end_frame()   # último en el orden de proceso: ya cuenta main y los trozos de suelo de este fotograma
 	var ms := delta * 1000.0
 	_frames += 1
 	_sum += ms
@@ -68,13 +71,18 @@ func _process(delta: float) -> void:
 	_rcpu += RenderingServer.viewport_get_measured_render_time_cpu(get_tree().root.get_viewport_rid())
 	if ms > SPIKE_MS:
 		_spikes += 1
-		if _spikes <= 200:
+		if _spikes <= 600:
 			var scene: Node = get_tree().current_scene
 			_log.store_line("рывок %.0f мс  t=%.1f  сцена=%s  узлов=%d  процесс=%.1f мс" % [ms, Time.get_ticks_msec() / 1000.0, scene.name if scene != null else "-", int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
+			_log.store_line("  разбивка(мс): " + Prof.line_cur())
 			_log.flush()
 	if _acc >= REPORT_S:
 		_log.store_line("t=%.0f  средн=%.1f  худший=%.0f  к/с=%d  рывков=%d  узлов=%d  отрисовка=%d  скрипты=%.1f  физика=%.1f  рендер_цпу=%.1f мс" % [Time.get_ticks_msec() / 1000.0, _sum / maxf(1.0, _frames), _worst, int(_frames / _acc), _spikes, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), _proc / maxf(1.0, _frames), _phys / maxf(1.0, _frames), _rcpu / maxf(1.0, _frames)])
+		_log.store_line("  средн(мс): " + Prof.line_avg())
+		_log.store_line("  макс(мс): " + Prof.line_max())
+		_log.store_line("  " + Prof.line_counts())
 		_log.flush()
+		Prof.reset_period()
 		_acc = 0.0
 		_frames = 0
 		_sum = 0.0

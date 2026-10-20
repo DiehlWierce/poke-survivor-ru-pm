@@ -697,7 +697,12 @@ func _process(delta: float) -> void:
 			for key in chunks:
 				if chunks[key]["tex"] != null:
 					chunks[key]["old"] = null
-	if _bake_step():
+	if Prof.on:
+		var pt := Time.get_ticks_usec()
+		if _bake_step():
+			dirty = true
+		Prof.lap(Prof.S_CHUNK, pt)
+	elif _bake_step():
 		dirty = true
 	# Las texturas del suelo no cambian: solo se redibuja para animar el liquido (20 veces por s).
 	_redraw_acc += delta
