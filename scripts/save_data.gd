@@ -4,10 +4,14 @@ extends RefCounted
 const PATH := "user://save.json"
 const BAK := "user://save.bak"
 const TMP := "user://save.tmp"
+const SAVE_SCHEMA_VERSION := 1
 const STARTERS_D = preload("res://scripts/starters_data.gd")
 
 static var d: Dictionary = {}
 static var loaded := false
+static var save_blocked := false
+static var recovered_from_backup := false
+static var last_save_error := ""
 static var dex_list: Array = []
 static var dex_by: Dictionary = {}
 static var smeta: Dictionary = {}
@@ -81,7 +85,7 @@ const GOALS := [
 
 static func default_data() -> Dictionary:
 	return {
-		"v": 1, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
+		"v": SAVE_SCHEMA_VERSION, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
 		"upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
 		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true},
@@ -95,6 +99,56 @@ static func _merge(base: Dictionary, over: Dictionary) -> Dictionary:
 		else:
 			base[k] = over[k]
 	return base
+
+
+static func _save_error(message: String) -> void:
+	last_save_error = message
+	push_warning("[SaveData] " + message)
+
+
+# Validate the types that the game indexes directly. Missing fields remain compatible with
+# older saves because _merge() fills them from default_data(); unknown fields are preserved.
+static func _matches_default_shape(defaults: Dictionary, parsed: Dictionary, path: String = "") -> bool:
+	for key in defaults:
+		if not parsed.has(key):
+			continue
+		var expected = defaults[key]
+		var actual = parsed[key]
+		var field := String(key) if path == "" else path + "." + String(key)
+		if expected is Dictionary:
+			if not (actual is Dictionary):
+				_save_error("Invalid save field '%s': expected an object." % field)
+				return false
+			if not _matches_default_shape(expected, actual, field):
+				return false
+		elif expected is Array:
+			if not (actual is Array):
+				_save_error("Invalid save field '%s': expected an array." % field)
+				return false
+		elif expected is int or expected is float:
+			if not (actual is int or actual is float):
+				_save_error("Invalid save field '%s': expected a number." % field)
+				return false
+		elif typeof(actual) != typeof(expected):
+			_save_error("Invalid save field '%s': value type does not match the save schema." % field)
+			return false
+	return true
+
+
+static func _usable_save(parsed, path: String) -> bool:
+	if not (parsed is Dictionary):
+		_save_error("Could not load '%s': the root value is not an object." % path)
+		return false
+	var version = parsed.get("v", SAVE_SCHEMA_VERSION)
+	if not (version is int or version is float):
+		_save_error("Could not load '%s': the save version is invalid." % path)
+		return false
+	if int(version) > SAVE_SCHEMA_VERSION:
+		_save_error("Could not load '%s': save version %d is newer than supported version %d." % [path, int(version), SAVE_SCHEMA_VERSION])
+		return false
+	if not _matches_default_shape(default_data(), parsed):
+		return false
+	return true
 
 
 static func load_dex() -> void:
@@ -117,10 +171,24 @@ static func ensure() -> void:
 	load_dex()
 	d = default_data()
 	var parsed = _read_json(PATH)
-	if not (parsed is Dictionary):
-		parsed = _read_json(BAK)   # el guardado principal falto o esta danado: usa la copia
-	if parsed is Dictionary:
+	var primary_exists := FileAccess.file_exists(PATH)
+	var primary_ok := _usable_save(parsed, PATH) if primary_exists else false
+	if primary_ok:
 		d = _merge(d, parsed)
+	else:
+		# A future-version primary save must never be replaced with an older backup or defaults.
+		var primary_version = parsed.get("v", SAVE_SCHEMA_VERSION) if parsed is Dictionary else SAVE_SCHEMA_VERSION
+		var future_primary := primary_exists and (primary_version is int or primary_version is float) and int(primary_version) > SAVE_SCHEMA_VERSION
+		var backup = _read_json(BAK)
+		var backup_exists := FileAccess.file_exists(BAK)
+		var backup_ok := _usable_save(backup, BAK) if backup_exists and not future_primary else false
+		if backup_ok:
+			_save_error("Loaded backup '%s' because the primary save could not be used." % BAK)
+			d = _merge(d, backup)
+			recovered_from_backup = true
+		elif primary_exists or backup_exists:
+			# Keep damaged/unsupported files untouched until the user explicitly resets the save.
+			save_blocked = true
 	_migrate_upgrades()
 	# v1.0.1: sprites al tamano del original (vision 165 %); el valor por defecto antiguo era 140.
 	if not bool(d["settings"].get("fov_v2", false)):
@@ -134,8 +202,16 @@ static func _read_json(path: String):
 		return null
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
+		_save_error("Could not open '%s' for reading (error %d)." % [path, FileAccess.get_open_error()])
 		return null
-	return JSON.parse_string(f.get_as_text())
+	var text := f.get_as_text()
+	f.close()
+	var parser := JSON.new()
+	var err := parser.parse(text)
+	if err != OK:
+		_save_error("Could not parse '%s' at line %d: %s." % [path, parser.get_error_line(), parser.get_error_message()])
+		return null
+	return parser.data
 
 
 # Las mejoras eran globales; ahora cada Pokemon tiene las suyas. Las antiguas pasan al companero actual.
@@ -150,16 +226,42 @@ static func _migrate_upgrades() -> void:
 		d["upgrades"] = {}
 
 
-# Guardado a prueba de cierres: escribe en un temporal, guarda la copia anterior y renombra.
-static func save() -> void:
+# Write to a temporary file, verify it, preserve the previous primary as backup, then replace it.
+static func save() -> bool:
+	if not loaded:
+		ensure()
+	if save_blocked:
+		_save_error("Save was not written because existing save data is damaged or from a newer version. Reset it explicitly to replace it.")
+		return false
+	last_save_error = ""
+	d["v"] = SAVE_SCHEMA_VERSION
+	var payload := JSON.stringify(d)
 	var f := FileAccess.open(TMP, FileAccess.WRITE)
 	if f == null:
-		return
-	f.store_string(JSON.stringify(d))
+		_save_error("Could not open temporary save for writing (error %d)." % FileAccess.get_open_error())
+		return false
+	f.store_string(payload)
+	f.flush()
+	var write_error := f.get_error()
 	f.close()
-	if FileAccess.file_exists(PATH):
-		DirAccess.copy_absolute(PATH, BAK)
-	DirAccess.rename_absolute(TMP, PATH)
+	if write_error != OK:
+		_save_error("Could not write temporary save (error %d)." % write_error)
+		return false
+	var check := JSON.new()
+	if check.parse(payload) != OK or not _usable_save(check.data, TMP):
+		_save_error("Temporary save failed validation; the previous save was left untouched.")
+		return false
+	if FileAccess.file_exists(PATH) and not recovered_from_backup:
+		var copy_error := DirAccess.copy_absolute(ProjectSettings.globalize_path(PATH), ProjectSettings.globalize_path(BAK))
+		if copy_error != OK:
+			_save_error("Could not preserve the previous save as backup (error %d); the primary save was left untouched." % copy_error)
+			return false
+	var rename_error := DirAccess.rename_absolute(ProjectSettings.globalize_path(TMP), ProjectSettings.globalize_path(PATH))
+	if rename_error != OK:
+		_save_error("Could not replace the primary save (error %d); the previous save remains available." % rename_error)
+		return false
+	recovered_from_backup = false
+	return true
 
 
 # Ranking local: las 10 mejores partidas por tiempo aguantado.
@@ -175,6 +277,8 @@ static func _add_top(e: Dictionary) -> void:
 static func reset_all() -> void:
 	d = default_data()
 	last_run = {}
+	save_blocked = false
+	recovered_from_backup = false
 	save()
 
 

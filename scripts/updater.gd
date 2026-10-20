@@ -3,7 +3,7 @@ extends Node
 # que esta version, muestra un aviso con un boton para descargarla. Si no hay internet, no hace nada.
 # La version instalada sale de Proyecto > Ajustes del proyecto > Aplicacion > Config > Version (application/config/version),
 # que tambien usa el export de Android si dejas vacio su "Nombre de version". Un solo sitio que subir en cada release,
-# y el tag de GitHub debe ser ese mismo numero con una v (p. ej. v3.0.1). Si ese ajuste esta vacio se usa FALLBACK_VERSION.
+# y el tag de GitHub debe ser ese mismo número con una v (p. ej. v3.1.0). Si ese ajuste está vacío se usa FALLBACK_VERSION.
 
 const SV = preload("res://scripts/save_data.gd")
 const L = preload("res://scripts/lang.gd")
@@ -11,7 +11,7 @@ const PAD = preload("res://scripts/pad.gd")
 const DSP = preload("res://scripts/display.gd")
 
 const REPO := "JayElDragon/poke-survivor"
-const FALLBACK_VERSION := "4.0.0"
+const FALLBACK_VERSION := "3.1.0"
 static var APP_VERSION: String = _current()
 
 

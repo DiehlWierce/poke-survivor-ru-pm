@@ -3294,10 +3294,8 @@ func _refresh_up_keep(key: String) -> void:
 
 # Lo que decide la estructura de las tarjetas: si coincide con lo construido solo se actualizan los valores.
 func _up_sig(cols: int) -> String:
-	var sg := "%d_%d_%d_%d_%d" % [lay_gen, cols, int(up_dex == int(SV.d["selected"])), int(SV.up_level("tm", up_dex) > 0), int(SV.up_level("ban", up_dex) > 0)]
-	for u in SV.UPGRADES:
-		sg += "1" if SV.up_level(String(u["id"]), up_dex) >= int(u["max"]) else "0"
-	return sg
+	# La estructura de las tarjetas no cambia al alcanzar el nivel maximo: se actualiza el mismo boton.
+	return "%d_%d_%d_%d_%d" % [lay_gen, cols, int(up_dex == int(SV.d["selected"])), int(SV.up_level("tm", up_dex) > 0), int(SV.up_level("ban", up_dex) > 0)]
 
 
 func _refresh_up() -> void:
@@ -3420,20 +3418,16 @@ func _up_card(grid: GridContainer, u: Dictionary) -> void:
 	var pips := Pips.new()
 	pips.setup(lv, mx)
 	col.add_child(pips)
-	var btn: Button
-	if lv >= mx:
-		btn = _btn("Máximo", func(): pass, Vector2(120, 52))
-		btn.disabled = true
-		btn.add_theme_stylebox_override("disabled", _sb(Color("#2b3452"), Color("#4a5578"), 3, 12))
-	else:
-		var cost: int = SV.up_cost(id, lv)
-		btn = _cost_btn("", str(cost), "", "coin", func(): _buy(id), Vector2(120, 52), int(SV.d["coins"]) >= cost, false, true)
-		btn.set_meta("fk", "u:" + id)
-		if id == up_focus_id:
-			focus_first = btn
-			up_focus_id = ""
-			if cur == "up" and get_viewport().gui_get_focus_owner() == null:
-				_gf(btn)
+	var cost: int = SV.up_cost(id, lv) if lv < mx else 0
+	var btn := _cost_btn("", str(cost), "", "coin", func(): _buy(id), Vector2(120, 52), lv < mx and int(SV.d["coins"]) >= cost, false, true)
+	btn.set_meta("fk", "u:" + id)
+	btn.set_meta("maxed", false)
+	_up_button_update(btn, id, lv, mx)
+	if lv < mx and id == up_focus_id:
+		focus_first = btn
+		up_focus_id = ""
+		if cur == "up" and get_viewport().gui_get_focus_owner() == null:
+			_gf(btn)
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var ent := {"id": id, "u": u, "pips": pips, "btn": btn, "extra": null}
 	if id == "tm" and lv > 0:
@@ -3506,15 +3500,38 @@ func _up_update() -> void:
 		if (ent["pips"] as Pips).lv != lv:
 			(ent["pips"] as Pips).setup(lv, int(u["max"]))
 		var bt: Button = ent["btn"]
-		if lv < int(u["max"]):
-			var cost: int = SV.up_cost(id, lv)
-			_cost_update(bt, str(cost), int(SV.d["coins"]) >= cost)
-			if focus_first == null and not bt.disabled:
-				focus_first = bt
+		_up_button_update(bt, id, lv, int(u["max"]))
+		if focus_first == null and not bt.disabled:
+			focus_first = bt
 		if id == "ban" and ent["extra"] != null:
 			(ent["extra"] as Button).text = L.t("Elegir (%d/%d)") % [mini(SV.ban_list(up_dex).size(), lv), lv]
 	_up_wire(maxi(2, DSP.cols(_content_w(), 340.0, 10.0, 3)))
 	gi_dirty = true
+
+
+func _up_button_update(bt: Button, id: String, lv: int, mx: int) -> void:
+	var cl: Label = bt.get_meta("cl")
+	var coin := cl.get_parent().get_child(0) as Control
+	var maxed := lv >= mx
+	if maxed:
+		if cl.text != L.t("Máximo"):
+			cl.text = L.t("Máximo")
+		coin.visible = false
+		bt.disabled = true
+		if not bool(bt.get_meta("maxed", false)):
+			_gold_on(bt, false)
+			bt.add_theme_stylebox_override("disabled", _sb(Color("#2b3452"), Color("#4a5578"), 3, 12))
+			cl.add_theme_color_override("font_color", Color("#9fb4dc"))
+			cl.add_theme_constant_override("outline_size", 0)
+			bt.set_meta("maxed", true)
+		return
+	coin.visible = true
+	var cost: int = SV.up_cost(id, lv)
+	if bool(bt.get_meta("maxed", false)):
+		bt.set_meta("maxed", false)
+		_gold_on(bt, false)
+		bt.set_meta("on", int(SV.d["coins"]) < cost)
+	_cost_update(bt, str(cost), int(SV.d["coins"]) >= cost)
 
 
 # Paneles de debajo (MT, veto, atajos): se rehacen solo si lo que muestran cambia, por porciones.

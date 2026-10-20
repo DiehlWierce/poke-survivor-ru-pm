@@ -277,6 +277,7 @@ var gen_q: Array = []
 var gfx: Node2D
 var world: Node2D
 var fx: Node2D
+var active_fx: Array = []
 var pfx: Node2D
 var player: Player
 var cam: Camera2D
@@ -432,6 +433,7 @@ func _ready() -> void:
 	add_child(world)
 	fx = Node2D.new()
 	add_child(fx)
+	fx.child_entered_tree.connect(_track_fx_child)
 	pfx = PFX.new()
 	pfx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	fx.add_child(pfx)
@@ -1416,7 +1418,10 @@ func _process_body(delta: float, pt: int) -> void:
 	wx.level = _wx_level()
 	_refresh_slots()
 	if Prof.on:
-		Prof.lap(Prof.S_HUD, pt)
+		pt = Prof.lap(Prof.S_HUD, pt)
+	_update_active_fx(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
 		if (Actor.tick % 30) == 0:
 			Prof.n_enemies = enemies.size()
 			Prof.n_bullets = bullets.size()
@@ -2980,6 +2985,25 @@ func _confused_step(e: Enemy, delta: float, kn_decay: float, spd: float) -> void
 
 func _ring(pos: Vector2, r0: float, r1: float, color: Color, life: float, width: float = 3.0) -> void:
 	pfx.ring(pos + Vector2(0.0, -LIFT * 0.5), r0, r1, color, life, width)
+
+
+func _track_fx_child(child: Node) -> void:
+	if child is Fx:
+		active_fx.append(child)
+
+
+func _update_active_fx(delta: float) -> void:
+	for i in range(active_fx.size() - 1, -1, -1):
+		var effect: Fx = active_fx[i]
+		if not is_instance_valid(effect) or effect.is_queued_for_deletion():
+			active_fx.remove_at(i)
+			continue
+		effect.age += delta
+		if effect.age >= effect.life:
+			effect.queue_free()
+			active_fx.remove_at(i)
+		elif not Actor.lite or (Actor.tick & 1) == 0 or effect.age <= delta * 1.5:
+			effect.queue_redraw()
 
 
 # ---------------------------------------------------------------
@@ -8028,13 +8052,6 @@ class Fx extends Node2D:
 	var length := 0.0
 	var width := 10.0
 	var p2 := Vector2.ZERO
-
-	func _process(delta: float) -> void:
-		age += delta
-		if age >= life:
-			queue_free()
-		elif not Actor.lite or (Actor.tick & 1) == 0 or age <= delta * 1.5:
-			queue_redraw()
 
 	func _draw() -> void:
 		var k: float = clampf(age / life, 0.0, 1.0)

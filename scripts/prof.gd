@@ -30,7 +30,7 @@ static var n_ebullets := 0
 static var n_orbs := 0
 static var n_fx := 0
 # trozos de suelo (los escribe tileworld.gd; acumulados de toda la partida, no se reinician con reset_period)
-static var ch_vis_missing := 0   # trozos visibles sin textura tras la docruta (tiene que ser 0), sumados por fotograma
+static var ch_vis_missing := 0   # trozos visibles temporalmente sin textura, sumados por fotograma
 static var ch_vis_n := 0
 static var ch_n := 0
 static var ch_n_max := 0
