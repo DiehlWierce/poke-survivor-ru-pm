@@ -8,6 +8,9 @@ var dens := 1.0
 var lite := false
 var cap_parts := 1400
 var cap_sprites := 320
+const SMALL_BUDGET := 8   # consola: maximo de particulas pequenas (chispas, polvo) nuevas por fotograma
+var _bud_frame := -1
+var _bud := 0
 var parts: Array = []
 var sprs: Array = []
 var rings: Array = []
@@ -46,9 +49,18 @@ static func rnd(a: float, b: float) -> float:
 
 
 # ---------------- creacion ----------------
-func px(pos: Vector2, color: Color, vel: Vector2 = Vector2.ZERO, life: float = 0.4, size: float = 1.0, grav: float = 0.0, drag: float = 0.9) -> void:
+func px(pos: Vector2, color: Color, vel: Vector2 = Vector2.ZERO, life: float = 0.4, size: float = 1.0, grav: float = 0.0, drag: float = 0.9, force: bool = false) -> void:
 	if parts.size() >= cap_parts:
 		return
+	if lite and size < 1.5 and not force:
+		# Presupuesto por fotograma para las pequenas; las grandes y las de golpes importantes (force) pasan siempre
+		var fr: int = Engine.get_process_frames()
+		if fr != _bud_frame:
+			_bud_frame = fr
+			_bud = SMALL_BUDGET
+		if _bud <= 0:
+			return
+		_bud -= 1
 	parts.append({"p": pos, "v": vel, "t": 0.0, "life": life, "c": color, "s": size * PX, "g": grav, "d": drag})
 
 
@@ -57,7 +69,7 @@ func burst(pos: Vector2, color: Color, n: int = 8, power: float = 110.0) -> void
 	for i in range(cnt):
 		var a: float = randf() * TAU
 		var s: float = rnd(power * 0.35, power)
-		px(pos, color, Vector2.from_angle(a) * s, rnd(0.22, 0.5), 2.0 if randf() < 0.35 else 1.0)
+		px(pos, color, Vector2.from_angle(a) * s, rnd(0.22, 0.5), 2.0 if randf() < 0.35 else 1.0, 0.0, 0.9, n >= 20)
 
 
 func spark(pos: Vector2, color: Color, dir: Vector2, n: int = 4) -> void:

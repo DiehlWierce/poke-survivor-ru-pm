@@ -32,6 +32,12 @@ var ENEMY_CAP := 64   # en la consola (PortMaster) baja a 44: menos enemigos que
 const AIM_REACH := 520.0
 const MAX_MOVES := 4
 const ORB_CAP := 420
+const ORB_MERGE := 50      # consola: con mas orbes de XP en el suelo, el nuevo se funde en el mas cercano (la suma de XP no cambia)
+const ORB_MERGE_SCAN := 48 # cuantos orbes (los mas nuevos) se miran para hallar el mas cercano
+const ORB_SC_MAX := 1.6    # tope del tamano visual de un orbe fundido
+const ORB_SLEEP_T := 4.5   # consola: orbes lejanos y fuera de pantalla se actualizan cada ~4-5 fotogramas
+const ORB_POOL_MAX := 48
+const DMG_TXT_MAX := 12    # consola: maximo de numeros de dano a la vez; el exceso se suma en el mas cercano
 const BASE_MAGNET := 78.0
 const XP_ENEMY := 20.0
 const CHUNK := 768.0
@@ -283,6 +289,11 @@ var cards: Cards
 var enemies: Array = []
 var bullets: Array = []
 var orbs: Array = []
+var orb_pool: Array = []      # consola: orbes recogidos, ocultos, para reutilizar sin new/queue_free
+var xp_ground := 0            # consola: orbes de XP en el suelo (se recuenta en _update_orbs)
+var xp_orb_in := 0.0          # control (bench): XP crudo que entra en orbes
+var xp_orb_out := 0.0         # control (bench): XP crudo cobrado de orbes
+var dmg_txts: Array = []      # consola: numeros de dano vivos
 var fields: Array = []
 var target: Node2D = null
 var run_time := 0.0
@@ -4933,7 +4944,7 @@ func _damage_enemy(e, amount: float, col: Color = Color.WHITE, dir: Vector2 = Ve
 		var ab: float = minf(e.shield, d)
 		e.shield -= ab
 		if ab >= d:
-			add_text(e.position + Vector2(0.0, -e.body_h - 4.0), str(roundi(d)), Color("#9fd8ff"))
+			_dmg_text(e.position + Vector2(0.0, -e.body_h - 4.0), roundi(d), Color("#9fd8ff"), 18)
 			e.flash = 0.5
 			return
 		d -= ab
@@ -4948,7 +4959,7 @@ func _damage_enemy(e, amount: float, col: Color = Color.WHITE, dir: Vector2 = Ve
 		tc = Color("#a3abb8")
 	var src_k: String = dmg_src if dmg_src != "" else "_other"
 	run_dmg[src_k] = float(run_dmg.get(src_k, 0.0)) + minf(d, maxf(0.0, e.hp))
-	add_text(e.position + Vector2(0.0, -e.body_h - 4.0), str(roundi(d)), tc, ts)
+	_dmg_text(e.position + Vector2(0.0, -e.body_h - 4.0), roundi(d), tc, ts)
 	if knock > 0.0 and dir != Vector2.ZERO and not e.boss:
 		e.knock += dir.normalized() * knock
 	Aud.sfx("hit")
@@ -5809,6 +5820,7 @@ func _xp_for(level: int) -> int:
 
 
 func _gain_xp(amount: float) -> void:
+	xp_orb_out += amount
 	player.xp += amount * _xp_mul() * XP_GAIN * (TOWER_XP_K if mode == "tower" else 1.0)
 	while player.xp >= player.xp_next:
 		player.xp -= player.xp_next
@@ -5818,12 +5830,54 @@ func _gain_xp(amount: float) -> void:
 
 
 func _spawn_orb(pos: Vector2, kind: String, value: float):
-	var o := Orb.new()
+	var isxp: bool = kind == "xp" or kind == "xpBig"
+	if isxp:
+		xp_orb_in += value
+	var o = null
+	if Actor.lite:
+		if isxp and xp_ground > ORB_MERGE and orbs.size() > ORB_MERGE:
+			# Demasiados orbes de XP: se funde en el mas cercano de su categoria (misma suma, mas grande)
+			var best = null
+			var bd: float = INF
+			var seen: int = 0
+			for i in range(orbs.size() - 1, -1, -1):
+				var c = orbs[i]
+				if c.kind != kind:
+					continue
+				var dd: float = c.position.distance_squared_to(pos)
+				if dd < bd:
+					bd = dd
+					best = c
+				seen += 1
+				if seen >= ORB_MERGE_SCAN:
+					break
+			if best != null:
+				best.value += value
+				best.sc = minf(ORB_SC_MAX, pow(best.value / maxf(best.base, 0.001), 0.25))
+				best.queue_redraw()
+				return best
+		while not orb_pool.is_empty():
+			var po = orb_pool.pop_back()
+			if is_instance_valid(po) and not po.is_queued_for_deletion():
+				o = po
+				break
+		if o != null:
+			o.pulled = false
+			o.sc = 1.0
+			o.acc = randf() * 0.1
+			o.visible = true
+			fx.move_child(o, -1)
+	if o == null:
+		o = Orb.new()
+		fx.add_child(o)
 	o.kind = kind
 	o.value = value
+	o.base = value
 	o.position = pos
 	o.vel = Vector2.from_angle(randf() * TAU) * randf_range(10.0, 46.0)
-	fx.add_child(o)
+	if isxp:
+		xp_ground += 1
+	o.queue_redraw()
 	orbs.append(o)
 	if orbs.size() > ORB_CAP:
 		# Demasiados: el orbe de XP mas viejo se cobra al instante.
@@ -5894,15 +5948,40 @@ func _drop(e) -> void:
 func _update_orbs(delta: float) -> void:
 	var mag_r: float = _magnet()
 	var pr: Vector2 = player.position
+	var lite: bool = Actor.lite
+	var sleep_r2: float = 0.0
+	var xpn: int = 0
+	if lite:
+		# Lejos del iman y fuera de pantalla el orbe duerme: se mueve cada ~4-5 fotogramas con el delta acumulado
+		var sr: float = get_viewport_rect().size.length() * 0.5 / cam_zoom + 80.0
+		sleep_r2 = maxf(sr * sr, mag_r * mag_r * 9.0)
 	for i in range(orbs.size() - 1, -1, -1):
 		var o = orbs[i]
 		var to: Vector2 = pr - o.position
+		if lite:
+			if o.kind == "xp" or o.kind == "xpBig":
+				xpn += 1
+			if not o.pulled and to.length_squared() > sleep_r2:
+				o.acc += delta
+				if o.acc < delta * ORB_SLEEP_T:
+					continue
+				var sd: float = o.acc
+				o.acc = 0.0
+				o.vel *= pow(0.02, sd)
+				o.position += o.vel * sd
+				continue
 		var d: float = to.length()
 		if d < 15.0:
 			var kind: String = o.kind
 			var val: float = o.value
-			o.queue_free()
 			orbs.remove_at(i)
+			if lite and orb_pool.size() < ORB_POOL_MAX:
+				o.visible = false
+				orb_pool.append(o)
+			else:
+				o.queue_free()
+			if lite and (kind == "xp" or kind == "xpBig"):
+				xpn -= 1
 			_collect(kind, val)
 			continue
 		if o.pulled or d < mag_r:
@@ -5912,6 +5991,8 @@ func _update_orbs(delta: float) -> void:
 		else:
 			o.vel *= pow(0.02, delta)
 		o.position += o.vel * delta
+	if lite:
+		xp_ground = xpn
 
 
 func _collect(kind: String, value: float) -> void:
@@ -6883,6 +6964,45 @@ func add_text(pos: Vector2, text: String, color: Color, size: int = 18) -> void:
 	f.color = color
 	f.position = pos
 	fx.add_child(f)
+
+
+# Numero de dano. Consola: con mas de DMG_TXT_MAX vivos, el golpe se suma en el mas cercano y fresco (solo el dibujo; el dano real no cambia).
+func _dmg_text(pos: Vector2, n: int, color: Color, size: int) -> void:
+	if not Actor.lite:
+		add_text(pos, str(n), color, size)
+		return
+	if not dmg_on:
+		return
+	for i in range(dmg_txts.size() - 1, -1, -1):
+		var q = dmg_txts[i]
+		if not is_instance_valid(q) or q.is_queued_for_deletion():
+			dmg_txts.remove_at(i)
+	if dmg_txts.size() >= DMG_TXT_MAX:
+		var best = null
+		var bd: float = INF
+		for q in dmg_txts:
+			var dd: float = q.position.distance_squared_to(pos) + (0.0 if q.age < 0.5 else 4000.0)
+			if dd < bd:
+				bd = dd
+				best = q
+		best.sum += n
+		best.text = str(best.sum)
+		if size > best.size:   # un golpe fuerte (super eficaz, jefe) conserva su color y tamano
+			best.size = size
+			best.color = color
+		if best.age > 0.3 and best.merges < 6:
+			best.age = 0.3
+			best.merges += 1
+		best.queue_redraw()
+		return
+	var f := Floater.new()
+	f.text = str(n)
+	f.sum = n
+	f.size = size
+	f.color = color
+	f.position = pos
+	fx.add_child(f)
+	dmg_txts.append(f)
 
 
 # ---------------------------------------------------------------
@@ -8030,11 +8150,14 @@ class Orb extends Node2D:
 	var value := 20.0
 	var vel := Vector2.ZERO
 	var pulled := false
+	var sc := 1.0      # tamano visual (orbes de XP fundidos en la consola)
+	var base := 0.0    # valor inicial, para medir cuanto ha crecido
+	var acc := 0.0     # delta acumulado mientras duerme (lejos y fuera de pantalla)
 
 	func _draw() -> void:
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(sc, 0.42 * sc))
 		draw_circle(Vector2.ZERO, 6.0, Color(0, 0, 0, 0.3))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(sc, sc))
 		var c := Vector2(0.0, -9.0)
 		if kind == "xp":
 			draw_circle(c, 8.0, Color(0.16, 0.56, 0.82, 0.35))
@@ -8383,6 +8506,8 @@ class Floater extends Node2D:
 	var life := 0.7
 	var age := 0.0
 	var size := 18
+	var sum := 0       # dano acumulado en este numero (consola: golpes fundidos)
+	var merges := 0
 
 	func _process(delta: float) -> void:
 		age += delta

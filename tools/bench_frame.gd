@@ -13,6 +13,7 @@ const MOVES := ["ember", "fire-spin", "heat-wave", "thunderbolt", "bug-buzz", "r
 
 var m: Node
 var RUN := _arg_scenario() == "run"   # бег прямо в новые зоны с толпой и множеством снарядов
+var STRESS := "--orbstress" in OS.get_cmdline_user_args()   # лишняя нагрузка орбами и цифрами урона
 var FRAMES := FRAMES_RUN if _arg_scenario() == "run" else FRAMES_DEFAULT
 var NOWARP := "--nobenchwarp" in OS.get_cmdline_user_args()   # выключить собственный перенос отставших бенчем (проверка переселения в main.gd)
 var NORELOC := "--noreloc" in OS.get_cmdline_user_args()      # выключить переселение в main.gd (relocate_on=false), для сравнения «до»
@@ -110,6 +111,16 @@ func _process(_delta: float) -> bool:
 					if (e.position - m.player.position).dot(run_dir) < -700.0 and not e.boss:
 						e.position = m.player.position + run_dir * randf_range(450.0, 750.0) + run_dir.orthogonal() * randf_range(-400.0, 400.0)
 						moved += 1
+			if STRESS:   # нагрузка: орбы опыта вокруг (и далеко) + цифры урона у врагов
+				for k in range(3):
+					m._spawn_orb(m.player.position + Vector2(randf_range(-1400, 1400), randf_range(-1000, 1000)), "xp" if k < 2 else "xpBig", 4.0 + float(k))
+				for k in range(3):
+					if not m.enemies.is_empty():
+						var en2 = m.enemies[randi() % m.enemies.size()]
+						if m.has_method("_dmg_text"):
+							m._dmg_text(en2.position, 5 + randi() % 40, Color.WHITE, 18)
+						else:
+							m.add_text(en2.position, str(5 + randi() % 40), Color.WHITE, 18)
 			if n % 300 == 0:
 				_run_line()
 		else:
@@ -209,6 +220,12 @@ func report_run(s: Array, tot: float, spikes: int) -> void:
 		"max_ms": snappedf(s[-1], 0.1), "over45": spikes, "enemies": m.enemies.size(), "bullets": m.bullets.size(), "kills": m.kills, "orbs": m.orbs.size(), "level": m.player.level,
 		"sec_avg_ms": sec, "sec_max_ms": secmax}
 	print("RESULT " + JSON.stringify(res))
+	var gnd := 0.0
+	for o in m.orbs:
+		if o.kind == "xp" or o.kind == "xpBig":
+			gnd += o.value
+	if m.get("xp_orb_in") != null:
+		print("XP целостность: вошло в орбы=%.1f  собрано=%.1f  на земле=%.1f  разница=%.3f  (орбов=%d, пул=%d)" % [m.xp_orb_in, m.xp_orb_out, gnd, m.xp_orb_in - m.xp_orb_out - gnd, m.orbs.size(), m.orb_pool.size()])
 
 
 func report() -> void:
