@@ -25,6 +25,7 @@ const Cards = preload("res://scripts/ui/cards.gd")
 const Slots = preload("res://scripts/ui/move_slots.gd")
 const Minimap = preload("res://scripts/ui/minimap.gd")
 const WTex = preload("res://scripts/game/wtex.gd")
+const AbilityFx = preload("res://scripts/game/ability_fx.gd")
 const TeamUi = preload("res://scripts/ui/team_ui.gd")
 const WeatherFx = preload("res://scripts/game/weather_fx.gd")
 const LoadScreen = preload("res://scripts/ui/load_screen.gd")
@@ -215,7 +216,7 @@ var partner_lvl := 0
 var partner_pad := -1
 var partner_dir := Vector2.ZERO
 # Habilidades pasivas por Pokemon (scripts/abilities.gd)
-var ab_fx: Dictionary = {}
+var abx: AbilityFx = AbilityFx.new()
 # Movimiento Z: uno por partida desde el nivel 15 (ver scripts/zmove.gd)
 var z_type := ""
 var z_used := false
@@ -537,7 +538,7 @@ func _boot_data() -> void:
 		perks["atk"] = float(perks["atk"]) * (1.0 + 0.02 * float(rn))
 	rerolls = int(perks["rerolls"])
 	revives = SV.up_level("revive")
-	ab_fx = AB.fx_of(_pdex())
+	abx = AbilityFx.new(AB.fx_of(_pdex()))
 	z_type = SV.zm_type_for(_pdex())
 	has_bag = SV.up_level("bag") > 0
 	# Veto como en el original: los movimientos vetados se eligen en Mejoras (por Pokemon).
@@ -1128,7 +1129,7 @@ func _finish_prepare() -> void:
 	var mul: float = 1.0 + 0.25 * float(mods.size()) if mode != "daily" else 1.25
 	if _has_item("amuletcoin"):
 		mul *= 1.5   # Moneda Amuleto: +50% de Pokemonedas al acabar la run
-	mul *= 1.0 + _abn("coin")
+	mul *= 1.0 + abx.coin
 	if mode == "type":
 		mul += 0.5
 		extra = " · " + L.t("Supervivencia: %s") % L.t(String(MD.TYPE_NAME.get(SV.run_type, SV.run_type)))
@@ -1753,20 +1754,16 @@ func _z_dim() -> float:
 	return 0.0
 
 
-func _abn(key: String) -> float:
-	return float(ab_fx.get(key, 0.0))
-
-
 func _moxie() -> float:
-	var st: float = _abn("moxie")
+	var st: float = abx.moxie
 	if st <= 0.0:
 		return 0.0
-	return minf(_abn("moxie_cap"), floorf(float(kills) / 40.0) * st)
+	return minf(abx.moxie_cap, floorf(float(kills) / 40.0) * st)
 
 
 func _ab_wspd() -> float:
-	if ab_fx.has("wspd") and wx_kind == String(ab_fx["wspd"]) and _wx_level() > 0.5:
-		return _abn("wspd_k")
+	if abx.wspd != "" and wx_kind == abx.wspd and _wx_level() > 0.5:
+		return abx.wspd_k
 	return 0.0
 
 
@@ -1776,12 +1773,12 @@ func _atk() -> float:
 		k *= 1.4
 	if _has_item("lifeorb"):
 		k *= 1.3   # antes, con las dos a la vez (Doble equipaje) la Vidasfera no sumaba daño pero seguía quitando vida
-	return base_atk * pow(1.10, float(_lv("atk"))) * (1.0 + _buff_mul("atk")) * k * (1.5 if _pw("fury") else 1.0) * (1.5 if wp_t > 0.0 else 1.0) * _rk("atk") * (1.0 + 0.003 * float(reap_kills)) * (1.0 + _abn("dmg") + _moxie() + (_abn("defiant") if defiant_t > 0.0 else 0.0)) * (DYN.DMG_K if _dyn_on() else 1.0)
+	return base_atk * pow(1.10, float(_lv("atk"))) * (1.0 + _buff_mul("atk")) * k * (1.5 if _pw("fury") else 1.0) * (1.5 if wp_t > 0.0 else 1.0) * _rk("atk") * (1.0 + 0.003 * float(reap_kills)) * (1.0 + abx.dmg + _moxie() + (abx.defiant if defiant_t > 0.0 else 0.0)) * (DYN.DMG_K if _dyn_on() else 1.0)
 
 
 func _spd() -> float:
 	var k: float = 1.35 if _has_item("choicescarf") else 1.0
-	return base_spd * pow(1.07, float(_lv("spd"))) * (1.0 + _buff_mul("spd")) * k * (1.4 if _pw("haste") else 1.0) * _rk("spd") * (1.0 + _abn("spd") + _ab_wspd()) * (DYN.STAT_K if _dyn_on() else 1.0)
+	return base_spd * pow(1.07, float(_lv("spd"))) * (1.0 + _buff_mul("spd")) * k * (1.4 if _pw("haste") else 1.0) * _rk("spd") * (1.0 + abx.spd + _ab_wspd()) * (DYN.STAT_K if _dyn_on() else 1.0)
 
 
 func _cd_mul() -> float:
@@ -1790,26 +1787,26 @@ func _cd_mul() -> float:
 
 func _cd_mul_raw() -> float:
 	var k: float = 0.8 if _has_item("quickclaw") else 1.0
-	return pow(0.92, float(_lv("cd"))) * k * float(perks["cd"]) * (0.65 if _pw("frenzy") else 1.0) * _rk("cd") * (1.0 - _abn("cd")) / (DYN.STAT_K if _dyn_on() else 1.0)
+	return pow(0.92, float(_lv("cd"))) * k * float(perks["cd"]) * (0.65 if _pw("frenzy") else 1.0) * _rk("cd") * (1.0 - abx.cd) / (DYN.STAT_K if _dyn_on() else 1.0)
 
 
 func _reduction() -> float:
 	var vest: float = 0.2 if _has_item("assaultvest") else 0.0
-	return minf(0.8, minf(0.7, 0.06 * float(_lv("def"))) + vest + float(perks["def"]) + _buff_mul("def") + _rk_add("def") + _abn("taken") + (0.4 if _pw("aegis") else 0.0) + (DYN.TAKEN if _dyn_on() else 0.0))
+	return minf(0.8, minf(0.7, 0.06 * float(_lv("def"))) + vest + float(perks["def"]) + _buff_mul("def") + _rk_add("def") + abx.taken + (0.4 if _pw("aegis") else 0.0) + (DYN.TAKEN if _dyn_on() else 0.0))
 
 
 func _regen() -> float:
 	var left: float = player.max_hp * 0.015 if _has_item("leftovers") else 0.0
-	return 0.9 * float(_lv("rgn")) + float(perks["regen"]) + _buff_mul("regen") + left + player.max_hp * _abn("regen") + _rk_add("regen")
+	return 0.9 * float(_lv("rgn")) + float(perks["regen"]) + _buff_mul("regen") + left + player.max_hp * abx.regen + _rk_add("regen")
 
 
 func _magnet() -> float:
-	return BASE_MAGNET * pow(1.30, float(_lv("mag"))) * float(perks["magnet"]) * (1.0 + _abn("magnet"))
+	return BASE_MAGNET * pow(1.30, float(_lv("mag"))) * float(perks["magnet"]) * (1.0 + abx.magnet)
 
 
 func _xp_mul() -> float:
 	var k: float = 1.3 if _has_item("luckyegg") else 1.0
-	return pow(1.12, float(_lv("xp"))) * k * float(perks["xp"]) * _rk("xp") * (1.0 + _abn("xp"))
+	return pow(1.12, float(_lv("xp"))) * k * float(perks["xp"]) * _rk("xp") * (1.0 + abx.xp)
 
 
 func _buff_text() -> String:
@@ -2197,7 +2194,7 @@ func _swap_team(i: int, auto: bool = false) -> void:
 	team_bonus = maxf(0.0, player.max_hp - float(cur["base"]))
 	var nx: Dictionary = team[i]
 	team_cur = i
-	ab_fx = AB.fx_of(_pdex())
+	abx = AbilityFx.new(AB.fx_of(_pdex()))
 	var dx: int = int(nx["dex"])
 	var shn: bool = SV.owns(dx) and bool(SV.d["owned"][str(dx)]["shiny"]) and bool(SV.d["shiny_on"])
 	player.rebody(dx, _sm(dx), shn)
@@ -2248,15 +2245,15 @@ func _hurt_player(amount: float, atk_type: String = "", pure: bool = false) -> v
 		var tk: float = _types_mult(atk_type, player.types, true)
 		amount *= tk * _weather_mult(atk_type)
 		eff = _eff_label(tk)
-	if not ab_fx.is_empty():
-		if atk_type != "" and ab_fx.has("resist") and (ab_fx["resist"] as Array).has(atk_type):
-			amount *= float(ab_fx.get("resist_k", 1.0))
+	if not abx.empty:
+		if atk_type != "" and abx.resist.has(atk_type):
+			amount *= abx.resist_k
 		if eff == "super":
-			amount *= 1.0 - _abn("se_taken")
-		if ab_fx.has("first_hit") and run_time - ab_first_t > _abn("first_hit"):
+			amount *= 1.0 - abx.se_taken
+		if abx.first_hit != 0.0 and run_time - ab_first_t > abx.first_hit:
 			ab_first_t = run_time
 			amount *= 0.5
-		if ab_fx.has("defiant"):
+		if abx.defiant != 0.0:
 			defiant_t = 4.0
 	var close: float = 1.0
 	for gm in _active_group():
@@ -2307,7 +2304,7 @@ func _hurt_player(amount: float, atk_type: String = "", pure: bool = false) -> v
 		add_text(player.position + Vector2(0.0, -player.body_h - 20.0), L.t("¡Banda Focus!"), Color("#ff9a3d"), 24)
 		_ring(player.position, 6.0, 70.0, Color("#ff9a3d"), 0.5)
 	# Habilidad Robustez: aguanta un golpe mortal con 1 de vida.
-	if player.hp <= 0.0 and ab_fx.has("sturdy") and run_time - ab_sturdy_t > _abn("sturdy"):
+	if player.hp <= 0.0 and abx.sturdy != 0.0 and run_time - ab_sturdy_t > abx.sturdy:
 		ab_sturdy_t = run_time
 		player.hp = 1.0
 		player.invuln = 1.2
@@ -2939,20 +2936,20 @@ func _hit_enemy(e, dmg: float, col: Color, dir: Vector2, knock: float, mtype: St
 		d_final *= 1.5
 	if mtype == "bug" and _has_item("silverpowder"):
 		d_final *= 1.2
-	if not ab_fx.is_empty():
-		if String(ab_fx.get("pinch", "")) == mtype and player.hp < player.max_hp * 0.4:
-			d_final *= 1.0 + _abn("pinch_k")
+	if not abx.empty:
+		if abx.pinch == mtype and player.hp < player.max_hp * 0.4:
+			d_final *= 1.0 + abx.pinch_k
 		if player.types.has(mtype):
-			d_final *= 1.0 + _abn("owntype")
-		if ab_fx.has("typedmg"):
-			d_final *= 1.0 + float((ab_fx["typedmg"] as Dictionary).get(mtype, 0.0))
-		if ab_fx.has("kind_dmg") and (ab_fx["kind_dmg"] as Array).has(cur_kind):
-			d_final *= 1.0 + _abn("kind_k")
+			d_final *= 1.0 + abx.owntype
+		if not abx.typedmg.is_empty():
+			d_final *= 1.0 + float(abx.typedmg.get(mtype, 0.0))
+		if abx.kind_dmg.has(cur_kind):
+			d_final *= 1.0 + abx.kind_k
 		if e.boss:
-			d_final *= 1.0 + _abn("boss_dmg")
+			d_final *= 1.0 + abx.boss_dmg
 		if eff == "weak":
-			d_final *= 1.0 + _abn("tinted")
-	var crit_p: float = float(perks["crit"]) + (0.15 if _has_item("scopelens") else 0.0) + _abn("crit")
+			d_final *= 1.0 + abx.tinted
+	var crit_p: float = float(perks["crit"]) + (0.15 if _has_item("scopelens") else 0.0) + abx.crit
 	if crit_p > 0.0 and randf() < crit_p:
 		d_final *= 1.5
 		add_text(e.position + Vector2(0.0, -e.body_h - 26.0), L.t("¡Crítico!"), Color("#ffb347"), 16)
@@ -4545,11 +4542,11 @@ func _enemy_contact(e: Enemy, to: Vector2, dirv: Vector2) -> void:
 		_damage_enemy(e, 15.0 + float(player.level) * 4.0, Color("#9aa6b5"), -dirv, 80.0)
 	if _has_item("eternalice"):
 		e.apply_slow(0.3, 2.0)
-	if not ab_fx.is_empty():
-		if ab_fx.has("thorns"):
+	if not abx.empty:
+		if abx.thorns != 0.0:
 			_damage_enemy(e, 12.0 + float(player.level) * 3.0, Color("#9aa6b5"), -dirv, 60.0)
-		if ab_fx.has("contact") and not e.dead and randf() < _abn("contact_p"):
-			var ck: String = String(ab_fx["contact"])
+		if abx.contact != "" and not e.dead and randf() < abx.contact_p:
+			var ck: String = abx.contact
 			if ck == "burn":
 				e.apply_burn(1)
 			elif ck == "poison":
@@ -4945,8 +4942,8 @@ func _update_hazards(delta: float) -> void:
 	trap_para_t = maxf(0.0, trap_para_t - delta)
 	trap_sleep_t = maxf(0.0, trap_sleep_t - delta)
 	trap_conf_t = maxf(0.0, trap_conf_t - delta)
-	if ab_fx.has("stimm"):
-		var si: Array = ab_fx["stimm"]
+	if not abx.stimm.is_empty():
+		var si: Array = abx.stimm
 		if si.has("freeze"):
 			trap_freeze_t = 0.0
 		if si.has("para"):
@@ -5806,7 +5803,7 @@ func _trigger_trap(p: Prop) -> void:
 			_apply_cc(e, "conf", 1.5)
 		else:
 			_damage_enemy(e, 90.0 + lvl * 18.0, col, (e.position - pos).normalized(), 220.0)
-	if not player.dead and player.position.distance_to(pos) < 74.0 * 0.7 and not _has_item("heavyboots") and _abn("trapimm") == 0.0:
+	if not player.dead and player.position.distance_to(pos) < 74.0 * 0.7 and not _has_item("heavyboots") and abx.trapimm == 0.0:
 		player.invuln = 0.0
 		if p.sub == "poison":
 			_hurt_player(player.max_hp * 0.1, "poison")
@@ -7158,7 +7155,7 @@ func _update_weather(delta: float) -> void:
 		wx_chip = 2.0
 		if wx_kind != "" and _wx_level() > 0.5:
 			var wc := Color.html(String(TD.WEATHER[wx_kind]["color"]))
-			if _weather_hurts(player.types) and not _has_item("safetygoggles") and _abn("wximm") == 0.0:
+			if _weather_hurts(player.types) and not _has_item("safetygoggles") and abx.wximm == 0.0:
 				var d: float = maxf(1.0, player.max_hp * 0.012)
 				if player.hp > d + 1.0:
 					player.hp -= d
