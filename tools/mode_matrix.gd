@@ -48,6 +48,8 @@ var dist_total := 0.0
 var max_from_origin := 0.0
 var cards_open_frames := 0
 var cards_picked := 0
+var rerolls_used := 0
+var bans_used := 0
 var z_used := 0
 var dyn_used := 0
 var rift_entered := 0
@@ -337,6 +339,18 @@ func _bot(delta: float) -> void:
 			var items: Array = _g(cards, "items", [])
 			if VERBOSE and items.size() > 0:
 				print("CARDS t=%.1f '%s' cat=%s tw_phase=%s" % [float(m.run_time), _g(cards, "title", ""), (items[0] as Dictionary).get("cat", "?"), _g(m, "tw_phase")])
+			# как игрок с мета-прокачкой: иногда «сменить карты» (reroll) или вето (ban), если есть
+			if bool(_g(cards, "extras", false)) and int(_g(cards, "rerolls", 0)) > 0 and rng.randf() < 0.25 and cards.has_method("_do_reroll"):
+				cards._do_reroll()
+				rerolls_used += 1
+				return
+			if bool(_g(cards, "extras", false)) and int(_g(cards, "bans", 0)) > 0 and rng.randf() < 0.15 and cards.has_method("_toggle_ban"):
+				for i in range(items.size()):
+					if String((items[i] as Dictionary).get("cat", "")) == "new":
+						cards._toggle_ban()
+						cards._pick(i)
+						bans_used += 1
+						return
 			if items.size() > 0:
 				cards._pick(rng.randi() % items.size())
 				cards_picked += 1
@@ -654,7 +668,7 @@ func _finish(why: String) -> bool:
 		"bosses": int(_g(m, "run_bosses", 0)), "bosses_seen": bosses_seen, "boss_t": boss_spawn_times.slice(0, 12),
 		"rush_i": int(_g(m, "rush_i", 0)), "tw_floor": int(_g(m, "tw_floor", 0)),
 		"biomes": biome_seen, "rifts": int(_g(m, "run_rifts", 0)), "rift_entered": rift_entered,
-		"cards": cards_picked, "slot_sw": slot_switches, "z": z_used, "dyn": dyn_used, "near_deaths": near_deaths,
+		"cards": cards_picked, "rerolls": rerolls_used, "bans": bans_used, "slot_sw": slot_switches, "z": z_used, "dyn": dyn_used, "near_deaths": near_deaths,
 		"dist": roundi(dist_total), "far": roundi(max_from_origin),
 		"nodes_max": nodes_max, "hitches": hitches.size(), "worst_ms": snappedf(worst_ms, 0.1), "hitch_list": hitches.slice(0, 6),
 		"blank_frames": blank_frames, "blank_run_max": blank_run_max,
