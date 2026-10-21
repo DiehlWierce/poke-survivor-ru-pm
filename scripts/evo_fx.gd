@@ -289,8 +289,11 @@ func _draw_p(q: Dictionary) -> void :
 		"leaf", "petal":
 			var d: Vector2 = Vector2.from_angle(rot)
 			var n: Vector2 = Vector2( - d.y, d.x)
-			var pts := PackedVector2Array([p + d * s * 0.7, p + n * s * 0.28, p - d * s * 0.7, p - n * s * 0.28])
-			draw_colored_polygon(pts, cc)
+			var pts := PackedVector2Array([d * s * 0.7, n * s * 0.28, - d * s * 0.7, - n * s * 0.28])
+			if s > 1.0:
+				draw_set_transform(p, 0.0, Vector2.ONE)
+				draw_colored_polygon(pts, cc)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			draw_line(p - d * s * 0.6, p + d * s * 0.6, Color(1, 1, 1, a * 0.5), 1.0)
 		"bolt":
 			var pv: Vector2 = p
@@ -308,8 +311,10 @@ func _draw_p(q: Dictionary) -> void :
 			var d2: Vector2 = Vector2.from_angle(rot)
 			var n2: Vector2 = Vector2( - d2.y, d2.x)
 			var w: float = 0.35 if String(q["k"]) == "shard" else 0.6
-			if s > 0.5:
-				draw_colored_polygon(PackedVector2Array([p + d2 * s * 0.6, p + n2 * s * w, p - d2 * s * 0.6, p - n2 * s * w]), cc)
+			if s > 1.0:
+				draw_set_transform(p, 0.0, Vector2.ONE)   # вершины от нуля (float32 на больших координатах склеивает точки)
+				draw_colored_polygon(PackedVector2Array([d2 * s * 0.6, n2 * s * w, - d2 * s * 0.6, - n2 * s * w]), cc)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		"impact":
 			for j in range(6):
 				var an2: float = float(j) / 6.0 * TAU + rot
@@ -344,7 +349,9 @@ func _draw_p(q: Dictionary) -> void :
 			var hs: float = s * 0.3
 			draw_circle(p + Vector2( - hs * 0.5, - hs * 0.3), hs * 0.6, cc)
 			draw_circle(p + Vector2(hs * 0.5, - hs * 0.3), hs * 0.6, cc)
-			draw_colored_polygon(PackedVector2Array([p + Vector2( - hs * 1.05, - hs * 0.1), p + Vector2(hs * 1.05, - hs * 0.1), p + Vector2(0, hs * 1.2)]), cc)
+			draw_set_transform(p, 0.0, Vector2.ONE)
+			draw_colored_polygon(PackedVector2Array([Vector2( - hs * 1.05, - hs * 0.1), Vector2(hs * 1.05, - hs * 0.1), Vector2(0, hs * 1.2)]), cc)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		_:
 			draw_circle(p, s * 0.3, cc)
 

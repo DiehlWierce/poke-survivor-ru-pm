@@ -4038,7 +4038,7 @@ func _spawn_boss(b: Dictionary, t_v: float = -1.0):
 
 func _boss_alive() -> bool:
 	for e in enemies:
-		if e.boss and not e.dead:
+		if is_instance_valid(e) and e.boss and not e.dead:
 			return true
 	return false
 
@@ -6341,7 +6341,7 @@ func _use_altar(p: Prop) -> void:
 
 func _cleanup_enemies() -> void:
 	for i in range(enemies.size() - 1, -1, -1):
-		if enemies[i].dead:
+		if not is_instance_valid(enemies[i]) or enemies[i].dead:   # освобождённый вне списка враг не должен зависать в нём навсегда
 			enemies.remove_at(i)
 
 
