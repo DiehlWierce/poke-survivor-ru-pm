@@ -1,5 +1,6 @@
 # Joystick tactil flotante: aparece donde pones el dedo
 extends Node2D
+const SV = preload("res://scripts/save_data.gd")
 const DSP = preload("res://scripts/display.gd")
 
 var radius := 90.0
@@ -37,6 +38,8 @@ func _process(_d: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed and _id == -1:
+			if not fixed and bool(SV.d["settings"].get("manual_aim", false)) and event.position.x > get_viewport_rect().size.x * 0.5:
+				return
 			if fixed:
 				var h: Vector2 = _home()
 				if event.position.distance_to(h) > _rad * 1.8:

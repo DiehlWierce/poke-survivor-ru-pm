@@ -1,5 +1,6 @@
 # HUD: vida, tiempo, derrotados, pantalla de derrota
 extends Node2D
+const SV = preload("res://scripts/save_data.gd")
 const L = preload("res://scripts/lang.gd")
 const IC = preload("res://scripts/icons.gd")
 const DSP = preload("res://scripts/display.gd")
@@ -7,6 +8,7 @@ const ZM = preload("res://scripts/zmove.gd")
 const DYN = preload("res://scripts/dynamax.gd")
 const MD = preload("res://scripts/moves_data.gd")
 const WTex = preload("res://scripts/game/wtex.gd")
+const TXS = preload("res://scripts/textscale.gd")
 const MAIN = preload("res://scripts/main.gd")
 const Actor = MAIN.Actor
 const TOWER_FLOORS = MAIN.TOWER_FLOORS
@@ -144,6 +146,7 @@ func _process(delta: float) -> void:
 		thief_notice += delta
 		if thief_notice >= 4.0:
 			thief_notice = -1.0
+	_page_t += delta
 	_acc += delta
 	if _acc >= (0.066 if Actor.lite else 0.033):   # el HUD se redibuja 30 veces por segundo (15 en consola)
 		_acc = 0.0
@@ -223,6 +226,9 @@ func draw_powers(font: Font, vp: Vector2) -> void:
 		y += 46.0
 	if item2_name != "":
 		_chip(font, vp, y, L.t(item2_name), Color("#ffd23f"), null, item2_id)
+		y += 46.0
+	if item3_name != "":
+		_chip(font, vp, y, L.t(item3_name), Color("#8fe3b0"), null, item3_id)
 
 func draw_thief_notice(font: Font, vp: Vector2) -> void:
 	if thief_notice < 0.0:
@@ -353,7 +359,7 @@ func draw_rift(font: Font, vp: Vector2) -> void:
 		var lg: Array = _fit_txt(font, legend_name, 18, w - 70.0, 11)
 		draw_string(font, Vector2(x0, vp.y - 154.0), String(lg[0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(lg[1]), Color("#e6d4ff"))
 		if arena_left >= 0.0:
-			draw_string(font, Vector2(x0, vp.y - 154.0), "%02d:%02d" % [int(arena_left) / 60, int(arena_left) % 60], HORIZONTAL_ALIGNMENT_RIGHT, w, 18, Color("#ffd33d") if arena_left > 20.0 else Color("#ff6b7a"))
+			_ds(font, Vector2(x0, vp.y - 154.0), "%02d:%02d" % [int(arena_left) / 60, int(arena_left) % 60], HORIZONTAL_ALIGNMENT_RIGHT, w, 18, Color("#ffd33d") if arena_left > 20.0 else Color("#ff6b7a"))
 
 var team: Array = []:
 	set(v):
@@ -387,7 +393,7 @@ func draw_team(font: Font) -> void:
 		draw_rect(r, Color(0.08, 0.12, 0.25, 0.72) if not cur else Color(0.2, 0.32, 0.62, 0.85))
 		draw_rect(r, Color("#ffd23f") if cur else Color(1, 1, 1, 0.45), false, 2.0)
 		var dead: bool = bool(t["dead"])
-		draw_string(font, r.position + Vector2(8.0, 20.0), String(t["name"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16.0, 16, Color(0.6, 0.6, 0.65) if dead else Color.WHITE)
+		_ds(font, r.position + Vector2(8.0, 20.0), String(t["name"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16.0, 16, Color(0.6, 0.6, 0.65) if dead else Color.WHITE)
 		var f: float = clampf(float(t["frac"]), 0.0, 1.0)
 		draw_rect(Rect2(r.position + Vector2(8.0, 29.0), Vector2(r.size.x - 16.0, 9.0)), Color(0, 0, 0, 0.6))
 		var c2 := Color("#5fe08a") if f > 0.5 else (Color("#ffd33d") if f > 0.25 else Color("#ff6b7a"))
@@ -428,7 +434,7 @@ func draw_dyn(font: Font, vp: Vector2) -> void:
 	var tcol: Color = Color("#ff3d6e")
 	var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * 6.0)
 	if dyn_left >= 0.0:
-		var a: float = 0.10 + 0.06 * beat
+		var a: float = 0.1 + 0.06 * beat
 		var th: float = 26.0
 		draw_rect(Rect2(0, 0, vp.x, th), Color(1.0, 0.1, 0.3, a))
 		draw_rect(Rect2(0, vp.y - th, vp.x, th), Color(1.0, 0.1, 0.3, a))
@@ -455,7 +461,7 @@ func draw_dyn(font: Font, vp: Vector2) -> void:
 			widths.append(cw)
 			tw += cw
 		var x0: float = vp.x * 0.5 - tw * 0.5
-		var by: float = vp.y * 0.30
+		var by: float = vp.y * 0.3
 		var shine: float = (dyn_flash - 0.9) / 0.9 * (tw + 160.0) - 80.0
 		var cx: float = x0
 		for i in range(word.length()):
@@ -471,12 +477,12 @@ func draw_dyn(font: Font, vp: Vector2) -> void:
 				draw_set_transform(Vector2(ox, oy), 0.0, Vector2(sc, sc))
 				var base: Color = Color("#ff2f63").lerp(Color("#ffd6e0"), clampf(float(i) / 6.0 + 0.15 * sin(dyn_flash * 6.0 - float(i)), 0.0, 1.0))
 				var pos := Vector2(-cwid * 0.5, 0.0)
-				draw_string_outline(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, 16, Color(0.22, 0.0, 0.1, 0.92 * al))
-				draw_string(font, pos + Vector2(3.0, 9.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(0.55, 0.0, 0.2, 0.9 * al))
-				draw_string(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(base.r, base.g, base.b, al))
+				_dso(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, 16, Color(0.22, 0.0, 0.1, 0.92 * al))
+				_ds(font, pos + Vector2(3.0, 9.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(0.55, 0.0, 0.2, 0.9 * al))
+				_ds(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(base.r, base.g, base.b, al))
 				var sh: float = clampf(1.0 - absf(cx + cwid * 0.5 - shine) / 55.0, 0.0, 1.0)
 				if sh > 0.0:
-					draw_string(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(1.0, 1.0, 1.0, sh * 0.9 * al))
+					_ds(font, pos + Vector2(0.0, 6.0), String(word[i]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fs, Color(1.0, 1.0, 1.0, sh * 0.9 * al))
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				# chispas al aterrizar
 				if loc < 0.45:
@@ -485,6 +491,7 @@ func draw_dyn(font: Font, vp: Vector2) -> void:
 						var ang: float = float(q) * 1.256 + float(i)
 						draw_circle(Vector2(ox, by - 28.0) + Vector2.from_angle(ang) * (loc * 260.0), 3.0 * burst + 1.0, Color(1.0, 0.85, 0.9, burst * al))
 			cx += cwid
+	draw_poi(font, vp)
 	if dyn_btn > 0:
 		var r: Rect2 = dyn_rect()
 		var c: Vector2 = r.position + r.size * 0.5
@@ -493,11 +500,11 @@ func draw_dyn(font: Font, vp: Vector2) -> void:
 			draw_circle(c, 52.0 + beat * 6.0, Color(tcol.r, tcol.g, tcol.b, 0.25 + beat * 0.25))
 		draw_circle(c, 46.0, Color(0.14, 0.03, 0.07, 0.88))
 		draw_arc(c, 46.0, 0.0, TAU, 40, tcol if ready else Color(0.5, 0.52, 0.58), 4.0)
-		draw_string(font, Vector2(c.x - 44.0, c.y + (2.0 if dyn_btn == 3 else 11.0)), "MAX", HORIZONTAL_ALIGNMENT_CENTER, 88.0, 28 if dyn_btn == 3 else 32, Color.WHITE if ready else Color(0.6, 0.62, 0.68))
+		_ds(font, Vector2(c.x - 44.0, c.y + (2.0 if dyn_btn == 3 else 11.0)), "MAX", HORIZONTAL_ALIGNMENT_CENTER, 88.0, 28 if dyn_btn == 3 else 32, Color.WHITE if ready else Color(0.6, 0.62, 0.68))
 		if dyn_btn == 3:
-			draw_string(font, Vector2(c.x - 44.0, c.y + 26.0), "%d:%02d" % [int(dyn_cd) / 60, int(dyn_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 88.0, 18, Color(0.85, 0.88, 0.95))
+			_ds(font, Vector2(c.x - 44.0, c.y + 26.0), "%d:%02d" % [int(dyn_cd) / 60, int(dyn_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 88.0, 18, Color(0.85, 0.88, 0.95))
 		elif not ready:
-			draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % DYN.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
+			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % DYN.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 
 func draw_z(font: Font, vp: Vector2) -> void:
 	var tcol: Color = Color.html(String(MD.TYPE_COLOR.get(z_type, "#ffffff")))
@@ -539,7 +546,7 @@ func draw_z(font: Font, vp: Vector2) -> void:
 		var sx: float = vp.x * 0.5 - (font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + sp * float(sub.length() - 1)) * 0.5
 		for i in range(sub.length()):
 			var ch: String = sub.substr(i, 1)
-			draw_string(font, Vector2(sx, cy - 28.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.85 * al))
+			_ds(font, Vector2(sx, cy - 28.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.85 * al))
 			sx += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + sp
 		# Nombre: cada letra cae con un golpe y rebote
 		var fs: int = 60 if vp.x >= 900.0 else 40
@@ -565,9 +572,9 @@ func draw_z(font: Font, vp: Vector2) -> void:
 				var base: Color = Color(minf(1.0, tcol.r * 0.45 + 0.55), minf(1.0, tcol.g * 0.45 + 0.55), minf(1.0, tcol.b * 0.45 + 0.55), ca)
 				var fc: Color = base.lerp(Color(1, 1, 1, ca), shine)
 				for o in [Vector2(-3, 0), Vector2(3, 0), Vector2(0, -3), Vector2(0, 3)]:
-					draw_string(font, Vector2(-cw * 0.5, 0.0) + o, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(tcol.r, tcol.g, tcol.b, 0.55 * ca))
-				draw_string(font, Vector2(-cw * 0.5 + 3.0, 4.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.7 * ca))
-				draw_string(font, Vector2(-cw * 0.5, 0.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, fc)
+					_ds(font, Vector2( - cw * 0.5, 0.0) + o, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(tcol.r, tcol.g, tcol.b, 0.55 * ca))
+				_ds(font, Vector2( - cw * 0.5 + 3.0, 4.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.7 * ca))
+				_ds(font, Vector2( - cw * 0.5, 0.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, fc)
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			cx += cw
 		# Destello blanco con el primer golpe
@@ -586,9 +593,9 @@ func draw_z(font: Font, vp: Vector2) -> void:
 		var zc: Color = Color.WHITE if ready else Color(0.6, 0.62, 0.68)
 		IC.draw_in(self, "zc:" + z_type, c + Vector2(0.0, -2.0 - (beat * 2.0 if ready else 0.0)), 64.0, zc)
 		if z_btn == 3:
-			draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), "%d:%02d" % [int(z_cd) / 60, int(z_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
+			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), "%d:%02d" % [int(z_cd) / 60, int(z_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 		elif not ready:
-			draw_string(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % ZM.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
+			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % ZM.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 
 func pause_rects() -> Array:
 	var vp: Vector2 = _vp
@@ -698,7 +705,7 @@ func _draw() -> void:
 	draw_z(font, vp)
 	draw_dyn(font, vp)
 	if show_fps:
-		draw_string(font, Vector2(vp.x - 130.0 - ins.z, vp.y - 12.0 - ins.w), "%d FPS" % int(Engine.get_frames_per_second()), HORIZONTAL_ALIGNMENT_RIGHT, 118.0, 20, Color(1, 1, 1, 0.85))
+		_ds(font, Vector2(vp.x - 130.0 - ins.z, vp.y - 12.0 - ins.w), "%d FPS" % int(Engine.get_frames_per_second()), HORIZONTAL_ALIGNMENT_RIGHT, 118.0, 20, Color(1, 1, 1, 0.85))
 	var frac: float = clampf(hp / max_hp, 0.0, 1.0)
 	var col := Color("#5fe08a")
 	if frac <= 0.25:
@@ -746,6 +753,7 @@ func _draw() -> void:
 	for ri in range(revives):
 		IC.draw_in(self, "revive", Vector2(70.0 + ins.x + float(ri) * 22.0, 71.0 + oy), 18.0)
 	draw_powers(font, vp)
+	draw_items(font, ins)
 	if not team.is_empty():
 		draw_team(font)
 	if weather_text != "":
@@ -802,14 +810,134 @@ func _draw() -> void:
 			var ga: float = fade
 			var big: String = (end_big if end_big != "" else L.t("¡TIEMPO!")) if timeup else "GAME OVER"
 			var bigc: Color = Color(1.0, 0.82, 0.25, ga) if timeup else Color(1.0, 0.36, 0.42, ga)
-			draw_string_outline(font, Vector2(0.0, vp.y * 0.36), big, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, 10, Color(0, 0, 0, ga))
-			draw_string(font, Vector2(0.0, vp.y * 0.36), big, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, bigc)
+			_dso(font, Vector2(0.0, vp.y * 0.36), big, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, 10, Color(0, 0, 0, ga))
+			_ds(font, Vector2(0.0, vp.y * 0.36), big, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 72, bigc)
 			if timeup:
-				draw_string(font, Vector2(0.0, vp.y * 0.45 + 10.0), end_l1 if end_l1 != "" else L.t("Grietas ganadas: %d") % rifts_n, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
-				draw_string(font, Vector2(0.0, vp.y * 0.45 + 50.0), end_l2 if end_l2 != "" else L.t("Derrotaste %d Pokémon") % kills, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
+				_ds(font, Vector2(0.0, vp.y * 0.45 + 10.0), end_l1 if end_l1 != "" else L.t("Grietas ganadas: %d") % rifts_n, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
+				_ds(font, Vector2(0.0, vp.y * 0.45 + 50.0), end_l2 if end_l2 != "" else L.t("Derrotaste %d Pokémon") % kills, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
 			else:
-				draw_string(font, Vector2(0.0, vp.y * 0.45 + 10.0), L.t("Has caído..."), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
-				draw_string(font, Vector2(0.0, vp.y * 0.45 + 50.0), L.t("Aguantaste %s y derrotaste %d") % [clock, kills], HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
+				_ds(font, Vector2(0.0, vp.y * 0.45 + 10.0), L.t("Has fallado el reto...") if ch_mode else L.t("Has caído..."), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 40, Color(1, 1, 1, ga))
+				_ds(font, Vector2(0.0, vp.y * 0.45 + 50.0), L.t("Aguantaste %s y derrotaste %d") % [clock, kills], HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color(1, 1, 1, ga))
 	if dead:
 		if show_end:
-			draw_string(font, Vector2(0.0, vp.y * 0.45 + 96.0), L.t("Pulsa una tecla, un botón o toca la pantalla para volver al menú"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffd33d"))
+			_ds(font, Vector2(0.0, vp.y * 0.45 + 96.0), L.t("Pulsa una tecla, un botón o toca la pantalla para volver al menú"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 20, Color("#ffd33d"))
+
+func _ds(f: Font, p: Vector2, t: String, a: int, w: float, sz: int, c: Color) -> void :
+	draw_string(f, p, t, a, w, roundi(float(sz) * TXS.k()), c)
+
+func _dso(f: Font, p: Vector2, t: String, a: int, w: float, sz: int, o: int, c: Color) -> void :
+	draw_string_outline(f, p, t, a, w, roundi(float(sz) * TXS.k()), o, c)
+
+var act_txt := ""
+
+var poi_marks: Array = []
+
+var items_hud: Array = []
+
+var _page_t := 0.0
+
+var item3_name := ""
+
+var item3_id := ""
+
+var fusion_t := 0.0
+
+var fusion_name := ""
+
+var balls := 0
+
+func draw_items(font: Font, ins: Vector4) -> void :
+	if items_hud.is_empty():
+		return
+	var per := 4
+	var pages: int = (items_hud.size() + per - 1) / per
+	var page: int = int(_page_t / 4.0) % pages
+	var x0: float = 16.0 + ins.x
+	var y0: float = 300.0 + ins.y + ((18.0 * stats.size() + 14.0) if (show_stats and not stats.is_empty()) else 0.0)
+	var rows: int = mini(per, items_hud.size() - page * per)
+	draw_rect(Rect2(x0 - 4.0, y0 - 4.0, 226.0, 34.0 * float(rows) + 8.0 + (14.0 if pages > 1 else 0.0)), Color(0.03, 0.06, 0.16, 0.5))
+	for i in range(rows):
+		var e: Dictionary = items_hud[page * per + i]
+		var cy: float = y0 + float(i) * 34.0 + 14.0
+		IC.draw_in(self, String(e["icon"]), Vector2(x0 + 14.0, cy), 26.0)
+		var txt: String = L.t(String(e["name"]))
+		var right := ""
+		var rcol := Color("#ffe58a")
+		if float(e["cd"]) >= 0.0:
+			if float(e["cd"]) <= 0.0:
+				right = L.t("Listo")
+				rcol = Color("#7dffb0")
+			else:
+				right = "%ds" % ceili(float(e["cd"]))
+				var act: bool = bool(e.get("act", false))
+				rcol = Color("#8fe0ff") if act else Color("#ff9a7a")
+				var k: float = clampf(float(e["cd"]) / maxf(1.0, float(e["cdmax"])), 0.0, 1.0)
+				draw_rect(Rect2(x0 + 32.0, cy + 10.0, 176.0, 3.0), Color(0, 0, 0, 0.5))
+				draw_rect(Rect2(x0 + 32.0, cy + 10.0, 176.0 * (k if act else 1.0 - k), 3.0), rcol)
+		elif int(e["lv"]) > 0:
+			right = L.t("Nv. %d") % int(e["lv"])
+		_ds(font, Vector2(x0 + 32.0, cy + 4.0), txt, HORIZONTAL_ALIGNMENT_LEFT, 128.0, 14, Color(1, 1, 1, 0.9))
+		_ds(font, Vector2(x0 + 32.0, cy + 4.0), right, HORIZONTAL_ALIGNMENT_RIGHT, 176.0, 14, rcol)
+	if pages > 1:
+		_ds(font, Vector2(x0, y0 + 34.0 * float(rows) + 8.0), "%d/%d" % [page + 1, pages], HORIZONTAL_ALIGNMENT_RIGHT, 218.0, 12, Color(1, 1, 1, 0.6))
+
+func draw_fusion(f: Font, vp: Vector2) -> void :
+	if fusion_t <= 0.0:
+		return
+	var tt: float = 2.8 - fusion_t
+	var fin: float = clampf(tt / 0.35, 0.0, 1.0)
+	var fout: float = clampf(fusion_t / 0.6, 0.0, 1.0)
+	var al: float = fin * fout
+	var cy: float = vp.y * 0.38
+
+	draw_rect(Rect2(0.0, cy - 70.0 * fin, vp.x, 140.0 * fin), Color(0.05, 0.0, 0.1, 0.55 * al))
+	draw_rect(Rect2(0.0, cy - 72.0 * fin, vp.x, 3.0), Color(1.0, 0.85, 1.0, 0.9 * al))
+	draw_rect(Rect2(0.0, cy + 70.0 * fin, vp.x, 3.0), Color(1.0, 0.85, 1.0, 0.9 * al))
+	var sx: float = fmod(tt * 1400.0, vp.x + 400.0) - 200.0
+	draw_rect(Rect2(sx, cy - 70.0, 90.0, 140.0), Color(1.0, 1.0, 1.0, 0.18 * al))
+
+	var txt := "F U S I O N !"
+	var sz: int = roundi(clampf(vp.x / 11.0, 34.0, 96.0) * (1.0 + 0.25 * (1.0 - fin)) * TXS.k())
+	var wob: float = 1.0 + 0.04 * sin(tt * 14.0)
+	var fs: int = roundi(float(sz) * wob)
+	var pos := Vector2(0.0, cy + float(fs) * 0.33)
+	draw_string_outline(f, pos + Vector2(0.0, 5.0), txt, HORIZONTAL_ALIGNMENT_CENTER, vp.x, fs, 14, Color(0.25, 0.0, 0.35, al))
+	draw_string_outline(f, pos, txt, HORIZONTAL_ALIGNMENT_CENTER, vp.x, fs, 10, Color(1.0, 0.45, 0.85, al))
+	draw_string(f, pos, txt, HORIZONTAL_ALIGNMENT_CENTER, vp.x, fs, Color(1.0, 0.97, 0.8, al))
+	if fusion_name != "":
+		draw_string_outline(f, Vector2(0.0, cy + 62.0), fusion_name, HORIZONTAL_ALIGNMENT_CENTER, vp.x, roundi(26.0 * TXS.k()), 6, Color(0.1, 0.0, 0.2, al))
+		draw_string(f, Vector2(0.0, cy + 62.0), fusion_name, HORIZONTAL_ALIGNMENT_CENTER, vp.x, roundi(26.0 * TXS.k()), Color(1.0, 0.9, 0.5, al))
+
+var ch_lines: Array = []
+
+var ch_mode := false
+
+func act_rect() -> Rect2:
+	var vp: Vector2 = get_viewport_rect().size
+	var ins: Vector4 = DSP.insets(get_tree())
+
+	var left: bool = int(SV.d["settings"].get("act_side", 0)) == 1
+	var ax: float = (26.0 + ins.x) if left else (vp.x - 126.0 - ins.z)
+	return Rect2(ax, vp.y * 0.5 - 50.0, 100.0, 100.0)
+
+func draw_poi(font: Font, vp: Vector2) -> void :
+	for mk in poi_marks:
+		var sp: Vector2 = mk["sp"]
+		var col: Color = mk["col"]
+		var on: bool = Rect2(Vector2(30, 70), vp - Vector2(60, 140)).has_point(sp)
+		if on:
+			_ds(font, sp + Vector2(-120, -28), String(mk["txt"]), HORIZONTAL_ALIGNMENT_CENTER, 240.0, 18, col)
+		else:
+			var c: Vector2 = vp * 0.5
+			var dir: Vector2 = (sp - c).normalized()
+			var q: Vector2 = Vector2(clampf(sp.x, 40.0, vp.x - 40.0), clampf(sp.y, 90.0, vp.y - 90.0))
+			draw_circle(q, 18.0, Color(0, 0, 0, 0.6))
+			draw_colored_polygon(PackedVector2Array([q + dir * 14.0, q + dir.rotated(2.5) * 12.0, q + dir.rotated(-2.5) * 12.0]), col)
+	if act_txt != "":
+		var r: Rect2 = act_rect()
+		var c2: Vector2 = r.position + r.size * 0.5
+		var beat: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)
+		draw_circle(c2, 52.0 + beat * 5.0, Color(1, 0.85, 0.3, 0.22 + 0.2 * beat))
+		draw_circle(c2, 46.0, Color(0.1, 0.07, 0.02, 0.9))
+		draw_arc(c2, 46.0, 0.0, TAU, 40, Color("#ffd23f"), 4.0)
+		_ds(font, Vector2(c2.x - 44.0, c2.y + 10.0), act_txt, HORIZONTAL_ALIGNMENT_CENTER, 88.0, 26, Color.WHITE)

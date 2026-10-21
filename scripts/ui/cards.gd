@@ -157,7 +157,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventJoypadMotion and event.axis == JOY_AXIS_LEFT_X:
 		if absf(event.axis_value) < 0.3:
 			_axis_free = true
-		elif absf(event.axis_value) > 0.6 and _axis_free and age > 0.3:
+		elif absf(event.axis_value) > 0.6 and _axis_free and age > GRACE:
 			_axis_free = false
 			_move(1 if event.axis_value > 0.0 else -1)
 		return
@@ -172,7 +172,7 @@ func _input(event: InputEvent) -> void:
 		return
 	# Tragamos las pulsaciones (no las sueltas) mientras hay cartas.
 	get_viewport().set_input_as_handled()
-	if age < 0.4:
+	if age < GRACE:
 		return
 	if event is InputEventScreenTouch:
 		var brs: Array = _btn_rects()
@@ -342,3 +342,5 @@ func _draw_footer(vp: Vector2) -> void:
 		else:
 			draw_string(font, Vector2(x, y), String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, col)
 			x += font.get_string_size(String(p["t"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+
+const GRACE := 0.7

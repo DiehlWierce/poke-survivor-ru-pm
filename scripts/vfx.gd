@@ -90,6 +90,8 @@ static var cache := {}
 
 static func for_move(id: String, type: String) -> Dictionary:
 	var v: Dictionary = MOVE.get(id, {})
+	if V2.MOVE.has(id):
+		v = V2.MOVE[id]
 	var out: Dictionary = {"proj": String(TYPE_SHAPE.get(type, "ball")), "pal": type}
 	for k in v:
 		out[k] = v[k]
@@ -101,18 +103,22 @@ static func for_type(type: String) -> Dictionary:
 
 
 static func is_dir(shape: String) -> bool:
+	if V2.META.has(shape):
+		return bool(V2.META[shape][3])
 	return META.has(shape) and bool(META[shape][3])
 
 
 static func spins(shape: String) -> bool:
+	if V2.META.has(shape):
+		return bool(V2.META[shape][4])
 	return META.has(shape) and bool(META[shape][4])
 
 
 static func hh(a: int, b: int, c: int) -> float:
-	var h: int = ((a * 374761393) & 0xFFFFFFFF) ^ ((b * 668265263) & 0xFFFFFFFF) ^ ((c * 2246822519) & 0xFFFFFFFF)
-	h = (((h ^ (h >> 13)) & 0xFFFFFFFF) * 1274126177) & 0xFFFFFFFF
+	var h: int = ((a * 374761393) & 4294967295) ^ ((b * 668265263) & 4294967295) ^ ((c * 2246822519) & 4294967295)
+	h = (((h ^ (h >> 13)) & 4294967295) * 1274126177) & 4294967295
 	h ^= h >> 16
-	return float(h & 0xFFFFFFFF) / 4294967296.0
+	return float(h & 4294967295) / 4294967300.0
 
 
 class Grid:
@@ -495,3 +501,5 @@ static func pc(pal: String, i: int) -> Color:
 			cc.append(Color.html(String(h)))
 		_pc_cache[pal] = cc
 	return cc[i]
+
+const V2: = preload("res://scripts/vfx2.gd")

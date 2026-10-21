@@ -131,6 +131,7 @@ func build() -> void:
 	v.add_child(_slider_row("Efectos", "sfx"))
 	v.add_child(_fov_row())
 	v.add_child(_stick_row())
+	v.add_child(_aim_row())
 	var mrow := HBoxContainer.new()
 	mrow.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(mrow)
@@ -138,14 +139,20 @@ func build() -> void:
 	mute_btn.custom_minimum_size = Vector2(190, 58)
 	mute_btn.add_theme_font_size_override("font_size", 24)
 	mrow.add_child(mute_btn)
+	txt_btn = _btn("Texto: Normal", false, _cycle_text)
+	txt_btn.custom_minimum_size = Vector2(250, 58)
+	txt_btn.add_theme_font_size_override("font_size", 24)
+	mrow.add_child(txt_btn)
 	var brow := HBoxContainer.new()
 	brow.alignment = BoxContainer.ALIGNMENT_CENTER
 	brow.add_theme_constant_override("separation", 18)
 	v.add_child(brow)
 	cont_btn = _btn("Continuar", true, func(): resume.emit())
 	brow.add_child(cont_btn)
+	brow.add_child(_btn("Resumen", false, func(): summary_requested.emit()))
 	brow.add_child(_btn("Ajustes", false, func(): open_settings.emit()))
 	brow.add_child(_btn("Abandonar partida", false, func(): quit_run.emit()))
+	_build_summary(root)
 	get_viewport().size_changed.connect(_fit)
 	v.minimum_size_changed.connect(_fit_later)
 	_fit()
@@ -338,6 +345,21 @@ func _refresh_hints() -> void:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
+	if sum_root != null and sum_root.visible and (event.is_action_pressed("ui_cancel") or (event is InputEventJoypadButton and event.pressed and event.button_index == PAD.btn("cancel"))):
+		hide_summary()
+		get_viewport().set_input_as_handled()
+		return
+	if sum_root != null and sum_root.visible:
+		if PAD.stick_event(event):
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("ui_down", true) or event.is_action_pressed("ui_up", true):
+			sum_sc.scroll_vertical += 150 if event.is_action_pressed("ui_down", true) else -150
+			get_viewport().set_input_as_handled()
+		return
+	if PAD.stick_event(event):
+		get_viewport().set_input_as_handled()
+		return
 	if NAVG.move(get_viewport(), event, NAVG.focusables(self)):
 		get_viewport().set_input_as_handled()
 		return
@@ -353,6 +375,12 @@ func _input(event: InputEvent) -> void:
 
 
 func open() -> void:
+	_refresh_text_btn()
+	TXS.scale_tree(self)
+	if aim_btn != null:
+		var on: bool = bool(SV.d["settings"].get("manual_aim", false))
+		aim_btn.text = L.t("Sí") if on else L.t("No")
+		_style_toggle(aim_btn, on)
 	_refresh_hints()
 	sc.scroll_vertical = 0
 	_fit()
@@ -363,3 +391,252 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+
+const TXS = preload("res://scripts/textscale.gd")
+
+signal summary_requested
+
+var txt_btn: Button
+
+var sum_root: Control
+
+var sum_box: VBoxContainer
+
+var sum_back: Button
+
+var sum_sc: ScrollContainer
+
+func _build_summary(root: Control) -> void :
+	sum_root = Control.new()
+	sum_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	sum_root.visible = false
+	root.add_child(sum_root)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.04, 0.12, 0.88)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	sum_root.add_child(dim)
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for k in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + k, 40)
+	sum_root.add_child(m)
+	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", _sb(Color("#27489a"), Color("#f4f8ff"), 3, 14, 6))
+	m.add_child(pc)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	pc.add_child(v)
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sum_sc = sc
+	v.add_child(sc)
+	sum_box = VBoxContainer.new()
+	sum_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sum_box.add_theme_constant_override("separation", 6)
+	sc.add_child(sum_box)
+	sum_back = _btn("Volver", true, func(): hide_summary())
+	sum_back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(sum_back)
+
+func hide_summary() -> void :
+	sum_root.visible = false
+	cont_btn.grab_focus()
+
+func _tile(label: String, value: String, accent: Color) -> PanelContainer:
+	var pc := PanelContainer.new()
+	var sb := _sb(Color("#1b3274"), accent, 0, 10)
+	sb.border_width_left = 5
+	sb.border_color = accent
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	pc.add_theme_stylebox_override("panel", sb)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	pc.add_child(v)
+	var a := _label(label, 15, Color("#9fb4dc"))
+	a.text = label
+	v.add_child(a)
+	var b := _label(value, 25, Color.WHITE)
+	b.text = value
+	v.add_child(b)
+	return pc
+
+func _pill(txt: String, col: Color, icon: Control = null) -> PanelContainer:
+	var pc := PanelContainer.new()
+	var sb := _sb(col.darkened(0.55), col, 2, 14)
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
+	sb.content_margin_left = 10
+	sb.content_margin_right = 12
+	pc.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	pc.add_child(h)
+	if icon != null:
+		h.add_child(icon)
+	var l := _label(txt, 18)
+	l.text = txt
+	h.add_child(l)
+	return pc
+
+func _sec_title(txt: String) -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	var l := _label(txt, 26, GOLD)
+	h.add_child(l)
+	var line := ColorRect.new()
+	line.color = Color(1, 0.82, 0.25, 0.45)
+	line.custom_minimum_size = Vector2(0, 3)
+	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(line)
+	return h
+
+func show_summary(d: Dictionary) -> void :
+	call_deferred("_scale_sum")
+	for c in sum_box.get_children():
+		sum_box.remove_child(c)
+		c.queue_free()
+	var t: int = int(d["time"])
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	sum_box.add_child(head)
+	var tl := _label("Resumen de la partida", 38, GOLD)
+	tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tl)
+	head.add_child(_pill(String(d["pname"]), Color("#ff9a4d")))
+	head.add_child(_pill("%s %d" % [L.t("Nivel"), int(d["level"])], Color("#5fe08a")))
+	head.add_child(_pill("%02d:%02d" % [t / 60, t % 60], Color("#6ab7ff")))
+	head.add_child(_pill("%s %d" % [L.t("Derrotas"), int(d["kills"])], Color("#ff6a7a")))
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 22)
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sum_box.add_child(cols)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 1.0
+	left.add_theme_constant_override("separation", 8)
+	cols.add_child(left)
+	left.add_child(_sec_title("Estadísticas"))
+	var gs := GridContainer.new()
+	gs.columns = 3
+	gs.add_theme_constant_override("h_separation", 8)
+	gs.add_theme_constant_override("v_separation", 8)
+	left.add_child(gs)
+	var accents := [Color("#ff6a7a"), Color("#ff9a4d"), Color("#6ab7ff"), Color("#ffd23f"), Color("#8fa3ff"), Color("#5fe08a"), Color("#c47bff")]
+	var ai := 0
+	for st in d["all"]:
+		gs.add_child(_tile(String(st[0]), String(st[1]), accents[ai % accents.size()]))
+		ai += 1
+
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 8)
+	cols.add_child(right)
+	right.add_child(_sec_title("Movimientos"))
+	var maxd := 1.0
+	for mv in d["moves"]:
+		maxd = maxf(maxd, float(mv["dps"]))
+	for mv in d["moves"]:
+		var col := Color(String(mv["col"]))
+		var card := PanelContainer.new()
+		var sb := _sb(Color("#1b3274"), col, 0, 10)
+		sb.border_width_left = 6
+		sb.border_color = col
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 8
+		card.add_theme_stylebox_override("panel", sb)
+		right.add_child(card)
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 3)
+		card.add_child(cv)
+		var top := HBoxContainer.new()
+		top.add_theme_constant_override("separation", 8)
+		cv.add_child(top)
+		var nl := _label(String(mv["name"]), 22, Color.WHITE)
+		nl.text = String(mv["name"])
+		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top.add_child(nl)
+		top.add_child(_pill("%s · %s %d" % [String(mv["type"]), L.t("Nv."), int(mv["lvl"])], col))
+		var bar_bg := ColorRect.new()
+		bar_bg.color = Color("#0f1e4d")
+		bar_bg.custom_minimum_size = Vector2(0, 12)
+		cv.add_child(bar_bg)
+		var fill := ColorRect.new()
+		fill.color = col
+		fill.anchor_bottom = 1.0
+		fill.anchor_right = clampf(float(mv["dps"]) / maxd, 0.0, 1.0)
+		bar_bg.add_child(fill)
+		var info := _label("DPS (%ds): %s   ·   %s: %d   ·   %s: %d" % [int(d["window"]), ("%.1f" % float(mv["dps"])) if int(mv["dmg"]) > 0 else "—", L.t("Daño total"), int(mv["dmg"]), L.t("Derrotas"), int(mv["kills"])], 17, Color("#c8d6ee"))
+		info.text = "DPS (%ds): %s   ·   %s: %d   ·   %s: %d" % [int(d["window"]), ("%.1f" % float(mv["dps"])) if int(mv["dmg"]) > 0 else "—", L.t("Daño total"), int(mv["dmg"]), L.t("Derrotas"), int(mv["kills"])]
+		cv.add_child(info)
+	if not (d["stats"] as Array).is_empty():
+		right.add_child(_sec_title("Mejoras"))
+		var fl := HFlowContainer.new()
+		fl.add_theme_constant_override("h_separation", 6)
+		fl.add_theme_constant_override("v_separation", 6)
+		right.add_child(fl)
+		for st in d["stats"]:
+			fl.add_child(_pill("%s %d" % [String(st["name"]), int(st["lv"])], Color("#ffd23f"), IC.rect(String(st["icon"]), 22)))
+	if not (d["items"] as Array).is_empty():
+		right.add_child(_sec_title("Objetos"))
+		var fi := HFlowContainer.new()
+		fi.add_theme_constant_override("h_separation", 6)
+		right.add_child(fi)
+		for it in d["items"]:
+			fi.add_child(_pill(String(it["name"]), Color("#ff8ad8"), IC.rect(String(it["id"]), 22)))
+	sum_root.visible = true
+	sum_back.grab_focus()
+
+var aim_btn: Button = null
+
+func _aim_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	var gap := Control.new()
+	gap.custom_minimum_size.x = 44
+	row.add_child(gap)
+	var l := _label("Apuntado manual", 24)
+	l.custom_minimum_size = Vector2(190, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_child(l)
+	var on: bool = bool(SV.d["settings"].get("manual_aim", false))
+	var b := _btn("Sí" if on else "No", on, func(): pass)
+	b.custom_minimum_size = Vector2(120, 48)
+	b.add_theme_font_size_override("font_size", 22)
+	b.pressed.connect( func():
+		var nv: bool = not bool(SV.d["settings"].get("manual_aim", false))
+		SV.d["settings"]["manual_aim"] = nv
+		SV.save()
+		b.text = L.t("Sí") if nv else L.t("No")
+		_style_toggle(b, nv))
+	aim_btn = b
+	row.add_child(b)
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(sp)
+	return row
+
+func _process(_d: float) -> void :
+	if visible:
+		PAD.stick_tick()
+	else:
+		PAD.stick_reset()
+
+func _cycle_text() -> void :
+	TXS.set_idx((TXS.idx() + 1) % 3)
+	_refresh_text_btn()
+	TXS.scale_tree(self)
+
+func _refresh_text_btn() -> void :
+	if txt_btn != null:
+		txt_btn.text = L.t("Texto") + ": " + L.t(String(TXS.NAMES[TXS.idx()]))
+
+func _scale_sum() -> void :
+	if sum_root != null:
+		TXS.scale_tree(sum_root)

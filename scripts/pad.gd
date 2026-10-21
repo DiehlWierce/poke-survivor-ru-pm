@@ -129,3 +129,58 @@ static func _set_joy(action: String, buttons: Array) -> void:
 static func apply() -> void:
 	_set_joy("ui_accept", [confirm_btn()])
 	_set_joy("ui_cancel", [cancel_btn()])
+
+const STICK_ON := 0.6
+
+const STICK_OFF := 0.35
+
+const STICK_DELAY := 0.42
+
+const STICK_REPEAT := 0.16
+
+static var _sdir := Vector2i.ZERO
+
+static var _snext := 0.0
+
+static func stick_event(event: InputEvent) -> bool:
+	if not (event is InputEventJoypadMotion) or not (event.axis == JOY_AXIS_LEFT_X or event.axis == JOY_AXIS_LEFT_Y):
+		return false
+	var x: float = Input.get_joy_axis(event.device, JOY_AXIS_LEFT_X)
+	var y: float = Input.get_joy_axis(event.device, JOY_AXIS_LEFT_Y)
+	var d := Vector2i.ZERO
+	var thr: float = STICK_ON if _sdir == Vector2i.ZERO else STICK_OFF
+	if maxf(absf(x), absf(y)) >= thr:
+
+		if absf(x) > absf(y):
+			d = Vector2i(1 if x > 0.0 else -1, 0)
+		else:
+			d = Vector2i(0, 1 if y > 0.0 else -1)
+	if d != _sdir:
+		_sdir = d
+		if d != Vector2i.ZERO:
+			_stick_fire(d)
+			_snext = Time.get_ticks_msec() / 1000.0 + STICK_DELAY
+	return true
+
+static func stick_tick() -> void :
+	if _sdir == Vector2i.ZERO:
+		return
+	var now: float = Time.get_ticks_msec() / 1000.0
+	if now >= _snext:
+		_snext = now + STICK_REPEAT
+		_stick_fire(_sdir)
+
+static func stick_reset() -> void :
+	_sdir = Vector2i.ZERO
+
+static func _stick_fire(d: Vector2i) -> void :
+	var act := "ui_down" if d.y > 0 else ("ui_up" if d.y < 0 else ("ui_right" if d.x > 0 else "ui_left"))
+	var e := InputEventAction.new()
+	e.action = act
+	e.pressed = true
+	e.strength = 1.0
+	Input.parse_input_event(e)
+	var r := InputEventAction.new()
+	r.action = act
+	r.pressed = false
+	Input.parse_input_event(r)

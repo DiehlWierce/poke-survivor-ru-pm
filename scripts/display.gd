@@ -11,9 +11,14 @@ static func pct() -> int:
 	return clampi(int(SV.d["settings"].get("view", 100)), MIN_PCT, MAX_PCT)
 
 
-static func apply(tree: SceneTree) -> void:
-	tree.root.content_scale_factor = float(pct()) / 100.0
-	# El boton atras de Android lo gestiona el juego (no cierra la app).
+static func apply(tree: SceneTree) -> void :
+	SV.ensure()
+	if not SV.save_blocked and not SV.recovered_from_backup and int(SV.d["settings"].get("view_v", 0)) < 2:
+		SV.d["settings"]["view_v"] = 2
+		SV.d["settings"]["view"] = 100
+		SV.save()
+	tree.root.content_scale_factor = 1.0 if menu_mode else float(pct()) / 100.0
+
 	tree.quit_on_go_back = false
 
 
@@ -98,3 +103,5 @@ static func cols(avail_w: float, min_w: float, gap: float, max_cols: int = 4) ->
 		if float(c) * min_w + float(c - 1) * gap <= avail_w:
 			return c
 	return 1
+
+static var menu_mode := false

@@ -334,6 +334,27 @@ func _draw() -> void:
 			var base: Vector2 = CT + ad * (RAD - 2.0)
 			var perp := Vector2(-ad.y, ad.x)
 			draw_colored_polygon(PackedVector2Array([base + ad * 7.0, base - ad * 2.0 + perp * 6.0, base - ad * 2.0 - perp * 6.0]), Color(0.9, 0.82, 1.0, 0.8 + 0.2 * pul))
+	for ev in m._mm_events():
+		var eq: Vector2 = _edge(_pt(ev[0]))
+		var ec: Color = ev[1]
+		var shp: String = String(ev[2])
+		draw_circle(eq, 7.0 + 1.0 * pul, Color(ec.r, ec.g, ec.b, 0.4))
+		match shp:
+			"star":
+				draw_colored_polygon(PackedVector2Array([eq + Vector2(0, -6.5), eq + Vector2(2, -2), eq + Vector2(6.5, -1.5), eq + Vector2(2.5, 1.5), eq + Vector2(4, 6), eq + Vector2(0, 3), eq + Vector2(-4, 6), eq + Vector2(-2.5, 1.5), eq + Vector2(-6.5, -1.5), eq + Vector2(-2, -2)]), ec)
+			"cave":
+				draw_colored_polygon(PackedVector2Array([eq + Vector2(-6, 5), eq + Vector2(-4, -2), eq + Vector2(0, -6), eq + Vector2(4, -2), eq + Vector2(6, 5)]), ec)
+				draw_rect(Rect2(eq + Vector2(-2, 0), Vector2(4, 5)), Color(0.1, 0.08, 0.14))
+			"lab":
+				draw_rect(Rect2(eq + Vector2(-5, -5), Vector2(10, 10)), ec)
+				draw_rect(Rect2(eq + Vector2(-2, -2), Vector2(4, 4)), Color(0.15, 0.05, 0.25))
+			"box":
+				draw_rect(Rect2(eq + Vector2(-5, -4), Vector2(10, 8)), ec)
+				draw_line(eq + Vector2(-5, 0), eq + Vector2(5, 0), Color.WHITE, 1.2)
+			_:
+				draw_circle(eq, 4.5, ec)
+				draw_circle(eq + Vector2(0, -1.5), 1.6, Color.WHITE)
+		draw_arc(eq, 7.5, 0.0, TAU, 14, Color.WHITE, 1.2)
 	# jugador
 	draw_circle(c, 9.0, Color(1, 1, 1, 0.35))
 	draw_arc(c, 9.0, 0.0, TAU, 20, Color("#ffd23f"), 1.5)
