@@ -90,6 +90,7 @@ func _run() -> void:
 	await _check_chal()
 	await _check_gachapon()
 	await _check_medals()
+	await _check_lex_tabs()
 	await _check_dex()
 	await _check_modes_walk()
 	if failures == 0:
@@ -284,6 +285,21 @@ func _check_chal() -> void:
 		_fail("B из Испытаний ведёт в '%s', а не в modes" % m.cur)
 	m._show("main")
 	await _frames(3)
+
+
+# ---------- 5b) Новые вкладки Лексикона (Fusion Dex, Kecleon, Novedades): строятся, карточки появляются ----------
+func _check_lex_tabs() -> void:
+	for k in ["f", "k", "n"]:
+		m.lex_tab = k
+		m._show("lexicon")
+		await _frames(40)
+		var page = m.lex_pages.get(k)
+		var cards: int = page.find_children("*", "PanelContainer", true, false).size() if page != null else 0
+		if cards < 3:
+			_fail("лексикон %s: карточек %d, ожидалось ≥3" % [k, cards])
+	m.lex_tab = "m"
+	m._show("main")
+	await _frames(5)
 
 
 # ---------- 5a) Вкладка «Медали»: 18 типов + список по категориям, без ошибок, кнопки категорий фокусируются ----------

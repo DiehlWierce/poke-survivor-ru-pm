@@ -11,6 +11,8 @@ const MD = preload("res://scripts/moves_data.gd")
 const TD = preload("res://scripts/types_data.gd")
 const AB = preload("res://scripts/abilities.gd")
 const ZM = preload("res://scripts/zmove.gd")
+const FUS = preload("res://scripts/fusions.gd")
+const KCX = preload("res://scripts/kecleon.gd")
 const DYN = preload("res://scripts/dynamax.gd")
 const ST = preload("res://scripts/starters_data.gd")
 const IC = preload("res://scripts/icons.gd")
@@ -2173,7 +2175,7 @@ func _popup_open() -> bool:
 # Pantallas con pestanas: L1/R1 (o Q/E, RePag/AvPag) las cambian al instante.
 const TAB_SCREENS := ["settings", "goals", "lexicon", "gacha"]
 const GOALS_TABS := ["m", "a", "h", "z", "p", "r"]
-const LEX_TABS := ["i", "m", "s", "a", "z"]
+const LEX_TABS := ["i", "m", "f", "s", "a", "z", "k", "n"]
 # Con izquierda/derecha sobre la fila de pestanas el foco se queda en la fila (se pueden encadenar);
 # con L1/R1 y al pulsar una pestana el foco salta al primer elemento del contenido.
 const TAB_ROW_KEEPS_FOCUS := true
@@ -5047,7 +5049,7 @@ func _build_lexicon() -> void:
 	pc.add_child(v)
 	lex_tabs = HFlowContainer.new()
 	v.add_child(lex_tabs)
-	for t in [["i", "Objetos"], ["m", "Movimientos"], ["s", "Estados"], ["a", "Habilidades"], ["z", "Z y Dynamax"]]:
+	for t in [["i", "Objetos"], ["m", "Movimientos"], ["f", "Fusion Dex"], ["s", "Estados"], ["a", "Habilidades"], ["z", "Z y Dynamax"], ["k", "Kecleon"], ["n", "Novedades"]]:
 		var k: String = String(t[0])
 		var tb := _btn(String(t[1]), func(): lex_tab = k; _refresh_lexicon(); _tab_scroll_top(); _focus_content(), Vector2(60, 46))
 		_tab_fit(tb)
@@ -5141,6 +5143,68 @@ func _fmt_d(tpl: String, vals: Array) -> String:
 	return out + rest
 
 
+const LEX_NEW := [
+	["Altar legendario", "Un altar grande y sólido, con escaleras al frente. Sube por ellas, párate en el círculo central y espera a que la barra \"Invocando\" se llene (4 s). Si te sales, la barra se pausa y baja muy poco. Invoca a un Pokémon legendario que ataca solo con rayos de área y tiene vida visible: no se cura y los enemigos que lo tocan le hacen daño. Solo puede haber uno a la vez.", "tex:altar"],
+	["Apuntado manual", "Opcional (Ajustes). Apunta tú mismo con el stick derecho del mando, el ratón o un segundo dedo arrastrando en la mitad derecha de la pantalla. Una flecha indica hacia dónde disparas. Si no apuntas, el juego apunta solo.", "tex:aim"],
+	["Trampas más grandes", "Las trampas del mapa son más grandes y avisan del área real en la que actúan. Cada tipo (veneno, pegajosa, hielo, rayo, sueño, confusión y fuego) tiene su propia animación al estar armada y al estallar.", "tex:trap"],
+	["Movimientos con patrón único", "Cada movimiento nuevo tiene su propio patrón de ataque, no solo otra animación: zonas, ondas, trampas, rastros, dashes, ráfagas y más. Lee la descripción de cada uno en la pestaña Movimientos.", "tex:pat"],
+	["Huecos de arma", "Nueva mejora en la tienda: empiezas con 4 huecos de movimiento y puedes comprar hasta 2 más (máximo 6).", "cards"],
+	["Objetos con tiempo de recarga", "Los objetos con recarga (Baya Zidra, Banda Focus, Política Débil...) aparecen en una caja en pantalla con su tiempo restante, o \"Listo\" cuando se pueden usar.", "clock"],
+	["Dificultad progresiva", "A partir del minuto 20 los enemigos ganan más vida, daño y velocidad, y aparecen más élites. A los 60 min el reto es máximo.", "r_berserk"],
+	["Bonus de terreno", "Si pisas un líquido de tu tipo (agua, lava, pantano, hielo, veneno o chispas), ganas un +12% de velocidad mientras estés en él.", "boot"],
+	["Movimientos de vínculo", "Une como máximo 2 movimientos en un solo hueco y se lanzarán a la vez. Si los dos están evolucionados y al nivel máximo, se te ofrece fusionarlos en un Movimiento de Vínculo mucho más potente. Los originales se pierden el resto de la partida, pero puedes cancelar y conservarlos. Ocupa un solo hueco.", "bond"],
+	["Enamorado", "Los movimientos de tipo Hada pueden enamorar a un enemigo durante 20 s (26 s con Pluma Hada). Un enemigo enamorado pelea de tu lado: ataca a otros enemigos y no te hace daño. Los jefes son inmunes y, al acabarse, el enemigo no puede volver a enamorarse enseguida.", "heart"],
+	["Resumen de la partida", "En la pausa, el botón Resumen muestra cada movimiento con su tipo, nivel, daño total, derrotas y DPS de los últimos 20 s, además de tus mejoras y objetos.", "book"],
+	["Partida Normal hasta Eternatus", "La partida Normal ya no termina a los 30 min. 00:30 pequeña oleada; 01:00 primera Grieta garantizada; 02:00 un Meowth que huye con monedas; 03:00 el primer jefe; 04:00 cambio único al siguiente mapa (cuando el jefe cae). Si hay una Grieta o un jefe activo, el evento espera su turno. Después aparecen mini-jefes gigantes raros (Tyranitar, Wailord, Onix, Steelix). A los 60:00 despierta ETERNATUS, el jefe final: la pelea sigue hasta que caiga, mueras o abandones. Los demás modos no cambian.", "tex:eter"],
+	["Objetos perdidos y paquetes", "Por el mapa aparecen objetos pequeños que se recogen solos al tocarlos: la Bolsa de Poké Balls (+3 Poké Balls), el Elixir (un potenciador al azar durante 25 s) y el Cristal Prisma (paraliza 2,5 s a los enemigos cercanos: una salida de emergencia). Si no te sirven en ese momento (Poké Balls al máximo, ya tienes un potenciador o no hay enemigos cerca) se quedan en el suelo. Los paquetes misteriosos se abren con el botón de acción (E, A del mando o el botón dorado en pantalla). Dan oro, experiencia, curación, un consumible o, rara vez, un ticket. Desaparecen con el tiempo.", "tex:pack"],
+	["Cofres de pago y trampa", "Las huchas Poké Ball cuestan monedas de la partida (cuestan más con cada una que abres y cambian de tipo de bola). Acércate y pulsa el botón de acción: el precio se ve en el botón. Si no te alcanza, no se cobra. Cada hucha da una MEJORA gratis (subes de nivel y eliges una carta) o una Poké Ball; las más caras pueden dar las dos. Otras huchas son trampas: unas lucen sospechosas (ojos rojos) y otras están disfrazadas de hucha normal (fíjate en un colmillo). Si la abres sale una emboscada pequeña, pero puedes huir.", "tex:paid"],
+	["Cajas de suministro", "Un aviso anuncia una caja que cae cerca. Llega hasta ella y pulsa el botón de acción antes de que se agote el tiempo (30 s). Hay cuatro tipos: médico y de recursos (sin enemigos extra), raro y excepcional (atraen enemigos, pero no hace falta derrotarlos). Solo hay una caja a la vez.", "tex:crate"],
+	["Kecleon, el comerciante", "Un Kecleon de colores visita el mapa por un rato (60-75 s). Acércate y pulsa el botón de acción \"Comerciar\": te ofrece 3 objetos de su catálogo a cambio de monedas de la partida. Solo puedes comprar uno por visita y cambiar las ofertas una vez (el precio del cambio sube cada vez que lo usas). Cada color vende objetos distintos; el azul shiny es raro y vende los mejores. Solo hay un Kecleon a la vez.", "dex:352"],
+	["Menú Pokémon renovado", "En Pokémon ves a tu compañero en un retrato con flechas para pasar al anterior o al siguiente, su tipo, sus barras de PS, Velocidad y Ataque, su habilidad y su movimiento inicial. A la derecha, pestañas por región, «Solo los míos», un buscador (por nombre, tipo o número) y un orden (número, nombre, rareza o favoritos). Toca el corazón de una tarjeta para marcar un favorito; la estrella indica a tu compañero. La misma pantalla sirve para elegir equipo, compañero cooperativo y Pokémon de la fiesta.", "ball"],
+	["Rescates de Pokémon", "De vez en cuando aparece un Pokémon salvaje que necesita ayuda (sin entrenadores). Herido: quédate a su lado unos segundos. Amenazado: derrota a los 4 enemigos que lo atacan. Perdido: sigue la flecha, encuéntralo y pulsa el botón de acción. Si lo logras, te da las gracias, te regala un premio (monedas, EXP, ticket, curación u objeto) y se marcha; nunca se une a tu equipo. Si no llegas a tiempo, simplemente se va. Solo hay un rescate a la vez.", "tex:rescue"],
+	["Poké Ball y Alfas", "A veces ronda un Alfa: un Pokémon enorme, rojizo y muy resistente. Es opcional. Si lo derrotas, queda aturdido 8 segundos: pulsa el botón de acción para lanzarle UNA Poké Ball (80% de éxito). Si lo logras, se une a ti como aliado el resto de la partida (se recupera poco a poco y ocupa el mismo hueco que el aliado del altar legendario). Con el apuntado manual activado, el lanzamiento debe apuntar al Alfa; si fallas el tiro, no se gasta la bola. Las Poké Balls son raras: salen a veces de cofres, mochilas, cajas de suministro y al cortar hierba. El número que llevas aparece junto a tus monedas.", "tex:ball"],
+	["Legendarios salvajes", "Pasado el minuto 30 de la partida Normal, de vez en cuando aparece un legendario salvaje enorme y resistente. Si lo derrotas, recibes un premio especial (monedas, tickets y un objeto). No aparece durante grietas, cuevas, invasiones ni con otro jefe, y deja de aparecer poco antes de Eternatus.", "tex:wildleg"],
+	["Regreso de la Grieta", "Al volver al mundo desde una Grieta o una guarida hay una cuenta atrás de 3-2-1: el tiempo de la partida y los enemigos se detienen y eres invulnerable hasta que termina.", "tex:return"],
+	["Día y noche", "Cada partida alterna día, atardecer, noche y amanecer (ciclo de 8 minutos). De noche aparecen más Pokémon de tipo Fantasma, Siniestro y Bicho nocturnos; de día, más Pokémon diurnos. Algunos secretos solo se revelan de noche.", "tex:daynight"],
+	["Peligros de bioma", "Los biomas extremos tienen peligros señalados antes de golpear: erupciones y quemaduras en volcanes, ráfagas que ralentizan en el hielo, rayos que pueden paralizar y burbujas tóxicas. Los Pokémon del tipo correspondiente son inmunes. Solo hay un aviso a la vez.", "tex:hazard"],
+	["Cuevas y altares", "Se abre una cueva de un tipo (14 tipos). Derrota la oleada y pisa el altar: tus efectos de estado de ese tipo mejoran (quemar, veneno, ralentizar, dormir, paralizar…), hasta 3 niveles. Normal, Volador, Roca y Acero aún no tienen cueva.", "tex:cave"],
+	["Invasiones", "Tras un aviso de 5 s, una invasión (fantasma, siniestra, eléctrica, estampida, brillante, mixta, Alfa o de pesadilla nocturna) dura 45 s. Sobrevive para ganar el premio; si caes, no hay premio.", "tex:invasion"],
+	["Meteorito y Deoxys", "Un meteorito marca una zona: aléjate. Deja botín y, con un 10% de probabilidad, Deoxys emerge. Si lo derrotas antes de que escape, recibes un premio especial.", "tex:meteor"],
+	["Proyecto Mewtwo", "Pasados los 13 minutos pueden aparecer 3 estaciones de investigación. Mantente en cada una unos segundos; al completarlas todas despierta Mewtwo, con ataques señalados. Una vez por partida.", "tex:mewtwo"],
+	["Secretos", "Claros ocultos, runas que hay que pisar en orden, secretos lunares que se revelan de noche y nidos secretos. Cada uno da un premio modesto una sola vez.", "tex:secret"],
+	["Mecanismos elementales", "Antorchas, fuentes, generadores y sellos que solo se activan al golpearlos con un movimiento del tipo correcto (no por acercarte). Son opcionales.", "tex:mech"],
+	["Medallas", "Nueva pestaña en Misiones y Logros: medallas por explorar, rescatar, capturar Alfas y vencer eventos. Son cosméticas.", "tex:medals"],
+	["Gachapon más ágil", "Toca la pantalla durante la animación para acelerarla, y vuelve atrás sin perder el premio.", "ticket"],
+	["Fusiones y Fusion Dex", "Une dos movimientos evolucionados al máximo con Vínculo para crear un movimiento fusionado único (50 recetas). Cada receta descubierta queda en la Fusion Dex para siempre.", "book"],
+	["Fusión automática", "Al vincular dos movimientos evolucionados y al nivel máximo se fusionan solos, con un gran aviso «FUSION!». Cada receta tiene su propio ataque especial con animación: tormentas, vórtices, rayos, prisiones, erupciones y más.", "book"],
+	["Perfil del jugador", "Toca tu nombre de entrenador para abrir tu perfil: 3 Pokémon favoritos, estadísticas, medallas de tipo, tipo favorito con fondo propio, gorra, mochila y tema de la interfaz.", "tex:medals"],
+	["Kecleon se marcha", "Tras tu compra, Kecleon desaparece del mapa (una compra por visita). Su tienda ahora usa el mismo estilo y fuente que el resto del juego, y todos sus objetos están en la pestaña Kecleon del Léxico.", "dex:352"],
+	["Evoluciones con animación", "Cada movimiento evolucionado gana una habilidad propia que el base no tiene: ecos, vórtices, marcas que explotan, congelación y rotura, meteoros, saltos relámpago, rayos giratorios, sanguijuelas y más. Se activa sola al atacar (con su propia recarga) y viene con animación única. Respiro y Batido ahora también pueden evolucionar.", "move:inferno_tempest"],
+	["Fusion Moves", "Si vinculas dos movimientos evolucionados y los subes al nivel máximo, se fusionan solos en un Fusion Move, con el aviso «FUSION!» y un sonido épico. Solo puedes tener UNO por partida: reemplaza a los dos movimientos originales, que ya no vuelven a salir en las mejoras. Ocupa un solo hueco, es más fuerte que cualquier evolucionado y lanza los dos ataques a la vez, además de un ataque especial único con animación propia cada pocos segundos (hay 50 recetas). Ya no se puede mejorar. Cada receta descubierta queda guardada en la Fusion Dex.", "move:inferno_tempest"],
+	["Pantallas anchas", "El juego se adapta a pantallas 16:9 y 16:10 (como la Odin 3 Max): el campo de visión se amplía en lugar de recortarse y los botones se mantienen dentro de la pantalla.", "cards"],
+	["Tamaño del texto", "En Ajustes puedes cambiar el tamaño del texto (Normal hasta Muy grande) para leer mejor en pantallas pequeñas.", "cards"],
+]
+
+
+func _fname(id: String) -> String:
+	return L.t(String(MD.MOVES[id]["name"])) if MD.MOVES.has(id) else id
+
+
+func _lex_news_icon(spec: String) -> Control:
+	var tr := TextureRect.new()
+	if spec.begins_with("tex:"):
+		var p := "res://assets/world/lexn_%s.png" % spec.substr(4)
+		if ResourceLoader.exists(p):
+			tr.texture = load(p)
+	else:
+		return IC.rect(spec, 48)
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.custom_minimum_size = Vector2(48, 48)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return tr
+
+
 func _lex_fill(page: VBoxContainer, tab: String) -> void:
 	var cols: int = DSP.cols(_content_w(), 420.0, 10.0, 3)
 	if tab == "i":
@@ -5194,6 +5258,32 @@ func _lex_fill(page: VBoxContainer, tab: String) -> void:
 				var zcol: Color = Color.html(String(MD.TYPE_COLOR.get(zt, "#ffffff")))
 				var zsub: String = L.t(String(MD.TYPE_NAME[zt])) + " · " + (L.t("Desbloqueado") if zok else L.t("Derrota %d Pokémon de tipo %s: %d/%d") % [ZM.NEED, L.t(String(MD.TYPE_NAME[zt])), zn, ZM.NEED])
 				gz.add_child(_lex_card(IC.rect("zc:" + zt, 48), L.t(String(zd["name"])), zsub, zcol, L.t(String(zd["desc"])), not zok)))
+	elif tab == "f":
+		var fnd: Array = SV.d.get("fusions", [])
+		page.add_child(_label("Fusion Dex: %d / %d" % [fnd.size(), FUS.R.size()], 24, C_GOLD))
+		var gf := _lex_grid(page, cols)
+		for fr in FUS.R:
+			_later(page, func():
+				if fnd.has(fr[0]):
+					var fcol: Color = Color.html(String(fr[5]))
+					gf.add_child(_lex_card(IC.rect("move:" + String(fr[0]), 48), L.t(String(fr[1])), _fname(String(fr[2])) + " + " + _fname(String(fr[3])), fcol, L.t(String(fr[4]))))
+				else:
+					gf.add_child(_lex_card(null, "???", L.t("Bloqueada"), Color("#8fa3c4"), L.t("Fusiona dos movimientos evolucionados para descubrir esta receta."), true)))
+	elif tab == "k":
+		var gk := _lex_grid(page, cols)
+		for kv in KCX.ORDER:
+			var kvc: Color = Color.html(String(KCX.VAR[kv]["col"]))
+			for kid in KCX.CAT[kv]:
+				if not KCX.ITEMS.has(kid):
+					continue
+				_later(page, func():
+					var kit: Array = KCX.ITEMS[kid]
+					gk.add_child(_lex_card(IC.rect("kec:" + String(kid), 48), L.t(String(kit[0])), L.t(String(KCX.VAR[kv]["name"])), kvc,
+						L.t(String(kit[3])) + "\n" + L.t("Precio") + ": " + str(int(kit[1])) + "  ·  " + L.t("Máximo") + ": " + str(int(kit[2])))))
+	elif tab == "n":
+		var gn := _lex_grid(page, cols)
+		for nw in LEX_NEW:
+			_later(page, func(): gn.add_child(_lex_card(_lex_news_icon(String(nw[2])), L.t(String(nw[0])), "", Color.WHITE, L.t(String(nw[1])))))
 	elif tab == "a":
 		page.add_child(_label(L.t("Habilidades: %d") % AB.FX.size(), 24, C_GOLD))
 		var g4 := _lex_grid(page, cols)
