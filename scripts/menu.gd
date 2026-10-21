@@ -1885,8 +1885,6 @@ func _release_screen(name: String) -> void:
 	if not screens.has(name):
 		return
 	match name:
-		"modes":
-			_mode_preview("")   # libera el decodificador de video
 		"lexicon":
 			_fq_cancel(lex_box, true)
 			lex_pages.clear()
@@ -2781,26 +2779,6 @@ func _menu_pick(key: String) -> void:
 # Modos de juego
 # ---------------------------------------------------------------
 var modes_box: VBoxContainer
-var mode_vp: VideoStreamPlayer
-var mode_hold: Control
-var mode_vid := ""
-const MODE_VID := {"flag": "normal", "m_daily": "daily", "m_rush": "rush", "m_party": "party", "m_coop": "coop", "m_tower": "tower", "m_clock": "rifts", "m_team": "team"}
-
-
-# Video de vista previa del modo enfocado (detras de la lista, atenuado). Solo uno a la vez; se libera al salir de la pantalla.
-func _mode_preview(vid: String) -> void:
-	if mode_vp == null or vid == mode_vid:
-		return
-	mode_vid = vid
-	var path := "res://assets/previews/%s.ogv" % vid
-	if vid == "" or not ResourceLoader.exists(path):
-		mode_vp.stop()
-		mode_vp.stream = null
-		mode_hold.visible = false
-		return
-	mode_vp.stream = load(path)
-	mode_hold.visible = true
-	mode_vp.play()
 var dex_pick_party := false
 var dex_pick_team := false
 var dex_pick_coop := false
@@ -2830,21 +2808,6 @@ func _start_mode(mode: String) -> void:
 
 func _build_modes() -> void:
 	var s: Control = _screen("modes")
-	mode_hold = Control.new()
-	mode_hold.clip_contents = true
-	mode_hold.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mode_hold.modulate = Color(1, 1, 1, 0.5)
-	mode_hold.visible = false
-	s.add_child(mode_hold)
-	mode_vp = VideoStreamPlayer.new()
-	mode_vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mode_vp.expand = true
-	mode_vp.loop = true
-	mode_hold.add_child(mode_vp)
-	mode_hold.resized.connect(func():   # el video 16:9 cubre la zona sin deformarse
-		var k: float = maxf(mode_hold.size.x / 640.0, mode_hold.size.y / 360.0)
-		mode_vp.size = Vector2(640.0, 360.0) * k
-		mode_vp.position = (mode_hold.size - mode_vp.size) * 0.5)
 	var pc := PanelContainer.new()
 	pc.add_theme_stylebox_override("panel", StyleBoxEmpty.new())   # sin panel de fondo: se ve el mundo del menu entre las tarjetas
 	s.add_child(pc)
@@ -2902,8 +2865,6 @@ func _mode_card(title: String, desc: String, cb: Callable, icon: String = "") ->
 	b.pressed.connect(cb)
 	b.pressed.connect(func(): Aud.sfx("click"))
 	b.focus_entered.connect(func(): Aud.sfx("hover"))
-	var vid: String = String(MODE_VID.get(icon, ""))
-	b.focus_entered.connect(func(): _mode_preview(vid))
 	return b
 
 

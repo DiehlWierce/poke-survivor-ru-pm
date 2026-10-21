@@ -90,8 +90,6 @@ func _run() -> void:
 	await _check_chal()
 	await _check_gachapon()
 	await _check_dex()
-	await _check_mode_preview()
-	await _check_modes_walk()
 	if failures == 0:
 		print("MENU_UX_OK")
 	else:
@@ -355,58 +353,3 @@ func _check_dex() -> void:
 	m.dex_only_owned = false
 	m._show("main")
 	await _frames(3)
-
-
-# ---------- 7) Видео-превью режимов: играет только на экране «Играть», при выходе освобождается ----------
-func _check_mode_preview() -> void:
-	m._show("modes")
-	await _frames(5)
-	m._mode_preview("rush")
-	await _frames(10)
-	if m.mode_vp.stream == null or not m.mode_hold.visible:
-		_fail("превью: ролик rush не загрузился")
-	m._mode_preview("")
-	if m.mode_vp.stream != null or m.mode_hold.visible:
-		_fail("превью: пустой режим не снимает ролик")
-	m._mode_preview("tower")
-	await _frames(5)
-	m._show("main")
-	await _frames(3)
-	if m.mode_vp.stream != null or m.mode_vid != "":
-		_fail("превью: ролик не освобождён при выходе с экрана режимов")
-
-
-# ---------- 8) Геймпадом по списку режимов: фокус идёт по всем карточкам, ролик следует за фокусом, A запускает режим ----------
-func _check_modes_walk() -> void:
-	m._show("modes")
-	for _i in 400:
-		await _frames(1)
-		if m.fq.is_empty():
-			break
-	await _frames(5)
-	var seen := {}
-	var titles := {}
-	for _k in 40:
-		var f: Control = root.gui_get_focus_owner()
-		if f is Button and (f as Button).text.contains("\n"):
-			titles[(f as Button).text.get_slice("\n", 0)] = true
-			if m.mode_vid != "":
-				seen[m.mode_vid] = true
-		_press("ui_down")
-		await _frames(4)
-	print("MODES_WALK карточек=%d ролики=%s" % [titles.size(), str(seen.keys())])
-	_shot("modes_walk")
-	if titles.size() < 8:
-		_fail("режимы: геймпадом достижимо только %d карточек из ≥8" % titles.size())
-	for need in ["normal", "rush", "tower", "rifts"]:
-		if not seen.has(need):
-			_fail("режимы: ролик '%s' не показан при проходе по списку (видели %s)" % [need, str(seen.keys())])
-	# A на карточке запускает режим (SV.run_mode выставляется сразу, затем смена сцены — на этом тест кончается)
-	var sv = load("res://scripts/save_data.gd")
-	for _k in 40:
-		_press("ui_up")
-		await _frames(2)
-	_press("ui_accept")
-	await _frames(2)
-	if String(sv.run_mode) != "normal":
-		_fail("режимы: A на первой карточке дал run_mode='%s', ожидался normal" % String(sv.run_mode))
