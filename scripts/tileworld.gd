@@ -53,6 +53,11 @@ var chunks := {}
 var sets := {}
 var pals := {}
 var fade_t := 1.0
+# Смена биома без «полукарты»: следующий биом заранее запекается в фоне (prepare_biome) в ch["nx"], а растворение
+# держится на нуле (fade_hold), пока у всех видимых кусков нет новой текстуры; после HOLD_MAX видимые допекаются сразу.
+var nx_biome := -1
+var fade_hold := 0.0
+const HOLD_MAX := 2.0
 var queue: Array = []
 var grass := {}
 var gt := 0.0
@@ -589,16 +594,94 @@ func set_biome(b: int, instant: bool = false) -> void:
 	prev_biome = biome
 	biome = b
 	fade_t = 1.0 if instant else 0.0
+	fade_hold = 0.0
 	for key in chunks:
 		var ch: Dictionary = chunks[key]
+		var pre = ch.get("nx") if int(ch.get("nxb", -1)) == b else null
 		if ch["tex"] != null:
 			ch["old"] = null if instant else ch["tex"]
 			ch["tex"] = null
-			if not queue.has(key):
+			if pre == null and not queue.has(key):
 				queue.append(key)
+		if pre != null:
+			ch["tex"] = pre   # запечён заранее: готов в тот же кадр
+			ch["tb"] = b
+			ch["liq"] = ch["nxl"]
+			ch.erase("liqd")
+			queue.erase(key)
+		ch.erase("nx")
+		ch.erase("nxb")
+		ch.erase("nxl")
+	nx_biome = -1
 	_queue_sort()
 	if is_inside_tree():
 		get_tree().call_group("fade_props", "set_process", true)   # árboles y rocas duermen salvo durante el cambio de bioma
+
+
+# Следующий биом (абсолютный индекс как в set_biome): его куски вокруг вида запекаются в фоне, когда текущих дел нет.
+func prepare_biome(b: int) -> void:
+	b = posmod(b, count())
+	if b == biome or b == nx_biome:
+		return
+	nx_biome = b
+	for key in chunks:
+		chunks[key].erase("nx")
+		chunks[key].erase("nxb")
+		chunks[key].erase("nxl")
+
+
+func _nx_has(key: Vector2i) -> bool:
+	var ch: Dictionary = chunks[key]
+	return ch.has("nx") and int(ch["nxb"]) == nx_biome
+
+
+func _nx_store(key: Vector2i, img: Image, liq: Array) -> void:
+	var ch: Dictionary = chunks[key]
+	ch["nx"] = ImageTexture.create_from_image(img)
+	ch["nxb"] = nx_biome
+	ch["nxl"] = liq
+
+
+# Следующий кусок для заранее запекаемого биома: из pre_r (вид + запас), по приоритету; без вида — ближайшие к центру.
+func _nx_pick() -> Vector2i:
+	if nx_biome < 0 or nx_biome == biome:
+		return NO_KEY
+	var best := NO_KEY
+	var bp := 1e9
+	for key in chunks:
+		if _nx_has(key) or _nx_busy(key):
+			continue
+		if view_ok and not Rect2(float(key.x) * CW, float(key.y) * CW, CW, CW).intersects(pre_r):
+			continue
+		var pv: float = _prio(key)
+		if pv < bp:
+			bp = pv
+			best = key
+	return best
+
+
+func _nx_busy(key: Vector2i) -> bool:
+	for j in jobs:
+		if j.key == key and j.biome == nx_biome:
+			return true
+	for j in done_jobs:
+		if j.key == key and j.biome == nx_biome:
+			return true
+	return nk_key == key and nk_biome == nx_biome
+
+
+const NO_KEY := Vector2i(99999, 99999)
+
+
+# Все куски под видом (с FORCE_PAD), где сейчас виден старый биом, уже имеют новую текстуру.
+func _vis_ready() -> bool:
+	if not view_ok:
+		return true
+	for key in _keys_in(vis_r.grow(FORCE_PAD)):
+		var ch: Dictionary = chunks.get(key, {})
+		if not ch.is_empty() and ch["old"] != null and not _ready_tex(ch):
+			return false
+	return true
 
 
 func bake_chunk(key: Vector2i) -> void:
@@ -632,7 +715,7 @@ func _bake_step() -> bool:
 				bk_biome = biome
 				break
 		if bk_key == Vector2i(99999, 99999):
-			return false
+			return _nx_step()
 	if not chunks.has(bk_key) or bk_biome != biome:
 		# el trozo se descarto o cambio el bioma a medias: set_biome ya lo vuelve a encolar
 		if chunks.has(bk_key) and not queue.has(bk_key):
@@ -647,6 +730,34 @@ func _bake_step() -> bool:
 	return true
 
 
+# Без потоков: следующий биом по строкам, только когда текущих кусков в очереди нет.
+var nk_key := NO_KEY
+var nk_img: Image
+var nk_liq: Array = []
+var nk_row := 0
+var nk_biome := -1
+
+
+func _nx_step() -> bool:
+	if nk_key != NO_KEY and (not chunks.has(nk_key) or nk_biome != nx_biome):
+		nk_key = NO_KEY
+	if nk_key == NO_KEY:
+		var k: Vector2i = _nx_pick()
+		if k == NO_KEY:
+			return false
+		nk_key = k
+		nk_img = Image.create(N * T, N * T, false, Image.FORMAT_RGBA8)
+		nk_liq = []
+		nk_row = 0
+		nk_biome = nx_biome
+	_bake_rows(nk_key, nk_img, nk_liq, nk_row, mini(N, nk_row + BK_ROWS), nk_biome)
+	nk_row += BK_ROWS
+	if nk_row >= N:
+		_nx_store(nk_key, nk_img, nk_liq)
+		nk_key = NO_KEY
+	return false   # на экране ничего не меняется
+
+
 func _bake_finish(key: Vector2i, img: Image, liq: Array) -> void:
 	var ch: Dictionary = chunks[key]
 	ch["tex"] = ImageTexture.create_from_image(img)
@@ -655,8 +766,8 @@ func _bake_finish(key: Vector2i, img: Image, liq: Array) -> void:
 	ch.erase("liqd")
 
 
-func _bake_rows(key: Vector2i, img: Image, liq: Array, j0: int, j1: int) -> void:
-	var S: Dictionary = tset(biome)
+func _bake_rows(key: Vector2i, img: Image, liq: Array, j0: int, j1: int, b: int = -1) -> void:
+	var S: Dictionary = tset(biome if b < 0 else b)
 	var bx: int = key.x * N
 	var by: int = key.y * N
 	for j in range(j0, j1):
@@ -844,7 +955,9 @@ func _job_covers(key: Vector2i) -> bool:
 	return false
 
 
-func _job_start(key: Vector2i) -> void:
+func _job_start(key: Vector2i, b: int = -1) -> void:
+	if b < 0:
+		b = biome
 	var slot := 0
 	while true:
 		var used := false
@@ -861,16 +974,16 @@ func _job_start(key: Vector2i) -> void:
 		cl.terr.clear()
 		cl.dirt.clear()
 		cl.raw_c.clear()
-	if cl.biome != biome:
-		cl.sets.clear()
+	if cl.biome != b and cl.sets.size() > 1:
+		cl.sets.clear()   # в клоне держим наборы двух биомов (текущий и следующий), не больше
 	cl.seed_v = seed_v
-	cl.biome = biome
+	cl.biome = b
 	cl.liq_base = liq_base
 	cl.liq_grow = liq_grow
 	cl.wall_grow = wall_grow
 	var job := BakeJob.new()
 	job.key = key
-	job.biome = biome
+	job.biome = b
 	job.slot = slot
 	job.img = Image.create(N * T, N * T, false, Image.FORMAT_RGBA8)
 	job.tid = WorkerThreadPool.add_task(_job_run.bind(job), false, "bake_chunk")
@@ -912,9 +1025,15 @@ func _bake_tick() -> bool:
 	# un trozo por fotograma (el mas cercano/adelantado), los inservibles se tiran todos
 	var best := -1
 	var bk := 1e9
+	var nxi := -1
 	i = 0
 	while i < done_jobs.size():
 		var j: BakeJob = done_jobs[i]
+		if chunks.has(j.key) and j.biome == nx_biome and j.biome != biome:
+			if nxi < 0:
+				nxi = i
+			i += 1
+			continue
 		if not chunks.has(j.key) or j.biome != biome:
 			done_jobs.remove_at(i)
 			_job_take(j)
@@ -928,10 +1047,19 @@ func _bake_tick() -> bool:
 		var jb: BakeJob = done_jobs[best]
 		done_jobs.remove_at(best)
 		did = _job_take(jb)
+	elif best < 0 and nxi >= 0 and Time.get_ticks_usec() - t0 < BAKE_BUDGET:
+		# заранее запечённый кусок следующего биома: текстура создаётся только в кадр без текущих кусков
+		var jn: BakeJob = done_jobs[nxi]
+		done_jobs.remove_at(nxi)
+		_nx_store(jn.key, jn.img, jn.liq)
 	while bake_pause_t <= 0.0 and jobs.size() < bake_jobs and done_jobs.size() < 2 and not queue.is_empty():
 		var k: Vector2i = queue.pop_front()
 		if chunks.has(k) and not _job_covers(k) and not (chunks[k]["tex"] != null and chunks[k]["tb"] == biome):
 			_job_start(k)
+	if bake_pause_t <= 0.0 and jobs.size() < bake_jobs and done_jobs.is_empty() and queue.is_empty():
+		var nk: Vector2i = _nx_pick()
+		if nk != NO_KEY:
+			_job_start(nk, nx_biome)
 	return did
 
 
@@ -1034,6 +1162,13 @@ func _bake_now(key: Vector2i) -> bool:
 	return true
 
 
+func _force_visible() -> void:
+	for key in _keys_in(vis_r.grow(FORCE_PAD)):
+		var ch: Dictionary = chunks.get(key, {})
+		if not ch.is_empty() and not _ready_tex(ch):
+			_bake_now(key)
+
+
 # Nunca se dibuja vacio: la cola prioriza la vista, y si aun asi un trozo visible no esta listo, se termina aqui.
 func _bake_force() -> bool:
 	var did := false
@@ -1042,8 +1177,10 @@ func _bake_force() -> bool:
 		var ch: Dictionary = chunks.get(key, {})
 		if ch.is_empty() or _ready_tex(ch):
 			continue
-		if ch["old"] != null and fade_t < 0.8:
-			continue   # se ve el bioma anterior fundiendo: los hilos tienen tiempo hasta casi el final del fundido
+		if ch["old"] != null and fade_t <= 0.0:
+			continue   # смена биома ещё держится на старом (fade_hold): видимые куски готовит очередь/заранее запечённое
+		# во время растворения кусок без нового биома выделялся бы на фоне соседей (полусмена): допекаем сразу.
+		# После удержания такое бывает редко: кусок только что въехал в вид или растворение шло до входа в арену.
 		did = true
 		var t1 := Time.get_ticks_usec()
 		if _bake_now(key):
@@ -1073,13 +1210,33 @@ func _bake_visible_status() -> void:
 
 
 var _redraw_acc := 0.0
+var _view_skip := 0
 var lite: bool = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 
 
 func _process(delta: float) -> void:
 	gt += delta
+	if not visible:
+		# слой земли спрятан (арена греты / Суда, камера далеко): под камерой арены куски не заводим и синхронно
+		# не печём — раньше в кадр входа допекались 4–6 ненужных кусков и потоки грузились десятками кусков вокруг
+		# арены. Очередь мира (вид прошлого кадра в мире) допекается в фоне: к возврату всё готово.
+		bake_pause_t = maxf(0.0, bake_pause_t - delta)
+		_bake_tick()
+		_view_skip = 2
+		return
+	if _view_skip > 0:
+		# первый кадр после возврата: трансформ холста ещё от камеры арены — по нему вид оказался бы у арены
+		# и там синхронно допеклись бы 4 куска (было 130–290 мс в кадр выхода из греты)
+		_view_skip -= 1
+		_bake_tick()
+		queue_redraw()
+		return
 	var dirty := false
-	if fade_t < 1.0:
+	if fade_t <= 0.0 and fade_hold < HOLD_MAX and not _vis_ready():
+		fade_hold += delta   # старый биом целиком, пока под видом не готов новый (обычно уже запечён заранее)
+		if fade_hold >= HOLD_MAX:
+			_force_visible()   # запасной путь: допечь видимое сразу, чтобы не ждать дольше
+	elif fade_t < 1.0:
 		fade_t = minf(1.0, fade_t + delta / FADE)
 		dirty = true
 		if fade_t >= 1.0:
