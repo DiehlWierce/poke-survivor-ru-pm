@@ -1,0 +1,12 @@
+# Разведка
+- OURS: `OURS repository, ветка `portmaster`, релиз README 3.2.0; рабочее дерево чистое на момент проверки.
+- OURS последние коммиты: `6be90c5f`, `f5421be7`, `b80aad2d`, `a22f3ee1`, `0f3bf2d5`.
+- Движок OURS: Godot 4.7 (`project.godot`, feature `4.7`, README требует 4.7.x и Linux arm64 export templates).
+- OURS содержит 101 кодовых/сценовых путей и ~39,670 строк `.gd/.tscn/.tres/.godot` (первичная оценка; полный перечень исключал import/uid и бинарные ассеты).
+- BASE shallow clone: `BASE repository snapshot`, HEAD `ce57853` от 2026-10-21, основной проект — браузерная JavaScript игра; 13,660 отслеживаемых путей, подавляющее большинство — assets.
+- UPSTREAM shallow clone: `UPSTREAM repository snapshot`, HEAD `4f964fee`, основной проект — Godot, `project.godot` указывает версию 3.0.0 и Godot 4.7; 27,310 путей.
+- UPSTREAM tags `V4.0`, `V5.0`, `V5.1`, `V5.2`, `V5.3`, `v4.1` доступны локально; remote refs показывают V5.0–V5.3 и V4.0 на одном SHA `4f964fee`.
+- BASE имеет `LICENSE` и `LICENSE-NONCOMMERCIAL.md`: LICENSE говорит, что код после `b297089` (с 14-10-2026) — PolyForm Noncommercial 1.0.0; ранее до указанного коммита — MIT.
+- UPSTREAM LICENSE заявляет MIT для кода и описывает UPSTREAM как производную работу BASE; требуются правовые оговорки до переноса и отдельная проверка происхождения изменений.
+- UPSTREAM clone и BASE clone выполнены; первоначальная сеть без эскалации не работала, сетевой clone/tag retrieval с явным пользовательским согласием успешен.
+- Параллельные анализы A1–A3 запущены; зоны A4–A9 следуют после освобождения слотов.
