@@ -760,6 +760,7 @@ func _draw() -> void:
 		_cline(font, y_wx, L.t(weather_text), 18, Color("#cfe2ff"))
 	if banner != "":
 		_cline(font, y_ban, L.t(banner), 20, Color("#ffffff"))
+	draw_fusion(font, vp)
 	draw_rift(font, vp)
 	draw_rift_notice(font, vp)
 	draw_thief_notice(font, vp)
@@ -784,7 +785,25 @@ func _draw() -> void:
 		var left: float = maxf(0.0, limit - run_time)
 		var lc: String = "%02d:%02d" % [floori(left / 60.0), int(left) % 60]
 		draw_string(font, Vector2(0.0, 36.0 + oy), lc, HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color("#ff6b7a") if left < 30.0 else Color.WHITE)
-		_cline(font, y_l2, L.t("Grietas ganadas: %d") % rifts_n, 18, Color("#c9a6ff"))
+		if ch_mode:
+			var chy := 134.0
+			for ln in ch_lines:
+				var okc: bool = bool(ln[3])
+				var txt: String = String(ln[0])
+				if okc:
+					txt += "  ✓"
+				elif bool(ln[4]):
+					var cs: int = int(minf(float(ln[1]), float(ln[2])))
+					txt += "  %d:%02d/%d:%02d" % [cs / 60, cs % 60, int(ln[2]) / 60, int(ln[2]) % 60]
+				elif float(ln[2]) > 1.0 and float(ln[2]) <= 100000.0:
+					txt += "  %d/%d" % [int(minf(float(ln[1]), float(ln[2]))), int(ln[2])]
+				var tw2: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16).x
+				var px: float = vp.x - 16.0 - ins.z - tw2
+				_dso(font, Vector2(px, chy), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, 5, Color(0, 0, 0, 0.85))
+				_ds(font, Vector2(px, chy), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, Color("#8fe39b") if okc else Color.WHITE)
+				chy += 20.0
+		else:
+			_cline(font, y_l2, L.t("Grietas ganadas: %d") % rifts_n, 18, Color("#c9a6ff"))
 	else:
 		draw_string(font, Vector2(0.0, 36.0 + oy), L.t(clock), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 28, Color.WHITE)
 	if adapt_pct > 0 and tower_floor <= 0 and limit <= 0.0:
