@@ -2748,12 +2748,12 @@ func _build_main() -> void:
 	main_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left.add_child(main_info)
 	main_ui["info"] = main_info
-	# credito: autor del port de Android (JayElDragon) y, debajo, del port a PortMaster (DiehlWierce); se oculta si no cabe (ver _fit_main)
+	# credito: autor del proyecto (DiehlWierce); se oculta si no cabe (ver _fit_main)
 	main_credit = VBoxContainer.new()
 	main_credit.add_theme_constant_override("separation", 0)
 	main_credit.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left.add_child(main_credit)
-	for ct in ["Un port hecho por JayElDragon", "Port para PortMaster: DiehlWierce"]:
+	for ct in ["Un proyecto de DiehlWierce"]:
 		var cl := _label(L.t(ct), 16, Color("#ffe9a8"))
 		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cl.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -6451,7 +6451,6 @@ var listening := ""
 var last_act := ""
 var import_armed := false
 const SET_TABS := ["Sonido", "Gráficos", "Controles", "Cuenta", "Acerca de"]
-const REPO_URL := "https://github.com/JayElDragon/poke-survivor"
 const REPO_URL_PM := "https://github.com/DiehlWierce/poke-survivor-ru-pm"
 
 
@@ -7095,10 +7094,7 @@ func _set_about() -> void:
 	var t := _label("PokéSurvivor", 52, C_GOLD)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_box.add_child(t)
-	var by := _label("Port de Android por JayElDragon", 30)
-	by.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	settings_box.add_child(by)
-	var pmb := _label(L.t("Port para PortMaster: DiehlWierce"), 26, C_GOLD)
+	var pmb := _label(L.t("Un proyecto de DiehlWierce"), 26, C_GOLD)
 	pmb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_box.add_child(pmb)
 	var ver := _label(L.t("Versión") + " " + UPD.APP_VERSION + " · PortMaster", 20, Color("#c8d6ee"))
@@ -7106,7 +7102,7 @@ func _set_about() -> void:
 	settings_box.add_child(ver)
 	settings_box.add_child(_label("Juego de fans gratis y sin ánimo de lucro: sin anuncios ni compras. Pokémon y sus personajes pertenecen a Nintendo, Creatures y GAME FREAK; este proyecto no está afiliado con ellos.", 20, Color("#c8d6ee")))
 	_sec("Créditos")
-	for line in ["• Juego original (web): JPTER78.", "• Port de Android: JayElDragon.", "• Port para PortMaster y pruebas: DiehlWierce.", "• Sprites: PMD SpriteCollab y sus artistas (CC BY-NC 4.0).", "• Datos Pokémon: PokéAPI.", "• Fuente: Pixelify Sans (OFL)."]:
+	for line in ["• Proyecto, port para PortMaster y pruebas: DiehlWierce.", "• Basado en el juego original PokéSurvivor de JPTER78.", "• Y en el port a Godot/Android de JayElDragon.", "• Sprites: PMD SpriteCollab y sus artistas (CC BY-NC 4.0).", "• Datos Pokémon: PokéAPI.", "• Fuente: Pixelify Sans (OFL)."]:
 		settings_box.add_child(_label(line, 20))
 	var hb := HFlowContainer.new()
 	hb.add_theme_constant_override("h_separation", 10)
@@ -7114,6 +7110,5 @@ func _set_about() -> void:
 	settings_box.add_child(hb)
 	var dxb := _btn("Pokédex", func(): _show("dex"), Vector2(0, 50))
 	hb.add_child(dxb)
-	hb.add_child(_btn("Mi repositorio en GitHub", func(): OS.shell_open(REPO_URL), Vector2(0, 50)))
-	hb.add_child(_btn("Port para PortMaster en GitHub", func(): OS.shell_open(REPO_URL_PM), Vector2(0, 50)))
+	hb.add_child(_btn("Repositorio del proyecto en GitHub", func(): OS.shell_open(REPO_URL_PM), Vector2(0, 50)))
 	focus_first = dxb

@@ -1,8 +1,9 @@
 ## Notes
 
-Pokémon Survivors is a free, non-commercial fan game. Original game design and content: JPTER78
-([PokéSurvivor](https://github.com/JPTER78/pokesurvivor)). Android port: JayElDragon
-([poke-survivor](https://github.com/JayElDragon/poke-survivor)). PortMaster build: DiehlWierce.
+Pokémon Survivors is a free, non-commercial fan game and a heavily reworked project by DiehlWierce
+(PortMaster build, localisation, new content). It is based on PokéSurvivor by JPTER78
+([pokesurvivor](https://github.com/JPTER78/pokesurvivor)) and its Godot/Android port by JayElDragon
+([poke-survivor](https://github.com/JayElDragon/poke-survivor)).
 
 The game is exported for Linux arm64 with the stock Godot 4.7.2 template and runs through the
 PortMaster Weston wrapper (`weston_pkg_0.2`) with OpenGL ES (the Compatibility renderer).

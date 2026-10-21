@@ -34,7 +34,7 @@ const RARITY_W := [40.0, 30.0, 18.0, 9.0, 3.0]
 const RARITY_NAME := ["Común", "Poco común", "Raro", "Muy raro", "Legendario"]
 const SHINY_PULL := 0.01
 const PULL_RATES := [45.0, 30.0, 17.0, 6.5, 1.5]
-const PITY_5 := 70
+const PITY_5 := 90
 const REFUND := [15, 30, 60, 120, 300]
 
 # Mejoras permanentes (upgrades.js)
@@ -53,7 +53,7 @@ const UPGRADES := [
 	{"id": "size", "name": "Calibre", "unit": "+8% de tamaño de proyectiles, orbes y áreas", "max": 6, "base": 130.0, "grow": 1.44},
 	{"id": "reroll", "name": "Cambio de cartas", "unit": "+1 cambio de cartas por partida", "max": 5, "base": 240.0, "grow": 1.64},
 	{"id": "tm", "name": "MT", "unit": "Elige tu movimiento inicial (de tus tipos)", "max": 1, "base": 3200.0, "grow": 1.0},
-	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 3, "base": 480.0, "grow": 1.94},
+	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 6, "base": 480.0, "grow": 1.6},
 	{"id": "revive", "name": "Segunda oportunidad", "unit": "+1 corazón: al caer, revives con la vida completa", "max": 2, "base": 4000.0, "grow": 2.04},
 	{"id": "wslot", "name": "Huecos de arma", "unit": "4 huecos base: +1 por nivel (máximo 6)", "max": 2, "base": 9000.0, "grow": 2.2},
 	{"id": "bag", "name": "Mochila", "unit": "Llevas 2 objetos a la vez por partida", "max": 1, "base": 12000.0, "grow": 1.0},
@@ -943,4 +943,4 @@ static var run_chal: Dictionary = {}
 
 const Z_CRYSTAL_P_PURPLE := 0.06
 
-const PURPLE_LEGEND_P := 0.3
+const PURPLE_LEGEND_P := 0.2

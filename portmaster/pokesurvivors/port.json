@@ -11,7 +11,7 @@
     "porter": [
       "DiehlWierce"
     ],
-    "desc": "Fan-made Vampire Survivors-style game: survive endless waves of Pokemon, level up, evolve your moves, enter rifts to fight legendaries and face the Judgment of Arceus. Original game by JPTER78, Android port by JayElDragon. 11 languages including Russian.",
+    "desc": "Fan-made Vampire Survivors-style game: survive endless waves of Pokemon, level up, evolve your moves, enter rifts to fight legendaries and face the Judgment of Arceus. A heavily reworked PortMaster project by DiehlWierce, based on PokéSurvivor by JPTER78 and its Godot/Android port by JayElDragon. 11 languages including Russian.",
     "desc_md": null,
     "inst": "Ready to run: the game data is included. Unpack into the ports folder and start Pokemon Survivors.",
     "inst_md": null,

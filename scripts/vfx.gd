@@ -45,7 +45,7 @@ const MOVE := {
 	"ember": {"proj": "fire", "trail": "ember"}, "heat-wave": {"proj": "fire", "trail": "ember"},
 	"fire-spin": {"proj": "fire", "trail": "ember"},
 	"flamethrower": {"proj": "fire", "trail": "ember", "beam": "fire"},
-	"water-gun": {"proj": "drop", "trail": "drip"}, "bubble": {"proj": "bubble"},
+	"water-gun": {"proj": "drop", "trail": "drip"}, "scald": {"proj": "drop", "trail": "drip"}, "bubble": {"proj": "bubble"},
 	"hydro-pump": {"beam": "drop"}, "aqua-ring": {"buff": "bubble"},
 	"vine-whip": {"melee": "vine"},
 	"razor-leaf": {"proj": "leaf"}, "leaf-storm": {"proj": "leaf"},

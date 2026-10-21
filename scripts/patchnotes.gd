@@ -9,6 +9,24 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.3.1",
+		"date": "2026-10-22",
+		"title": "Poke Survivors para PortMaster 3.3.1: ajustes de la V5.3",
+		"new": [
+			"Nuevo movimiento de agua: Aguas Termales, con 30 % de probabilidad de quemar.",
+			"Veto: hasta 6 huecos, con un coste que sube de forma más suave.",
+			"Al vincular dos movimientos se explica por qué la fusión aún no está lista.",
+		],
+		"changes": [
+			"Lanzallamas: abanico más ancho, una llama más y retroceso desde el nivel 1.",
+			"Gacha: la garantía de legendario llega a las 90 tiradas y el ticket morado da menos legendarios.",
+			"Cofres y jefes sueltan menos tickets.",
+		],
+		"fixes": [
+			"Caramelo Raro: ya no ocupa hueco ni se pierde al conservar tus objetos.",
+		],
+	},
+	{
 		"ver": "3.3.0",
 		"date": "2026-10-21",
 		"title": "Poke Survivors para PortMaster 3.3.0: perfil de Pokémon",

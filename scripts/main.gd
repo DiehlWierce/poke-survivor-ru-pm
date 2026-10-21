@@ -1967,7 +1967,7 @@ func _f(m: Dictionary, key: String, def: float = 0.0) -> float:
 	var v: float = float(m.get(key, def))
 	if key == "knock" and MD.KNOCK_LV.has(String(m.get("id", ""))):
 		var kl: int = int(m.get("lvl", 1))
-		var kv: float = 0.0 if kl < 2 else float(MD.KNOCK_LV[String(m["id"])]) * (1.0 + 0.5 * float(kl - 2)) + v
+		var kv: float = v if kl < 2 else float(MD.KNOCK_LV[String(m["id"])]) * (1.0 + 0.5 * float(kl - 2)) + v
 		return kv * (1.5 if bool(m.get("evolved", false)) else 1.0)
 	if key == "radius":
 		if item == "widelens" or item2 == "widelens" or item3 == "widelens":
@@ -2757,7 +2757,7 @@ func _make_bullet(m: Dictionary, pos: Vector2, vel: Vector2, life: float, pierce
 	b.pierce = pierce
 	b.color = _col(m)
 	b.homing = _f(m, "homing")
-	b.burn = int(_f(m, "burn"))
+	b.burn = int(_f(m, "burn")) if not m.has("burnp") else (1 if randf() < _f(m, "burnp") else 0)
 	b.poison = int(_f(m, "poison"))
 	b.slow = _f(m, "slow")
 	b.cc = String(m.get("cc", ""))
@@ -3114,7 +3114,7 @@ func _orbit(m: Dictionary, delta: float) -> void :
 		ob.color = _col(m)
 		ob.rehit = maxf(0.12, _f(m, "cd"))
 		ob.knock = _f(m, "knock") * (1.0 if MD.KNOCK_LV.has(String(m["id"])) else 1.0 + 0.5 * float(int(m.get("lvl", 1)) - 1))
-		ob.burn = int(_f(m, "burn"))
+		ob.burn = int(_f(m, "burn")) if not m.has("burnp") else (1 if randf() < _f(m, "burnp") else 0)
 		ob.poison = int(_f(m, "poison"))
 		ob.slow = _f(m, "slow")
 		ob.cc = String(m.get("cc", ""))
@@ -3163,7 +3163,7 @@ func _hit_move(e, dmg: float, dir: Vector2, m: Dictionary) -> void:
 	dmg_src = String(m["id"])
 	cur_kind = String(m["kind"])
 	_hit_enemy(e, dmg, _col(m), dir, _f(m, "knock"), String(m["type"]),
-		int(_f(m, "burn")), int(_f(m, "poison")), _f(m, "slow"), String(m.get("cc", "")), _f(m, "ccp"))
+		(int(_f(m, "burn")) if not m.has("burnp") else (1 if randf() < _f(m, "burnp") else 0)), int(_f(m, "poison")), _f(m, "slow"), String(m.get("cc", "")), _f(m, "ccp"))
 	dmg_src = ""
 	cur_kind = ""
 
@@ -6287,9 +6287,9 @@ func _open_chest(p: Prop) -> void:
 		# Botin grande: monedas, tickets, objeto y experiencia para subir un nivel
 		for i in range(9):
 			_spawn_orb(pos + Vector2(randf_range(-22.0, 22.0), randf_range(-14.0, 14.0)), "coin", 4.0)
-		for i in range(1 + randi() % 3):
+		for i in range(1 + randi() % 2):
 			_spawn_orb(pos + Vector2(randf_range(-16.0, 16.0), randf_range(-10.0, 10.0)), "ticket", 1.0)
-		if randf() < 0.15:
+		if randf() < 0.1:
 			_spawn_orb(pos + Vector2(0.0, -10.0), "ticket10", 1.0)
 		if randf() < 0.5:
 			_spawn_orb(pos + Vector2(14.0, -14.0), "item", 0.0)
@@ -6308,9 +6308,9 @@ func _chest_roll(pos: Vector2, off: Vector2) -> void :
 	if r < 0.4:
 		for i in range(10):
 			_spawn_orb(pos, "coin", 5.0)
-		if randf() < 0.1:
-			_spawn_orb(pos, "ticket", float(1 + randi() % 3))
-			if randf() < 0.15:
+		if randf() < 0.08:
+			_spawn_orb(pos, "ticket", float(1 + randi() % 2))
+			if randf() < 0.1:
 				_spawn_orb(pos, "ticket10", 1.0)
 		add_text(pos + Vector2(0.0, -30.0), L.t("¡Monedas!"), Color("#ffd23f"), 22)
 	elif r < 0.72:
@@ -6631,7 +6631,7 @@ func _drop(e) -> void :
 		if not e.judge:
 			_spawn_orb(e.position + Vector2(24.0, 0.0), "heal", 0.0)
 			_spawn_orb(e.position + Vector2(-24.0, 0.0), "magnet", 0.0)
-			if randf() < 1.0 / 3.0:
+			if randf() < 0.25:
 				_spawn_orb(e.position + Vector2(0.0, -20.0), "ticket10", 1.0)
 			for k in range(10):
 				_spawn_orb(e.position + Vector2(randf_range(-40.0, 40.0), randf_range(-30.0, 30.0)), "coin", 5.0)
@@ -7058,6 +7058,9 @@ func _bond_pick(id: String) -> void:
 	Aud.sfx("legend")
 	_ring(player.position, 8.0, 130.0, Color("#ff8ad8"), 0.8)
 	_say(L.t("¡Vínculo! %d movimientos a la vez") % bond_ids.size(), 2.6)
+	var fuse_why := _fuse_block_reason()
+	if fuse_why != "":
+		_say(L.t("Fusión pendiente: %s") % fuse_why, 3.5)
 
 
 func _open_cards() -> void:
@@ -7157,6 +7160,13 @@ func _offer_item() -> void :
 			pool.append(it)
 	var nw: Dictionary = pool[randi() % pool.size()]
 	var picks: Array = []
+	if String(nw["id"]) == "rarecandy":
+		# El caramelo no ocupa hueco: una sola carta, sin "sustituye" ni forma de perderlo por quedarte con tus objetos.
+		picks.append({"cat": "itemtake", "id": "rarecandy", "key": "it:rarecandy", "w": 1.0,
+			"title": String(nw["name"]), "desc": String(nw["desc"]), "icon": "rarecandy", "tag": L.t("No ocupa hueco"), "color": Color("#4f9cf0")})
+		choosing = true
+		cards.show_cards(picks, L.t("Has encontrado un objeto"), L.t("Has encontrado un objeto"), false)
+		return
 	if not two:
 		picks.append({"cat": "itemtake", "id": String(nw["id"]), "key": "it:" + String(nw["id"]), "w": 1.0,
 			"title": String(nw["name"]), "desc": String(nw["desc"]), "icon": String(nw["id"]), "tag": "Objeto nuevo", "color": Color("#ff8ad8")})
@@ -10678,6 +10688,23 @@ func _fuse_pair() -> Array:
 		if not bool(m["evolved"]) or int(m["lvl"]) < _max_lvl(m):
 			return []
 	return out
+
+# Motivo por el que el vinculo actual aun no se puede fusionar ("" si no hay nada que explicar).
+func _fuse_block_reason() -> String:
+	if bond_ids.size() != 2:
+		return ""
+	if mode == "tower" or _ch_rs("no_fusion"):
+		return L.t("Este modo no permite fusiones")
+	if fused_once:
+		return L.t("Ya fusionaste en esta partida")
+	for id in bond_ids:
+		for m in player.moves:
+			if String(m["id"]) == String(id):
+				if m.has("parts"):
+					return L.t("Un movimiento ya es una fusión")
+				if not bool(m["evolved"]) or int(m["lvl"]) < _max_lvl(m):
+					return L.t("Ambos movimientos deben estar evolucionados y al nivel máximo")
+	return ""
 
 func _fuse_ready() -> bool:
 	if player.dead or mode == "tower" or _ch_rs("no_fusion"):

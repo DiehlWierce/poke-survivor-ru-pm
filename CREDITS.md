@@ -1,7 +1,8 @@
 # Credits
 
+- **Project, PortMaster build and rework — DiehlWierce.** A heavily reworked project, based on the two works below; it only occasionally inherits their fixes.
 - **Original game — PokéSurvivor by JPTER78:** https://github.com/JPTER78/pokesurvivor (wiki: https://pokesurvivor.wiki). Game design, systems, balance and content.
-- **Android port (Godot):** JayElDragon.
+- **Godot/Android port (base of this project):** JayElDragon — https://github.com/JayElDragon/poke-survivor.
 - **Pokémon data and official names:** [PokéAPI](https://pokeapi.co).
 - **Fonts:** Pixelify Sans and Noto Sans CJK, both under the SIL Open Font License 1.1.
 - Pokémon and its characters are trademarks of Nintendo, Creatures Inc., GAME FREAK inc. and The Pokémon Company. This is a free, non-profit fan project, not affiliated with or endorsed by them.

@@ -153,6 +153,7 @@ const SIG := {
 	"water-gun": ["pinball", {"k": 0.9}],
 	"bubble": ["pulses", {"n": 3, "r": 180, "k": 0.6}],
 	"hydro-pump": ["comet", {"k": 2.4}],
+	"scald": ["pinball", {"k": 0.9}],
 	"bubble-beam": ["swarm", {"n": 6, "k": 0.5}],
 
 	"bug-bite": ["crosscut", {"k": 1.5}],
