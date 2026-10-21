@@ -4006,6 +4006,10 @@ func _dex_detail() -> void:
 	var abd: Dictionary = AB.FX[AB.of(dx)]
 	dex_detail.add_child(_label(L.t("Habilidad: %s") % L.t(String(abd["name"])), 18, Color("#ffd98a")))
 	dex_detail.add_child(_label(L.t(String(abd["desc"])), 15, Color("#c8d6ee")))
+	var capsule_use := _btn(L.t("Usar cápsula para cambiar habilidad (%d)") % int(SV.d.get("ability_capsules", 0)), func(): _use_ability_capsule(dx), Vector2(0, 44))
+	capsule_use.disabled = int(SV.d.get("ability_capsules", 0)) <= 0
+	dex_detail.add_child(capsule_use)
+	dex_detail.add_child(_btn(L.t("Comprar cápsula · 400 monedas"), func(): _buy_ability_capsule(), Vector2(0, 44)))
 	var zl: Array = SV.zm_types(dx)
 	if zl.is_empty():
 		dex_detail.add_child(_label(L.t("Movimiento Z: bloqueado (derrota %d Pokémon de su tipo)") % ZM.NEED, 15, Color("#8a96b0")))
@@ -4034,6 +4038,23 @@ func _dex_detail() -> void:
 	else:
 		sel_b = _btn("Elegir", func(): SV.d["selected"] = dx; SV.save(); toast(L.t("Compañero: %s") % _name_of(dx)); _refresh_dex(), Vector2(0, 54))
 	dex_detail.add_child(sel_b)
+
+
+func _use_ability_capsule(dex: int) -> void:
+	if SV.use_ability_capsule(dex):
+		Aud.sfx("select")
+		_dex_detail()
+	else:
+		Aud.sfx("error")
+
+
+func _buy_ability_capsule() -> void:
+	if SV.buy_ability_capsule():
+		Aud.sfx("coin")
+		_dex_detail()
+	else:
+		Aud.sfx("error")
+		toast(L.t("No tienes suficientes Pokémonedas."))
 
 
 # ---------------------------------------------------------------

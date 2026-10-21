@@ -6,7 +6,10 @@
     "Vital": "Vital",
     "Ligera": "Light",
     "Naturaleza: %s": "Nature: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Attack x%.2f · Speed x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Attack x%.2f · Speed x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Use capsule to change ability (%d)",
+    "Comprar cápsula · 400 monedas": "Buy capsule · 400 coins",
+    "No tienes suficientes Pokémonedas.": "Not enough coins."
   },
   "es_419": {
     "Equilibrada": "Equilibrada",
@@ -15,7 +18,10 @@
     "Vital": "Vital",
     "Ligera": "Ligera",
     "Naturaleza: %s": "Naturaleza: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Usar cápsula para cambiar habilidad (%d)",
+    "Comprar cápsula · 400 monedas": "Comprar cápsula · 400 monedas",
+    "No tienes suficientes Pokémonedas.": "No tienes suficientes Pokémonedas."
   },
   "fr": {
     "Equilibrada": "Équilibrée",
@@ -24,7 +30,10 @@
     "Vital": "Vigoureuse",
     "Ligera": "Légère",
     "Naturaleza: %s": "Nature : %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PV x%.2f · Attaque x%.2f · Vitesse x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PV x%.2f · Attaque x%.2f · Vitesse x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Utiliser une capsule pour changer de talent (%d)",
+    "Comprar cápsula · 400 monedas": "Acheter une capsule · 400 pièces",
+    "No tienes suficientes Pokémonedas.": "Vous n’avez pas assez de pièces Pokémon."
   },
   "it": {
     "Equilibrada": "Equilibrata",
@@ -33,7 +42,10 @@
     "Vital": "Vitale",
     "Ligera": "Leggera",
     "Naturaleza: %s": "Natura: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PS x%.2f · Attacco x%.2f · Velocità x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PS x%.2f · Attacco x%.2f · Velocità x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Usa una capsula per cambiare abilità (%d)",
+    "Comprar cápsula · 400 monedas": "Compra capsula · 400 monete",
+    "No tienes suficientes Pokémonedas.": "Non hai abbastanza Pokémonete."
   },
   "pt_BR": {
     "Equilibrada": "Equilibrada",
@@ -42,7 +54,10 @@
     "Vital": "Vital",
     "Ligera": "Leve",
     "Naturaleza: %s": "Natureza: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Usar cápsula para trocar habilidade (%d)",
+    "Comprar cápsula · 400 monedas": "Comprar cápsula · 400 moedas",
+    "No tienes suficientes Pokémonedas.": "Moedas insuficientes."
   },
   "pt_PT": {
     "Equilibrada": "Equilibrada",
@@ -51,7 +66,10 @@
     "Vital": "Vital",
     "Ligera": "Leve",
     "Naturaleza: %s": "Natureza: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Usar cápsula para trocar habilidade (%d)",
+    "Comprar cápsula · 400 monedas": "Comprar cápsula · 400 moedas",
+    "No tienes suficientes Pokémonedas.": "Não tens moedas suficientes."
   },
   "ru": {
     "Equilibrada": "Сбалансированная",
@@ -60,7 +78,10 @@
     "Vital": "Жизненная",
     "Ligera": "Лёгкая",
     "Naturaleza: %s": "Характер: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Здоровье x%.2f · Атака x%.2f · Скорость x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Здоровье x%.2f · Атака x%.2f · Скорость x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Использовать капсулу для смены способности (%d)",
+    "Comprar cápsula · 400 monedas": "Купить капсулу · 400 монет",
+    "No tienes suficientes Pokémonedas.": "Недостаточно монет."
   },
   "ja": {
     "Equilibrada": "バランス型",
@@ -69,7 +90,10 @@
     "Vital": "生命力",
     "Ligera": "軽快",
     "Naturaleza: %s": "性格: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · 攻撃 x%.2f · 素早さ x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · 攻撃 x%.2f · 素早さ x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "カプセルで特性を変更 (%d)",
+    "Comprar cápsula · 400 monedas": "カプセルを購入 · 400コイン",
+    "No tienes suficientes Pokémonedas.": "コインが足りません。"
   },
   "zh_CN": {
     "Equilibrada": "均衡",
@@ -78,7 +102,10 @@
     "Vital": "强健",
     "Ligera": "轻盈",
     "Naturaleza: %s": "性格：%s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻击 x%.2f · 速度 x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻击 x%.2f · 速度 x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "使用胶囊更换特性（%d）",
+    "Comprar cápsula · 400 monedas": "购买胶囊 · 400金币",
+    "No tienes suficientes Pokémonedas.": "金币不足。"
   },
   "zh_HK": {
     "Equilibrada": "均衡",
@@ -87,7 +114,10 @@
     "Vital": "強健",
     "Ligera": "輕盈",
     "Naturaleza: %s": "性格：%s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻擊 x%.2f · 速度 x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻擊 x%.2f · 速度 x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "使用膠囊更換特性（%d）",
+    "Comprar cápsula · 400 monedas": "購買膠囊 · 400 金幣",
+    "No tienes suficientes Pokémonedas.": "金幣不足。"
   },
   "vi": {
     "Equilibrada": "Cân bằng",
@@ -96,6 +126,9 @@
     "Vital": "Sức sống",
     "Ligera": "Nhẹ nhàng",
     "Naturaleza: %s": "Tính cách: %s",
-    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Tấn công x%.2f · Tốc độ x%.2f"
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Tấn công x%.2f · Tốc độ x%.2f",
+    "Usar cápsula para cambiar habilidad (%d)": "Dùng viên nang đổi năng lực (%d)",
+    "Comprar cápsula · 400 monedas": "Mua viên nang · 400 xu",
+    "No tienes suficientes Pokémonedas.": "Không đủ xu."
   }
 }

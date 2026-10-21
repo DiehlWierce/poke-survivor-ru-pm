@@ -1,6 +1,9 @@
 # abilities.gd - habilidades pasivas por Pokemon. Generado por tools/gen_abilities.py. No editar a mano.
 extends RefCounted
 
+const SV = preload("res://scripts/save_data.gd")
+const CAPSULE_OPTIONS := ["technician", "compoundeyes", "battlearmor", "protean"]
+
 const FX := {
 	"blaze": {"name": "Mar Llamas", "desc": "Por debajo del 40% de vida, tus movimientos de Fuego hacen +35% de daño.", "fx": {"pinch": "fire", "pinch_k": 0.35}},
 	"overgrow": {"name": "Espesura", "desc": "Por debajo del 40% de vida, tus movimientos de Planta hacen +35% de daño.", "fx": {"pinch": "grass", "pinch_k": 0.35}},
@@ -201,8 +204,22 @@ const BY_DEX := {
 }
 
 
-static func of(dex: int) -> String:
+static func base_of(dex: int) -> String:
 	return String(BY_DEX.get(dex, "protean"))
+
+
+static func of(dex: int) -> String:
+	SV.ensure()
+	var selected: String = String(SV.d.get("pability", {}).get(str(dex), ""))
+	return selected if FX.has(selected) else base_of(dex)
+
+
+static func capsule_options(dex: int) -> Array:
+	var out: Array = [base_of(dex)]
+	for id in CAPSULE_OPTIONS:
+		if not out.has(id):
+			out.append(id)
+	return out
 
 
 static func fx_of(dex: int) -> Dictionary:
