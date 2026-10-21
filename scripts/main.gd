@@ -594,7 +594,8 @@ func _boot_player() -> void:
 	player.add_child(sh_aura)
 	if SV.owns(sel_dex) and bool(SV.d["owned"][str(sel_dex)]["shiny"]) and bool(SV.d["shiny_on"]):
 		player.set_shiny()
-	player.max_hp = float(st["hp"]) + float(perks["hp"])
+	var nature: Dictionary = SV.nature_of(sel_dex)
+	player.max_hp = (float(st["hp"]) + float(perks["hp"])) * float(nature["hp"])
 	if _has_mod("frail"):
 		player.max_hp = roundf(player.max_hp * 0.5)
 	if mode == "chal" and _ch_rs("one_hp"):
@@ -602,8 +603,8 @@ func _boot_player() -> void:
 	player.hp = player.max_hp
 	nh_last = player.hp
 	nh_max = player.max_hp
-	player.spd = float(st["spd"])
-	player.atk = float(st["atk"])
+	player.spd = float(st["spd"]) * float(nature["spd"])
+	player.atk = float(st["atk"]) * float(nature["atk"])
 	player.types = st["types"]
 	base_spd = player.spd * float(perks["spd"])
 	base_atk = player.atk * float(perks["atk"])
@@ -2331,14 +2332,15 @@ func _setup_team() -> void :
 	for dx in SV.team_dex:
 		var d: int = int(dx)
 		var st2: Dictionary = _dex_by[d]
-		var b: float = float(st2["hp"]) + float(perks["hp"])
+		var nature: Dictionary = SV.nature_of(d)
+		var b: float = (float(st2["hp"]) + float(perks["hp"])) * float(nature["hp"])
 		if _has_mod("frail"):
 			b = roundf(b * 0.5)
 
 		var tm: Array = []
 		if team.size() > 0:
 			tm = _start_moves(d, st2["types"])
-		team.append({"dex": d, "name": L.t(String(st2["name"])), "base": b, "hp": b, "types": st2["types"], "spd": float(st2["spd"]), "atk": float(st2["atk"]),
+		team.append({"dex": d, "name": L.t(String(st2["name"])), "base": b, "hp": b, "types": st2["types"], "spd": float(st2["spd"]) * float(nature["spd"]), "atk": float(st2["atk"]) * float(nature["atk"]),
 			"moves": tm, "slot": 0, "bond_ids": [], "bond_first": ""})
 	team_bonus = 0.0
 

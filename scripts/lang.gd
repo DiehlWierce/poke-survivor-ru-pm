@@ -68,6 +68,11 @@ static func apply() -> void:
 		tr = Translation.new()
 		tr.locale = "en"
 		var dct := _load_json("res://data/lang_%s.json" % code)
+		var feature_root := _load_json("res://data/lang_features.json")
+		var feature_strings = feature_root.get(code, {})
+		if feature_strings is Dictionary:
+			for key in feature_strings:
+				dct[key] = feature_strings[key]
 		for k in dct:
 			tr.add_message(StringName(k), StringName(String(dct[k])))
 		loaded_code = code

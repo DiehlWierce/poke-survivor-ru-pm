@@ -6,6 +6,7 @@ const BAK := "user://save.bak"
 const TMP := "user://save.tmp"
 const SAVE_SCHEMA_VERSION := 1
 const STARTERS_D = preload("res://scripts/starters_data.gd")
+const NATURES_D = preload("res://scripts/natures_data.gd")
 
 static var d: Dictionary = {}
 static var loaded := false
@@ -89,7 +90,7 @@ const GOALS := [
 static func default_data() -> Dictionary:
 	return {
 		"v": SAVE_SCHEMA_VERSION, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
-		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {},
+		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {}, "natures": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
 		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true, "max_fps": -1, "manual_aim": false, "mono_bonus": false, "fx_op": 1, "act_side": 0, "text_sz": 0},
 	}
@@ -204,6 +205,7 @@ static func ensure() -> void:
 			# Keep damaged/unsupported files untouched until the user explicitly resets the save.
 			save_blocked = true
 	_migrate_upgrades()
+	_migrate_natures()
 
 	if not save_blocked and not recovered_from_backup and not bool(d.get("gift_6h", false)):
 		d["gift_6h"] = true
@@ -243,6 +245,18 @@ static func _migrate_upgrades() -> void:
 		if not d["pup"].has(key):
 			d["pup"][key] = old.duplicate()
 		d["upgrades"] = {}
+
+
+# Older profiles receive a stable nature once; new Pokémon receive one when first acquired.
+static func _migrate_natures() -> void:
+	if not (d.get("natures", {}) is Dictionary):
+		d["natures"] = {}
+	var natures: Dictionary = d["natures"]
+	for key in d.get("owned", {}).keys():
+		var nature_id := String(natures.get(String(key), ""))
+		if not NATURES_D.valid_id(nature_id):
+			var stable_seed: int = absi(int(d.get("created", 0)) + int(key) * 7919)
+			natures[String(key)] = String(NATURES_D.IDS[stable_seed % NATURES_D.IDS.size()])
 
 
 # Write to a temporary file, verify it, preserve the previous primary as backup, then replace it.
@@ -347,14 +361,27 @@ static func owned_count() -> int:
 
 static func add_owned(dex: int, shiny: bool = false) -> void:
 	var key := str(dex)
+	if not (d.get("natures", {}) is Dictionary):
+		d["natures"] = {}
 	if d["owned"].has(key):
 		d["owned"][key]["n"] = int(d["owned"][key]["n"]) + 1
 		if shiny:
 			d["owned"][key]["shiny"] = true
 	else:
 		d["owned"][key] = {"n": 1, "shiny": shiny}
+	if not NATURES_D.valid_id(String(d["natures"].get(key, ""))):
+		d["natures"][key] = NATURES_D.random_id()
 	if shiny:
 		d["stats"]["shinies"] = int(d["stats"]["shinies"]) + 1
+
+
+static func nature_id(dex: int) -> String:
+	var value: String = String(d.get("natures", {}).get(str(dex), "steady"))
+	return value if NATURES_D.valid_id(value) else "steady"
+
+
+static func nature_of(dex: int) -> Dictionary:
+	return NATURES_D.definition(nature_id(dex))
 
 
 # MT (mejora permanente): el movimiento inicial elegido para este Pokemon, si ya compraste la MT.

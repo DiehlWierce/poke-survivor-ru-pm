@@ -1,0 +1,101 @@
+{
+  "en": {
+    "Equilibrada": "Balanced",
+    "Veloz": "Swift",
+    "Fuerte": "Fierce",
+    "Vital": "Vital",
+    "Ligera": "Light",
+    "Naturaleza: %s": "Nature: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Attack x%.2f · Speed x%.2f"
+  },
+  "es_419": {
+    "Equilibrada": "Equilibrada",
+    "Veloz": "Veloz",
+    "Fuerte": "Fuerte",
+    "Vital": "Vital",
+    "Ligera": "Ligera",
+    "Naturaleza: %s": "Naturaleza: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f"
+  },
+  "fr": {
+    "Equilibrada": "Équilibrée",
+    "Veloz": "Rapide",
+    "Fuerte": "Puissante",
+    "Vital": "Vigoureuse",
+    "Ligera": "Légère",
+    "Naturaleza: %s": "Nature : %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PV x%.2f · Attaque x%.2f · Vitesse x%.2f"
+  },
+  "it": {
+    "Equilibrada": "Equilibrata",
+    "Veloz": "Rapida",
+    "Fuerte": "Forte",
+    "Vital": "Vitale",
+    "Ligera": "Leggera",
+    "Naturaleza: %s": "Natura: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PS x%.2f · Attacco x%.2f · Velocità x%.2f"
+  },
+  "pt_BR": {
+    "Equilibrada": "Equilibrada",
+    "Veloz": "Veloz",
+    "Fuerte": "Forte",
+    "Vital": "Vital",
+    "Ligera": "Leve",
+    "Naturaleza: %s": "Natureza: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f"
+  },
+  "pt_PT": {
+    "Equilibrada": "Equilibrada",
+    "Veloz": "Rápida",
+    "Fuerte": "Forte",
+    "Vital": "Vital",
+    "Ligera": "Leve",
+    "Naturaleza: %s": "Natureza: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f"
+  },
+  "ru": {
+    "Equilibrada": "Сбалансированная",
+    "Veloz": "Быстрая",
+    "Fuerte": "Сильная",
+    "Vital": "Жизненная",
+    "Ligera": "Лёгкая",
+    "Naturaleza: %s": "Характер: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Здоровье x%.2f · Атака x%.2f · Скорость x%.2f"
+  },
+  "ja": {
+    "Equilibrada": "バランス型",
+    "Veloz": "俊敏",
+    "Fuerte": "剛力",
+    "Vital": "生命力",
+    "Ligera": "軽快",
+    "Naturaleza: %s": "性格: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · 攻撃 x%.2f · 素早さ x%.2f"
+  },
+  "zh_CN": {
+    "Equilibrada": "均衡",
+    "Veloz": "迅捷",
+    "Fuerte": "强力",
+    "Vital": "强健",
+    "Ligera": "轻盈",
+    "Naturaleza: %s": "性格：%s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻击 x%.2f · 速度 x%.2f"
+  },
+  "zh_HK": {
+    "Equilibrada": "均衡",
+    "Veloz": "迅捷",
+    "Fuerte": "強力",
+    "Vital": "強健",
+    "Ligera": "輕盈",
+    "Naturaleza: %s": "性格：%s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻擊 x%.2f · 速度 x%.2f"
+  },
+  "vi": {
+    "Equilibrada": "Cân bằng",
+    "Veloz": "Nhanh nhẹn",
+    "Fuerte": "Mạnh mẽ",
+    "Vital": "Sức sống",
+    "Ligera": "Nhẹ nhàng",
+    "Naturaleza: %s": "Tính cách: %s",
+    "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Tấn công x%.2f · Tốc độ x%.2f"
+  }
+}

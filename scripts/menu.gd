@@ -3999,6 +3999,10 @@ func _dex_detail() -> void:
 	trow.add_child(tlb)
 	dex_detail.add_child(trow)
 	dex_detail.add_child(_label(L.t("PS %d · Velocidad %d · Ataque x%.2f") % [int(p["hp"]), int(p["spd"]), float(p["atk"])], 18, Color("#c8d6ee")))
+	var nature: Dictionary = SV.nature_of(dx)
+	var nature_name: String = L.t(String(nature["name"]))
+	dex_detail.add_child(_label(L.t("Naturaleza: %s") % nature_name, 18, Color("#ffd98a")))
+	dex_detail.add_child(_label(L.t("Vida x%.2f · Ataque x%.2f · Velocidad x%.2f") % [float(nature["hp"]), float(nature["atk"]), float(nature["spd"])], 15, Color("#c8d6ee")))
 	var abd: Dictionary = AB.FX[AB.of(dx)]
 	dex_detail.add_child(_label(L.t("Habilidad: %s") % L.t(String(abd["name"])), 18, Color("#ffd98a")))
 	dex_detail.add_child(_label(L.t(String(abd["desc"])), 15, Color("#c8d6ee")))
