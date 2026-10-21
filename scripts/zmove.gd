@@ -36,30 +36,30 @@ static func unlocked(type: String, stats: Dictionary) -> bool:
 
 # Fuego fatuo: bola de fuego flotante con llama que ondula, estela de brasas y nucleo claro (estilo Fuego Fatuo).
 class Wisp extends Node2D:
-	var life := 0.0
-	var sd := randf() * 10.0
-	var home: Node2D = null        # el Pokemon alrededor del que orbita
-	var ang := 0.0
-	var rad := 70.0
-	var t_spawn := 0.0
-	var t_go := 1.0                # cuando sale disparado
-	var dash := 0.5
-	var to := Vector2.ZERO
-	var from := Vector2.ZERO
-	var ctrl := Vector2.ZERO
-	var launched := false
+	var life: = 0.0
+	var sd: = randf() * 10.0
+	var home: Node2D = null
+	var ang: = 0.0
+	var rad: = 70.0
+	var t_spawn: = 0.0
+	var t_go: = 1.0
+	var dash: = 0.5
+	var to: = Vector2.ZERO
+	var from: = Vector2.ZERO
+	var ctrl: = Vector2.ZERO
+	var launched: = false
 	var cb: Callable
 	var trail: Array = []
-	var sz := 1.0
-	var vel := Vector2.ZERO
+	var sz: = 1.0
+	var vel: = Vector2.ZERO
 
-	func _init() -> void:
-		var mat := CanvasItemMaterial.new()
+	func _init() -> void :
+		var mat: = CanvasItemMaterial.new()
 		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		material = mat
 		z_index = 30
 
-	func _process(d: float) -> void:
+	func _process(d: float) -> void :
 		life += d
 		var grow: float = clampf(life / 0.35, 0.0, 1.0)
 		sz = grow
@@ -91,35 +91,35 @@ class Wisp extends Node2D:
 			trail.pop_back()
 		queue_redraw()
 
-	func _draw() -> void:
+	func _draw() -> void :
 		var flick: float = 0.88 + 0.12 * sin(life * 17.0 + sd) + 0.06 * sin(life * 29.0 + sd * 2.0)
 		var r: float = 12.0 * sz * flick
 		var sp: float = vel.length()
-		var back: Vector2 = (-vel.normalized()) if sp > 40.0 else Vector2(0.0, 1.0)
-		# estela de brasas
+		var back: Vector2 = ( - vel.normalized()) if sp > 40.0 else Vector2(0.0, 1.0)
+
 		for i in range(trail.size()):
 			var tp: Vector2 = to_local(trail[i])
 			var f: float = 1.0 - float(i) / float(trail.size())
 			draw_circle(tp, r * (0.25 + 0.6 * f), Color(1.0, 0.45, 0.1, 0.22 * f))
-		# resplandor
+
 		draw_circle(Vector2.ZERO, r * 2.4, Color(1.0, 0.3, 0.05, 0.06))
-		draw_circle(Vector2.ZERO, r * 1.7, Color(1.0, 0.4, 0.08, 0.10))
-		# llama: gota con punta hacia atras (o hacia arriba si flota)
+		draw_circle(Vector2.ZERO, r * 1.7, Color(1.0, 0.4, 0.08, 0.1))
+
 		var up: Vector2 = back if sp > 40.0 else Vector2(0.0, -1.0)
 		var side: Vector2 = up.orthogonal()
 		var layers: Array = [[1.0, Color(0.9, 0.18, 0.04, 0.6)], [0.78, Color(1.0, 0.45, 0.08, 0.7)], [0.52, Color(1.0, 0.78, 0.3, 0.8)], [0.3, Color(1.0, 0.97, 0.85, 0.95)]]
 		for ly in layers:
 			var k2: float = float(ly[0])
-			var pts := PackedVector2Array()
+			var pts: = PackedVector2Array()
 			for j in range(14):
 				var a: float = TAU * float(j) / 14.0
 				var base: Vector2 = Vector2.from_angle(a) * r * k2
 				pts.append(base)
 			draw_colored_polygon(pts, ly[1])
-			# lengua de fuego ondulante
+
 			var tip: Vector2 = up * (r * (2.1 + 0.5 * sin(life * 13.0 + sd + k2 * 3.0)) * k2 + (r * 0.8 if sp > 40.0 else 0.0)) + side * sin(life * 9.0 + sd) * r * 0.25
-			draw_colored_polygon(PackedVector2Array([side * r * k2 * 0.85, tip, -side * r * k2 * 0.85]), ly[1])
-		# chispas
+			draw_colored_polygon(PackedVector2Array([side * r * k2 * 0.85, tip, - side * r * k2 * 0.85]), ly[1])
+
 		for i in range(4):
 			var ph: float = fposmod(life * 1.4 + float(i) * 0.25 + sd, 1.0)
 			draw_circle(up * (r * 1.2 + ph * 40.0) + side * sin(float(i) * 5.0 + life * 4.0) * 10.0, 2.0 * (1.0 - ph), Color(1.0, 0.8, 0.3, 1.0 - ph))

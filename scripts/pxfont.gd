@@ -27,9 +27,14 @@ static func get_font() -> Font:
 
 
 # Respaldo segun el idioma: CJK propio (ja/zh) o, en el resto, el japones solo para simbolos.
-static func _set_fallbacks() -> void:
+static func _set_fallbacks() -> void :
 	if font == null:
 		return
+
+	var bp: String = "res://fonts/Inter_vi.otf" if lang_code == "vi" else "res://fonts/PixelifySansFix.ttf"
+	var nb = load(bp)
+	if nb is Font and font.base_font != nb:
+		font.base_font = nb
 	var path: String = CJK.get(lang_code, CJK["ja"])
 	var fb = load(path)
 	var arr: Array[Font] = []

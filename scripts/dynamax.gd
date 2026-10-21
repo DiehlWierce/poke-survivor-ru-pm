@@ -32,41 +32,41 @@ var aura_node = null
 
 # Aura roja que envuelve al Pokemon Dynamax (como en Espada y Escudo): niebla roja y violeta que sube en espiral y chispas.
 class Aura extends Node2D:
-	var t := randf() * 10.0
-	var h := 40.0
-	var w := 24.0
-	var col := Color(0.9, 0.08, 0.25)
+	var t: = randf() * 10.0
+	var h: = 40.0
+	var w: = 24.0
+	var col: = Color(0.9, 0.08, 0.25)
 
-	func _init() -> void:
+	func _init() -> void :
 		show_behind_parent = true
 
-	func _process(d: float) -> void:
+	func _process(d: float) -> void :
 		t += d
 		queue_redraw()
 
-	func _draw() -> void:
+	func _draw() -> void :
 		var beat: float = 0.5 + 0.5 * sin(t * 4.0)
-		var c := Vector2(0.0, -h * 0.5)
-		# charco de luz en el suelo
-		var pts := PackedVector2Array()
+		var c: = Vector2(0.0, - h * 0.5)
+
+		var pts: = PackedVector2Array()
 		for i in range(28):
 			var a: float = TAU * float(i) / 28.0
 			pts.append(Vector2(cos(a) * w * (1.7 + 0.12 * beat), sin(a) * w * 0.55))
-		draw_colored_polygon(pts, Color(col.r, col.g, col.b, 0.38 + 0.10 * beat))
-		# resplandor del cuerpo
+		draw_colored_polygon(pts, Color(col.r, col.g, col.b, 0.38 + 0.1 * beat))
+
 		for i in range(4):
 			var k: float = float(i) / 3.0
 			draw_circle(c, maxf(w, h * 0.5) * (1.55 - k * 0.55) + beat * 4.0, Color(col.r, col.g + 0.3 * k, col.b + 0.2 * k, 0.07 + 0.03 * k))
-		# niebla que sube en espiral
+
 		for i in range(14):
 			var ph: float = fposmod(t * 0.55 + float(i) * 0.0714, 1.0)
 			var a2: float = t * 1.6 + float(i) * 0.9
 			var rr: float = w * (0.9 + 0.35 * sin(t * 2.0 + float(i)))
-			var p := Vector2(cos(a2) * rr, c.y + h * 0.55 - ph * h * 1.25 + sin(a2) * rr * 0.3)
+			var p: = Vector2(cos(a2) * rr, c.y + h * 0.55 - ph * h * 1.25 + sin(a2) * rr * 0.3)
 			var al: float = sin(ph * PI) * 0.45
 			var cc: Color = col.lerp(Color(0.5, 0.1, 0.7), 0.5 + 0.5 * sin(float(i)))
 			draw_circle(p, 4.0 + 6.0 * (1.0 - ph) + 2.0 * beat, Color(cc.r, cc.g, cc.b, al))
-		# chispas
+
 		for i in range(9):
 			var ph2: float = fposmod(t * 0.9 + float(i) * 0.111, 1.0)
 			var xx: float = sin(float(i) * 7.3 + t * 1.7) * w * 1.1
@@ -75,11 +75,11 @@ class Aura extends Node2D:
 			draw_rect(Rect2(xx - sz * 0.5, yy - sz * 0.5, sz, sz), Color(1.0, 0.85, 0.9, sin(ph2 * PI) * 0.9))
 
 
-# Guarida Dynamax (estilo Espada y Escudo): crater rocoso con cristales rojos y, encima, una columna de luz con anillos que suben.
-class Den extends Node2D:
-	var t := randf() * 10.0
 
-	func _process(d: float) -> void:
+class Den extends Node2D:
+	var t: = randf() * 10.0
+
+	func _process(d: float) -> void :
 		t += d
 		queue_redraw()
 
@@ -90,52 +90,52 @@ class Den extends Node2D:
 		return fposmod(sin(float(i) * 12.9898 + float(k) * 78.233) * 43758.5453, 1.0)
 
 	func _ring_poly(rx: float, ry: float, jag: float, seed: int, n: int = 26) -> PackedVector2Array:
-		var pts := PackedVector2Array()
+		var pts: = PackedVector2Array()
 		for i in range(n):
 			var a: float = TAU * float(i) / float(n)
 			var r: float = 1.0 + (hs(i, seed) - 0.5) * jag
 			pts.append(Vector2(sn(cos(a) * rx * r), sn(sin(a) * ry * r)))
 		return pts
 
-	func _draw() -> void:
+	func _draw() -> void :
 		var beat: float = 0.5 + 0.5 * sin(t * 3.0)
-		# sombra y borde de roca del crater
+
 		draw_colored_polygon(_ring_poly(86.0, 34.0, 0.0, 1, 30), Color(0.0, 0.0, 0.0, 0.28))
 		draw_colored_polygon(_ring_poly(76.0, 30.0, 0.22, 3), Color("#2f2024"))
 		draw_colored_polygon(_ring_poly(70.0, 26.0, 0.18, 5), Color("#4a3438"))
 		draw_colored_polygon(_ring_poly(60.0, 22.0, 0.12, 7), Color("#17081c"))
-		# foso de energia que late
-		draw_colored_polygon(_ring_poly(48.0, 17.0, 0.10, 9), Color(0.55, 0.05, 0.22, 0.95))
-		draw_colored_polygon(_ring_poly(36.0, 12.0, 0.10, 11), Color(1.0, 0.18, 0.4, 0.75 + 0.2 * beat))
+
+		draw_colored_polygon(_ring_poly(48.0, 17.0, 0.1, 9), Color(0.55, 0.05, 0.22, 0.95))
+		draw_colored_polygon(_ring_poly(36.0, 12.0, 0.1, 11), Color(1.0, 0.18, 0.4, 0.75 + 0.2 * beat))
 		draw_colored_polygon(_ring_poly(22.0, 7.0, 0.08, 13), Color(1.0, 0.7, 0.8, 0.8 + 0.2 * beat))
 		for i in range(3):
 			var a0: float = t * 1.8 + TAU * float(i) / 3.0
 			draw_arc(Vector2.ZERO, 30.0, a0, a0 + 1.4, 12, Color(1.0, 0.85, 0.9, 0.7), 3.0)
-		# rocas sueltas en el borde
+
 		for i in range(9):
 			var a1: float = TAU * float(i) / 9.0 + 0.3
-			var bp := Vector2(sn(cos(a1) * 72.0), sn(sin(a1) * 28.0))
+			var bp: = Vector2(sn(cos(a1) * 72.0), sn(sin(a1) * 28.0))
 			var rs: float = 6.0 + hs(i, 21) * 7.0
-			draw_colored_polygon(PackedVector2Array([bp + Vector2(-rs, 0.0), bp + Vector2(-rs * 0.4, -rs), bp + Vector2(rs * 0.6, -rs * 0.8), bp + Vector2(rs, 0.0)]), Color("#5d4448"))
-			draw_colored_polygon(PackedVector2Array([bp + Vector2(-rs * 0.4, -rs), bp + Vector2(rs * 0.6, -rs * 0.8), bp + Vector2(rs * 0.1, -rs * 0.3)]), Color("#7a5c60"))
-		# cristales rojos (los de atras primero)
+			draw_colored_polygon(PackedVector2Array([bp + Vector2( - rs, 0.0), bp + Vector2( - rs * 0.4, - rs), bp + Vector2(rs * 0.6, - rs * 0.8), bp + Vector2(rs, 0.0)]), Color("#5d4448"))
+			draw_colored_polygon(PackedVector2Array([bp + Vector2( - rs * 0.4, - rs), bp + Vector2(rs * 0.6, - rs * 0.8), bp + Vector2(rs * 0.1, - rs * 0.3)]), Color("#7a5c60"))
+
 		var order: Array = [0, 1, 2, 3, 4, 5, 6]
-		order.sort_custom(func(x, y): return sin(TAU * float(x) / 7.0 + 0.5) < sin(TAU * float(y) / 7.0 + 0.5))
+		order.sort_custom( func(x, y): return sin(TAU * float(x) / 7.0 + 0.5) < sin(TAU * float(y) / 7.0 + 0.5))
 		for idx in order:
 			var a2: float = TAU * float(idx) / 7.0 + 0.5
-			var b := Vector2(sn(cos(a2) * 68.0), sn(sin(a2) * 26.0))
+			var b: = Vector2(sn(cos(a2) * 68.0), sn(sin(a2) * 26.0))
 			var hh: float = 30.0 + hs(idx, 33) * 26.0
 			var wd: float = 9.0 + hs(idx, 35) * 5.0
 			var tilt: float = (hs(idx, 37) - 0.5) * 14.0
-			var top := b + Vector2(tilt, -hh)
-			# halo
-			draw_circle(b + Vector2(tilt * 0.5, -hh * 0.5), hh * 0.8, Color(1.0, 0.2, 0.4, 0.05 + 0.04 * beat))
-			draw_colored_polygon(PackedVector2Array([b + Vector2(-wd, 0.0), b + Vector2(-wd * 0.8, -hh * 0.65), top, b + Vector2(0.0, 0.0)]), Color("#b3103a"))
-			draw_colored_polygon(PackedVector2Array([b + Vector2(0.0, 0.0), top, b + Vector2(wd * 0.8, -hh * 0.65), b + Vector2(wd, 0.0)]), Color("#ff3d6a").lerp(Color("#ff8aa6"), 0.3 * beat))
-			draw_colored_polygon(PackedVector2Array([top, b + Vector2(wd * 0.8, -hh * 0.65), b + Vector2(wd * 0.25, -hh * 0.6)]), Color("#ffd0dc"))
+			var top: = b + Vector2(tilt, - hh)
+
+			draw_circle(b + Vector2(tilt * 0.5, - hh * 0.5), hh * 0.8, Color(1.0, 0.2, 0.4, 0.05 + 0.04 * beat))
+			draw_colored_polygon(PackedVector2Array([b + Vector2( - wd, 0.0), b + Vector2( - wd * 0.8, - hh * 0.65), top, b + Vector2(0.0, 0.0)]), Color("#b3103a"))
+			draw_colored_polygon(PackedVector2Array([b + Vector2(0.0, 0.0), top, b + Vector2(wd * 0.8, - hh * 0.65), b + Vector2(wd, 0.0)]), Color("#ff3d6a").lerp(Color("#ff8aa6"), 0.3 * beat))
+			draw_colored_polygon(PackedVector2Array([top, b + Vector2(wd * 0.8, - hh * 0.65), b + Vector2(wd * 0.25, - hh * 0.6)]), Color("#ffd0dc"))
 
 
-# Columna de luz roja de la guarida: haz vertical con nucleo claro, anillos que suben, polvo de cristal y chispas.
+
 class Pillar extends Node2D:
 	var t := randf() * 10.0
 
@@ -184,7 +184,7 @@ static func unlocked(stats: Dictionary) -> bool:
 	return int(stats.get("dens", 0)) >= 1
 
 
-func start(main) -> void:
+func start(main) -> void :
 	m = main
 	active = true
 	t = DUR
@@ -197,14 +197,14 @@ func start(main) -> void:
 	m.player.max_hp += bonus
 	m.player.hp += bonus
 	m.player.scale = Vector2.ONE
-	# Crecimiento por pasos, como la seta gigante de Super Mario Bros DS: crece, se encoge un poco y vuelve a crecer, cada vez mas.
+
 	var tw = m.create_tween()
-	var steps: Array = [[1.22, 1.0, 0.14], [1.04, 1.04, 0.10], [1.42, 1.3, 0.16], [1.16, 1.2, 0.10], [GROW * 1.12, GROW * 1.12, 0.22], [GROW, GROW, 0.18]]
+	var steps: Array = [[1.22, 1.0, 0.14], [1.04, 1.04, 0.1], [1.42, 1.3, 0.16], [1.16, 1.2, 0.1], [GROW * 1.12, GROW * 1.12, 0.22], [GROW, GROW, 0.18]]
 	for stp in steps:
 		tw.tween_property(m.player, "scale", Vector2(float(stp[0]), float(stp[1])), float(stp[2])).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	m.get_tree().create_timer(0.14).timeout.connect(func(): _grow_fx(0.4))
-	m.get_tree().create_timer(0.40).timeout.connect(func(): _grow_fx(0.7))
-	m.get_tree().create_timer(0.72).timeout.connect(func(): _grow_fx(1.0))
+	m.get_tree().create_timer(0.14).timeout.connect( func(): _grow_fx(0.4))
+	m.get_tree().create_timer(0.4).timeout.connect( func(): _grow_fx(0.7))
+	m.get_tree().create_timer(0.72).timeout.connect( func(): _grow_fx(1.0))
 	aura_node = Aura.new()
 	aura_node.h = m.player.body_h
 	aura_node.w = m.player.radius * 1.8
@@ -218,7 +218,7 @@ func start(main) -> void:
 	m.pfx.burst(m.player.position, col, 28, 260.0)
 
 
-# Destello y sonido de cada paso del crecimiento.
+
 func _grow_fx(k: float) -> void:
 	if not active or m == null:
 		return

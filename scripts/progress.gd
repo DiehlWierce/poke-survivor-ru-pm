@@ -41,7 +41,7 @@ static func list() -> Array:
 	SV.load_dex()
 	var L2: Array = []
 	var ndex: int = SV.dex_list.size()
-	# colección
+
 	L2.append(_a("own1", "coleccion", 1, "Primer compañero", "Ten 1 Pokémon.", "own", 1, {"coins": 100}))
 	L2.append(_a("own10", "coleccion", 1, "Pequeño equipo", "Ten 10 Pokémon.", "own", 10, {"t1": 2}))
 	L2.append(_a("own50", "coleccion", 2, "Coleccionista", "Ten 50 Pokémon.", "own", 50, {"t1": 5}, "Coleccionista"))
@@ -53,7 +53,7 @@ static func list() -> Array:
 	L2.append(_a("shiny5", "coleccion", 2, "Ojo para el brillo", "Consigue 5 shinies.", "shinies", 5, {"t10": 1}))
 	L2.append(_a("shiny20", "coleccion", 3, "Cazashinies", "Consigue 20 shinies.", "shinies", 20, {"t10": 2}, "Cazashinies"))
 	L2.append(_a("pulls100", "coleccion", 2, "Tragaperras", "Haz 100 tiradas en el gacha.", "pulls", 100, {"t10": 1}, "Afortunado"))
-	# supervivencia
+
 	L2.append(_a("time5", "supervivencia", 1, "Calentando", "Aguanta 5 minutos.", "bestMin", 5, {"coins": 200}))
 	L2.append(_a("time10", "supervivencia", 2, "Duro de pelar", "Aguanta 10 minutos.", "bestMin", 10, {"t1": 4}))
 	L2.append(_a("time15", "supervivencia", 2, "Resistente", "Aguanta 15 minutos.", "bestMin", 15, {"t10": 1}))
@@ -64,7 +64,7 @@ static func list() -> Array:
 	L2.append(_a("judge60", "supervivencia", 3, "Ante el Creador", "Aguanta 1 minuto ante Arceus.", "judgeTime", 60, {"t10": 2}, "Elegido de Arceus"))
 	L2.append(_a("judgeBoss", "supervivencia", 3, "Desafío divino", "Derrota a 3 legendarios ante Arceus en una partida.", "judgeBosses", 3, {"t10": 2}))
 	L2.append(_a("runs50", "supervivencia", 2, "Explorador", "Juega 50 runs.", "runs", 50, {"t10": 1}, "Explorador"))
-	# combate
+
 	L2.append(_a("kills1k", "combate", 1, "Primeros combates", "Derrota a 1.000 Pokémon.", "totalKills", 1000, {"t1": 2}))
 	L2.append(_a("kills10k", "combate", 2, "Veterano", "Derrota a 10.000 Pokémon.", "totalKills", 10000, {"t10": 1}, "Veterano"))
 	L2.append(_a("kills100k", "combate", 3, "Leyenda viva", "Derrota a 100.000 Pokémon.", "totalKills", 100000, {"t10": 3}, "Leyenda viva"))
@@ -81,17 +81,17 @@ static func list() -> Array:
 	L2.append(_a("evoAll", "combate", 3, "Maestro de movimientos", "Evoluciona los %d movimientos distintos.", "evoMoves", evo_total, {"t10": 3}, "Maestro de movimientos", evo_total))
 	L2.append(_a("items5", "combate", 1, "Bolsa llena", "Encuentra 5 objetos distintos.", "itemsFound", 5, {"t1": 3}))
 	L2.append(_a("itemsAll", "combate", 2, "Coleccionista de objetos", "Encuentra los %d objetos.", "itemsFound", TD.ITEMS.size(), {"t10": 1}, "Anticuario", TD.ITEMS.size()))
-	# por tipo: Pokemon derrotados de cada tipo (los de doble tipo cuentan para los dos)
+
 	for tk in MD.TYPE_NAME.keys():
 		var tn: String = String(MD.TYPE_NAME[tk])
 		L2.append(_a("tk250_" + String(tk), "tipos", 1, "Rastreador de tipo %s", "Derrota a 250 Pokémon de tipo %s.", "tk_" + String(tk), 250, {"coins": 300, "t1": 2}, "", tn))
 		L2.append(_a("tk1000_" + String(tk), "tipos", 2, "Cazador de tipo %s", "Derrota a 1.000 Pokémon de tipo %s.", "tk_" + String(tk), 1000, {"coins": 1000, "t1": 3, "t10": 1}, "", tn))
 		L2.append(_a("tk5000_" + String(tk), "tipos", 3, "Maestro de tipo %s", "Derrota a 5.000 Pokémon de tipo %s.", "tk_" + String(tk), 5000, {"coins": 3000, "t10": 3}, "", tn))
-	# grietas
+
 	L2.append(_a("rift1", "grietas", 1, "Al otro lado", "Gana tu primera pelea en una grieta.", "riftWins", 1, {"t1": 3}, "Valiente"))
 	L2.append(_a("rift10", "grietas", 2, "Saltagrietas", "Gana 10 peleas en grietas.", "riftWins", 10, {"t10": 1}))
 	L2.append(_a("arenas", "grietas", 3, "Viajero de grietas", "Gana en las 18 arenas (una por tipo).", "arenas", 18, {"t10": 2}, "Viajero de grietas"))
-	# legendarios (contadores)
+
 	var legs: Array = []
 	for p in SV.dex_list:
 		if bool(p.get("leg", false)) and SV.smeta.has(str(int(p["dex"]))):
@@ -99,13 +99,13 @@ static func list() -> Array:
 	L2.append(_a("leg10", "legendarios", 2, "Cazalegendarios", "Vence a 10 legendarios distintos.", "legends", 10, {"t10": 1}, "Cazalegendarios"))
 	L2.append(_a("leg30", "legendarios", 3, "Domador de mitos", "Vence a 30 legendarios distintos.", "legends", 30, {"t10": 2}))
 	L2.append(_a("legAll", "legendarios", 3, "Leyenda", "Vence a los %d legendarios.", "legends", legs.size(), {"t10": 5}, "Leyenda", legs.size()))
-	# misiones y mas
+
 	L2.append(_a("mis10", "otros", 1, "Cumplidor", "Completa 10 misiones.", "missionsDone", 10, {"t1": 3}))
 	L2.append(_a("mis50", "otros", 2, "Constante", "Completa 50 misiones.", "missionsDone", 50, {"t10": 1}, "Constante"))
 	L2.append(_a("mis200", "otros", 3, "Incansable", "Completa 200 misiones.", "missionsDone", 200, {"t10": 3}))
 	L2.append(_a("group1", "otros", 1, "En compañía", "Juega una partida en grupo.", "groupRuns", 1, {"t1": 2}))
 	L2.append(_a("group10", "otros", 2, "Compañero fiel", "Juega 10 partidas en grupo.", "groupRuns", 10, {"t10": 1}, "Compañero fiel"))
-	# modos de juego (premios segun dificultad)
+
 	L2.append(_a("daily1", "modos", 1, "Reto del día", "Juega un Desafío diario.", "dailyPlays", 1, {"coins": 150, "t1": 2}))
 	L2.append(_a("daily7", "modos", 2, "Rutina diaria", "Juega 7 Desafíos diarios.", "dailyPlays", 7, {"coins": 500, "t1": 5}))
 	L2.append(_a("daily30", "modos", 3, "Fiel al reto", "Juega 30 Desafíos diarios.", "dailyPlays", 30, {"coins": 2000, "t1": 3, "t10": 2}, "Fiel al reto"))
@@ -134,14 +134,15 @@ static func list() -> Array:
 	L2.append(_a("rifts5", "modos", 2, "Pasillo de grietas", "Gana 5 grietas en una Contrarreloj de grietas.", "riftsBest", 5, {"coins": 1500, "t10": 1}))
 	L2.append(_a("rifts8", "modos", 3, "Cazador contrarreloj", "Gana 8 grietas en una Contrarreloj de grietas.", "riftsBest", 8, {"coins": 3500, "t1": 3, "t10": 2}, "Cazador contrarreloj"))
 	L2.append(_a("riftsRuns10", "modos", 2, "Siempre con prisa", "Juega 10 Contrarrelojes de grietas.", "riftsRuns", 10, {"coins": 1500, "t10": 1}))
-	L2.append(_a("tower5", "modos", 1, "Primeros pisos", "Supera el piso 5 de la Torre de pisos.", "towerBest", 5, {"coins": 800, "t1": 3, "t10": 1}))
-	L2.append(_a("tower10", "modos", 2, "Escalando", "Supera el piso 10 de la Torre de pisos.", "towerBest", 10, {"coins": 2000, "t1": 4, "t10": 2}))
-	L2.append(_a("tower15", "modos", 3, "Casi en la cima", "Supera el piso 15 de la Torre de pisos.", "towerBest", 15, {"coins": 4000, "t1": 5, "t10": 3}))
-	L2.append(_a("tower20", "modos", 3, "Escalador", "Supera el piso 20 de la Torre de pisos.", "towerBest", 20, {"coins": 7000, "t1": 6, "t10": 4}, "Escalador"))
-	L2.append(_a("tower30", "modos", 3, "Dueño de la Torre", "Llega al piso 30 de la Torre de pisos, donde espera Arceus.", "towerBest", 29, {"coins": 15000, "t1": 10, "t10": 8}, "Dueño de la Torre"))
-	L2.append(_a("towerArceus", "modos", 3, "Vencedor de Arceus", "Derrota a Arceus, el jefe final del piso 30 de la Torre de pisos.", "arceus", 1, {"coins": 30000, "t1": 15, "t10": 15}, "Vencedor de Arceus"))
-	L2.append(_a("towerRuns10", "modos", 2, "Aprendiz de la Torre", "Juega 10 veces la Torre de pisos.", "towerRuns", 10, {"coins": 1200, "t10": 1}))
-	# uno por legendario
+	L2.append(_a("tower5", "modos", 1, "Primeros pisos", "Supera el piso 5 de la Torre.", "towerBest", 5, {"coins": 800, "t1": 3, "t10": 1}))
+	L2.append(_a("tower10", "modos", 2, "Escalando", "Supera el piso 10 de la Torre.", "towerBest", 10, {"coins": 2000, "t1": 4, "t10": 2}))
+	L2.append(_a("tower15", "modos", 3, "Casi en la cima", "Supera el piso 15 de la Torre.", "towerBest", 15, {"coins": 4000, "t1": 5, "t10": 3}))
+	L2.append(_a("tower20", "modos", 3, "Escalador", "Supera el piso 20 de la Torre.", "towerBest", 20, {"coins": 7000, "t1": 6, "t10": 4}, "Escalador"))
+	L2.append(_a("tower30", "modos", 3, "Dueño de la Torre", "Llega al piso 30 de la Torre.", "towerBest", 29, {"coins": 15000, "t1": 10, "t10": 8}, "Dueño de la Torre"))
+	L2.append(_a("tower60", "modos", 3, "Cima de la Torre", "Llega al piso 60 de la Torre.", "towerBest", 59, {"coins": 30000, "t1": 15, "t10": 12}, "Cima de la Torre"))
+	L2.append(_a("towerArceus", "modos", 3, "Vencedor de Arceus", "Derrota a Arceus, el jefe final del piso 60 de la Torre.", "arceus", 1, {"coins": 30000, "t1": 15, "t10": 15}, "Vencedor de Arceus"))
+	L2.append(_a("towerRuns10", "modos", 2, "Aprendiz de la Torre", "Juega 10 veces la Torre.", "towerRuns", 10, {"coins": 1200, "t10": 1}))
+
 	for p in legs:
 		var a: Dictionary = _a("leg_%d" % int(p["dex"]), "legendarios", 2, "Vence a %s", "Derrota a %s en una grieta.", "leg", 1, {"t1": 1}, "", String(p["name"]))
 		a["dex"] = int(p["dex"])
@@ -233,25 +234,25 @@ static func check() -> Array:
 
 # ---------------- misiones de Cristales Z ----------------
 # Una mision por tipo: al completarla se desbloquea el movimiento Z de ese tipo (igual que el cristal del gacha).
-const ZMIS := [
-	["normal", "Derrota a 1.500 Pokémon en total.", "totalKills", 1500],
-	["fire", "Aguanta 8 minutos en una partida.", "bestMin", 8],
-	["water", "Juega 15 partidas.", "runs", 15],
-	["electric", "Llega al nivel 25 en una partida.", "bestLevel", 25],
-	["grass", "Abre 25 cofres.", "chests", 25],
-	["ice", "Haz 30 tiradas en el gacha.", "pulls", 30],
-	["fighting", "Derrota a 10 jefes.", "bossesTotal", 10],
-	["poison", "Evoluciona 10 movimientos.", "evolutions", 10],
-	["ground", "Consigue 30 Pokémon.", "own", 30],
-	["flying", "Juega 5 Desafíos diarios.", "dailyPlays", 5],
-	["psychic", "Encuentra 10 objetos distintos.", "itemsFound", 10],
-	["bug", "Derrota a 4 jefes en el Rush de Jefes.", "rushBest", 4],
-	["rock", "Supera el piso 8 de la Torre de pisos.", "towerBest", 8],
-	["ghost", "Gana 5 peleas en grietas.", "riftWins", 5],
-	["dragon", "Aguanta 12 minutos en una partida.", "bestMin", 12],
-	["dark", "Vence a 3 legendarios distintos.", "legends", 3],
-	["steel", "Aguanta 8 minutos en Supervivencia por tipo.", "typeBestMin", 8],
-	["fairy", "Aguanta 8 minutos en Modo Equipo.", "teamBestMin", 8],
+const ZMIS: = [
+	["normal", "Derrota a 1.500 Pokémon en total.", "totalKills", 1500], 
+	["fire", "Aguanta 8 minutos en una partida.", "bestMin", 8], 
+	["water", "Juega 15 partidas.", "runs", 15], 
+	["electric", "Llega al nivel 25 en una partida.", "bestLevel", 25], 
+	["grass", "Abre 25 cofres.", "chests", 25], 
+	["ice", "Haz 30 tiradas en el gacha.", "pulls", 30], 
+	["fighting", "Derrota a 10 jefes.", "bossesTotal", 10], 
+	["poison", "Evoluciona 10 movimientos.", "evolutions", 10], 
+	["ground", "Consigue 30 Pokémon.", "own", 30], 
+	["flying", "Juega 5 Desafíos diarios.", "dailyPlays", 5], 
+	["psychic", "Encuentra 10 objetos distintos.", "itemsFound", 10], 
+	["bug", "Derrota a 4 jefes en el Rush de Jefes.", "rushBest", 4], 
+	["rock", "Supera el piso 8 de la Torre.", "towerBest", 8], 
+	["ghost", "Gana 5 peleas en grietas.", "riftWins", 5], 
+	["dragon", "Aguanta 12 minutos en una partida.", "bestMin", 12], 
+	["dark", "Vence a 3 legendarios distintos.", "legends", 3], 
+	["steel", "Aguanta 8 minutos en Supervivencia por tipo.", "typeBestMin", 8], 
+	["fairy", "Aguanta 8 minutos en Modo Equipo.", "teamBestMin", 8], 
 ]
 const ZMIS_COINS := 500
 
@@ -392,9 +393,9 @@ static func mission_text(m: Dictionary) -> String:
 		"mTeam":
 			return L_t("Aguanta %s minutos en Modo Equipo") % nn
 		"mTower":
-			return L_t("Supera %s pisos de la Torre de pisos") % nn
+			return L_t("Supera %s pisos de la Torre") % nn
 		"wTower":
-			return L_t("Supera %s pisos de la Torre de pisos en una sola partida") % nn
+			return L_t("Supera %s pisos de la Torre en una sola partida") % nn
 		"mRifts":
 			return L_t("Gana %s grietas en la Contrarreloj de grietas") % nn
 		"wType":
@@ -438,10 +439,7 @@ static func _last_sunday(year: int, month: int) -> int:
 
 
 static func madrid_now() -> int:
-	var now: int = int(Time.get_unix_time_from_system())
-	var y: int = int(Time.get_datetime_dict_from_unix_time(now)["year"])
-	var dst: bool = now >= _last_sunday(y, 3) and now < _last_sunday(y, 10)
-	return now + (7200 if dst else 3600)
+	return pr_now()
 
 
 static func period_ids() -> Dictionary:
@@ -457,17 +455,17 @@ static func period_ids() -> Dictionary:
 static func _rng_state(seed_str: String) -> int:
 	var h: int = 2166136261
 	for i in range(seed_str.length()):
-		h = (h ^ seed_str.unicode_at(i)) & 0xFFFFFFFF
-		h = (h * 16777619) & 0xFFFFFFFF
+		h = (h ^ seed_str.unicode_at(i)) & 4294967295
+		h = (h * 16777619) & 4294967295
 	return h
 
 
 static func _rand(st: Array) -> float:
-	st[0] = (int(st[0]) + 0x6D2B79F5) & 0xFFFFFFFF
+	st[0] = (int(st[0]) + 1831565813) & 4294967295
 	var t: int = int(st[0])
-	t = ((t ^ (t >> 15)) * (t | 1)) & 0xFFFFFFFF
-	t = (t ^ ((t + (((t ^ (t >> 7)) * (t | 61)) & 0xFFFFFFFF)) & 0xFFFFFFFF)) & 0xFFFFFFFF
-	return float((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296.0
+	t = ((t ^ (t >> 15)) * (t | 1)) & 4294967295
+	t = (t ^ ((t + (((t ^ (t >> 7)) * (t | 61)) & 4294967295)) & 4294967295)) & 4294967295
+	return float((t ^ (t >> 14)) & 4294967295) / 4294967300.0
 
 
 static func _make(def: Dictionary, st: Array) -> Dictionary:
@@ -636,3 +634,6 @@ static func event(kind: String, d: Dictionary = {}) -> void:
 	elif Time.get_ticks_msec() / 1000.0 - ach_t > 1.0:
 		ach_t = Time.get_ticks_msec() / 1000.0
 		check()
+
+static func pr_now() -> int:
+	return int(Time.get_unix_time_from_system()) - 4 * 3600

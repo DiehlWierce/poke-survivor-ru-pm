@@ -70,10 +70,12 @@ func _gui_input(event: InputEvent) -> void:
 		fast = true
 
 
-func _input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void :
 	if not running or not is_visible_in_tree():
 		return
-	if (event is InputEventJoypadButton and event.pressed) or (event is InputEventKey and event.pressed and not event.echo):
+
+	if (event is InputEventJoypadButton and event.pressed) or (event is InputEventKey and event.pressed and not event.echo)\
+	or (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed):
 		fast = true
 		get_viewport().set_input_as_handled()
 
@@ -251,15 +253,15 @@ func _disc(cx: float, cy: float, rad: float, col: Color) -> void:
 
 
 # Icono (12x12 de arte) de `size` px de arte, recortado en vertical por [cy0, cy1].
-func _icon(name: String, x: float, y: float, size: float, cy0: float = -1e9, cy1: float = 1e9, mod: Color = Color.WHITE) -> void:
+func _icon(name: String, x: float, y: float, size: float, cy0: float = -1000000000.0, cy1: float = 1000000000.0, mod: Color = Color.WHITE) -> void :
 	var tx: Texture2D = IC.tex(name, 1)
 	var top: float = maxf(y, cy0)
 	var bot: float = minf(y + size, cy1)
 	if bot <= top:
 		return
 	var th: float = float(tx.get_height())
-	var src := Rect2(0.0, (top - y) / size * th, float(tx.get_width()), (bot - top) / size * th)
-	var dst := Rect2(org + Vector2(x, top) * k, Vector2(size, bot - top) * k)
+	var src: = Rect2(0.0, (top - y) / size * th, float(tx.get_width()), (bot - top) / size * th)
+	var dst: = Rect2(org + Vector2(x, top) * k, Vector2(size, bot - top) * k)
 	draw_texture_rect_region(tx, dst, src, mod)
 
 

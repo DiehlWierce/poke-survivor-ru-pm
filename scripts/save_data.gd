@@ -24,7 +24,7 @@ static var run_seed := 0
 static var party_dex := 25
 static var run_type := "fire"      # modo Supervivencia por tipo
 static var team_dex: Array = []    # modo Equipo (2-3 Pokemon)
-const MOD_IDS := ["fast", "horde", "tank", "hard", "frail", "nohealing"]
+const MOD_IDS := ["fast", "horde", "tank", "hard", "frail", "nohealing", "slow", "brainy", "glass", "rich", "plague"]
 static var last_run: Dictionary = {}
 static var reopen := ""
 
@@ -38,26 +38,28 @@ const REFUND := [15, 30, 60, 120, 300]
 
 # Mejoras permanentes (upgrades.js)
 const UPGRADES := [
-	{"id": "hp", "name": "Vitalidad", "unit": "+8 vida", "max": 10, "base": 60.0, "grow": 1.35},
-	{"id": "atk", "name": "Fuerza", "unit": "+4% daño", "max": 10, "base": 80.0, "grow": 1.38},
-	{"id": "spd", "name": "Zancada", "unit": "+3% velocidad", "max": 8, "base": 70.0, "grow": 1.4},
-	{"id": "cd", "name": "Reflejos", "unit": "-3% recarga", "max": 8, "base": 90.0, "grow": 1.42},
-	{"id": "def", "name": "Coraza", "unit": "+2% defensa", "max": 8, "base": 80.0, "grow": 1.4},
-	{"id": "regen", "name": "Síntesis", "unit": "+0,2 vida/s", "max": 5, "base": 120.0, "grow": 1.5},
-	{"id": "magnet", "name": "Imán", "unit": "+12% recogida", "max": 6, "base": 50.0, "grow": 1.4},
-	{"id": "xp", "name": "Sabiduría", "unit": "+5% experiencia", "max": 8, "base": 100.0, "grow": 1.42},
-	{"id": "coins", "name": "Fortuna", "unit": "+8% Pokémonedas", "max": 8, "base": 120.0, "grow": 1.45},
-	{"id": "moves", "name": "Repertorio", "unit": "Empiezas con 2 movimientos", "max": 1, "base": 1500.0, "grow": 1.0},
-	{"id": "crit", "name": "Golpe Crítico", "unit": "+3% de críticos (x1,5 de daño)", "max": 10, "base": 90.0, "grow": 1.4},
-	{"id": "size", "name": "Calibre", "unit": "+8% de tamaño de proyectiles, orbes y áreas", "max": 6, "base": 80.0, "grow": 1.4},
-	{"id": "reroll", "name": "Cambio de cartas", "unit": "+1 cambio de cartas por partida", "max": 5, "base": 150.0, "grow": 1.6},
-	{"id": "tm", "name": "MT", "unit": "Elige tu movimiento inicial (de tus tipos)", "max": 1, "base": 2000.0, "grow": 1.0},
-	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 3, "base": 300.0, "grow": 1.9},
-	{"id": "revive", "name": "Segunda oportunidad", "unit": "+1 corazón: al caer, revives con la vida completa", "max": 2, "base": 2500.0, "grow": 2.0},
-	{"id": "bag", "name": "Mochila", "unit": "Llevas 2 objetos a la vez por partida", "max": 1, "base": 7500.0, "grow": 1.0},
+	{"id": "hp", "name": "Vitalidad", "unit": "+8 vida", "max": 10, "base": 100.0, "grow": 1.39}, 
+	{"id": "atk", "name": "Fuerza", "unit": "+4% daño", "max": 10, "base": 130.0, "grow": 1.42}, 
+	{"id": "spd", "name": "Zancada", "unit": "+3% velocidad", "max": 8, "base": 110.0, "grow": 1.44}, 
+	{"id": "cd", "name": "Reflejos", "unit": "-3% recarga", "max": 8, "base": 140.0, "grow": 1.46}, 
+	{"id": "def", "name": "Coraza", "unit": "+2% defensa", "max": 8, "base": 130.0, "grow": 1.44}, 
+	{"id": "regen", "name": "Síntesis", "unit": "+0,2 vida/s", "max": 5, "base": 190.0, "grow": 1.54}, 
+	{"id": "magnet", "name": "Imán", "unit": "+12% recogida", "max": 6, "base": 80.0, "grow": 1.44}, 
+	{"id": "xp", "name": "Sabiduría", "unit": "+5% experiencia", "max": 8, "base": 160.0, "grow": 1.46}, 
+	{"id": "coins", "name": "Fortuna", "unit": "+8% Pokémonedas", "max": 8, "base": 190.0, "grow": 1.49}, 
+	{"id": "moves", "name": "Repertorio", "unit": "Empiezas con 2 movimientos", "max": 1, "base": 2400.0, "grow": 1.0}, 
+	{"id": "crit", "name": "Golpe Crítico", "unit": "+3% de críticos (x1,5 de daño)", "max": 10, "base": 140.0, "grow": 1.44}, 
+	{"id": "size", "name": "Calibre", "unit": "+8% de tamaño de proyectiles, orbes y áreas", "max": 6, "base": 130.0, "grow": 1.44}, 
+	{"id": "reroll", "name": "Cambio de cartas", "unit": "+1 cambio de cartas por partida", "max": 5, "base": 240.0, "grow": 1.64}, 
+	{"id": "tm", "name": "MT", "unit": "Elige tu movimiento inicial (de tus tipos)", "max": 1, "base": 3200.0, "grow": 1.0}, 
+	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 3, "base": 480.0, "grow": 1.94}, 
+	{"id": "revive", "name": "Segunda oportunidad", "unit": "+1 corazón: al caer, revives con la vida completa", "max": 2, "base": 4000.0, "grow": 2.04}, 
+	{"id": "wslot", "name": "Huecos de arma", "unit": "4 huecos base: +1 por nivel (máximo 6)", "max": 2, "base": 9000.0, "grow": 2.2}, 
+	{"id": "bag", "name": "Mochila", "unit": "Llevas 2 objetos a la vez por partida", "max": 1, "base": 12000.0, "grow": 1.0}, 
+	{"id": "bag3", "name": "Mochila grande", "unit": "Llevas 3 objetos a la vez por partida (requiere Mochila)", "max": 1, "base": 28000.0, "grow": 1.0}, 
 ]
 
-# Misiones y logros: progreso = una estadistica acumulada
+
 const GOALS := [
 	{"id": "m_kill100", "kind": "m", "text": "Derrota 100 Pokémon", "stat": "kills", "target": 100, "coins": 150, "tickets": 0},
 	{"id": "m_kill500", "kind": "m", "text": "Derrota 500 Pokémon", "stat": "kills", "target": 500, "coins": 400, "tickets": 1},
@@ -87,9 +89,9 @@ const GOALS := [
 static func default_data() -> Dictionary:
 	return {
 		"v": SAVE_SCHEMA_VERSION, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
-		"upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {},
+		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
-		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true, "max_fps": -1},
+		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true, "max_fps": -1, "manual_aim": false, "mono_bonus": false, "fx_op": 1, "act_side": 0, "text_sz": 0},
 	}
 
 
@@ -202,6 +204,11 @@ static func ensure() -> void:
 			# Keep damaged/unsupported files untouched until the user explicitly resets the save.
 			save_blocked = true
 	_migrate_upgrades()
+
+	if not save_blocked and not recovered_from_backup and not bool(d.get("gift_6h", false)):
+		d["gift_6h"] = true
+		d["gcoins"] = int(d.get("gcoins", 0)) + 1
+		save()
 	# v1.0.1: sprites al tamano del original (vision 165 %); el valor por defecto antiguo era 140.
 	if not bool(d["settings"].get("fov_v2", false)):
 		d["settings"]["fov_v2"] = true
@@ -394,7 +401,7 @@ static func tm_pool(dex: int) -> Array:
 	var out: Array = []
 	for id in MDd.ORDER:
 		var m: Dictionary = MDd.MOVES[id]
-		if String(m["kind"]) == "buff":
+		if String(m["kind"]) == "buff" or not load("res://scripts/gachapon.gd").playable(String(id)):
 			continue
 		var ty: String = String(m["type"])
 		if dex == 151 or ty == "normal" or types.has(ty):
@@ -420,7 +427,7 @@ static func move_pool(dex: int) -> Array:
 	var out: Array = []
 	for id in MDd.ORDER:
 		var ty: String = String(MDd.MOVES[id]["type"])
-		if id != start and (ty == "normal" or types.has(ty)):
+		if id != start and load("res://scripts/gachapon.gd").playable(String(id)) and (ty == "normal" or types.has(ty)):
 			out.append(String(id))
 	return out
 
@@ -495,11 +502,13 @@ static func buy_upgrade(id: String, dex: int = -1) -> bool:
 	var lv: int = up_level(id, dex)
 	if lv >= int(u["max"]):
 		return false
+	if id == "bag3" and up_level("bag", dex) < 1:
+		return false
 	var c: int = up_cost(id, lv)
 	if int(d["coins"]) < c:
 		return false
 	d["coins"] = int(d["coins"]) - c
-	var key := str(run_dex if dex < 0 else dex)
+	var key: = str(run_dex if dex < 0 else dex)
 	if not d["pup"].has(key):
 		d["pup"][key] = {}
 	d["pup"][key][id] = lv + 1
@@ -508,27 +517,28 @@ static func buy_upgrade(id: String, dex: int = -1) -> bool:
 
 
 static func perks() -> Dictionary:
-	var L := func(id: String) -> int:
+	var L: = func(id: String) -> int:
 		return clampi(up_level(id), 0, int(up_def(id)["max"]))
 	return {
-		"hp": float(L.call("hp")) * 8.0,
-		"atk": 1.0 + float(L.call("atk")) * 0.04,
-		"spd": 1.0 + float(L.call("spd")) * 0.03,
-		"cd": 1.0 - float(L.call("cd")) * 0.03,
-		"def": float(L.call("def")) * 0.02,
-		"regen": float(L.call("regen")) * 0.2,
-		"magnet": 1.0 + float(L.call("magnet")) * 0.12,
-		"xp": 1.0 + float(L.call("xp")) * 0.05,
-		"coins": 1.0 + float(L.call("coins")) * 0.08,
-		"moves": 1 + L.call("moves"),
-		"crit": float(L.call("crit")) * 0.03,
-		"size": 1.0 + float(L.call("size")) * 0.08,
-		"rerolls": L.call("reroll"),
-		"bans": L.call("ban"),
+		"hp": float(L.call("hp")) * 8.0, 
+		"atk": 1.0 + float(L.call("atk")) * 0.04, 
+		"spd": 1.0 + float(L.call("spd")) * 0.03, 
+		"cd": 1.0 - float(L.call("cd")) * 0.03, 
+		"def": float(L.call("def")) * 0.02, 
+		"regen": float(L.call("regen")) * 0.2, 
+		"magnet": 1.0 + float(L.call("magnet")) * 0.12, 
+		"xp": 1.0 + float(L.call("xp")) * 0.05, 
+		"coins": 1.0 + float(L.call("coins")) * 0.08, 
+		"moves": 1 + L.call("moves"), 
+		"wslots": L.call("wslot"), 
+		"crit": float(L.call("crit")) * 0.03, 
+		"size": 1.0 + float(L.call("size")) * 0.08, 
+		"rerolls": L.call("reroll"), 
+		"bans": L.call("ban"), 
 	}
 
 
-# ---- metas ----
+
 static func stat_value(stat: String) -> int:
 	if stat == "owned":
 		return owned_count()
@@ -605,23 +615,26 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 	last_crystal = ""
 	if not can_pull(n, use):
 		return []
-	if n == 10 and use == "t10":
+	var purple: bool = n == 10 and use == "t10"
+	if purple:
 		d["tickets10"] = int(d["tickets10"]) - 1
 	else:
 		d["tickets"] = int(d["tickets"]) - n
-	var key := str(region)
+	var key: = str(region)
 	if not d["pity"].has(key):
 		d["pity"][key] = 0
 	var out: Array = []
 	for i in range(n):
 		d["pity"][key] = int(d["pity"][key]) + 1
 		var want: int
-		var got4 := false
+		var got4: = false
 		for r in out:
 			if int(r["rarity"]) >= 4:
 				got4 = true
 		if int(d["pity"][key]) >= PITY_5:
 			want = 5
+		elif purple and i == n - 1:
+			want = 5 if randf() < PURPLE_LEGEND_P else 4
 		elif n == 10 and i == n - 1 and not got4:
 			want = _roll_rarity(4)
 		else:
@@ -637,7 +650,7 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 		if shiny and shiny_owned:
 			var missing: Array = []
 			for p in list:
-				var pk := str(int(p["dex"]))
+				var pk: = str(int(p["dex"]))
 				if bool(smeta[pk].get("sh", 0)) and not (owns(int(p["dex"])) and bool(d["owned"][pk]["shiny"])):
 					missing.append(p)
 			if missing.is_empty():
@@ -647,7 +660,7 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 				dex = int(sp["dex"])
 				shiny_owned = owns(dex) and bool(d["owned"][str(dex)]["shiny"])
 		var was_new: bool = not owns(dex)
-		var refund := 0
+		var refund: = 0
 		if shiny:
 			was_new = not shiny_owned
 			if not was_new:
@@ -659,9 +672,9 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 		add_owned(dex, shiny and not shiny_owned)
 		out.append({"dex": dex, "new": was_new, "shiny": shiny, "refund": refund, "rarity": rarity, "name": String(sp["name"])})
 	d["stats"]["pulls"] = int(d["stats"]["pulls"]) + n
-	# Premio extra: cristal Z de un tipo que aun no tengas (solo en tiradas de 10)
+
 	var ZM = load("res://scripts/zmove.gd")
-	if n >= 10 and randf() < Z_CRYSTAL_P:
+	if n >= 10 and randf() < (Z_CRYSTAL_P_PURPLE if purple else Z_CRYSTAL_P):
 		var locked: Array = []
 		for zt in ZM.ORDER:
 			if not ZM.unlocked(String(zt), d["stats"]):
@@ -672,8 +685,8 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 	return out
 
 
-# ---- fin de partida ----
-# ---- modos de juego ----
+
+
 static var daily_seed_override := -1   # solo tools/mode_matrix.gd: otro "dia" (otro Pokemon y modificador) por semilla
 
 
@@ -725,3 +738,9 @@ static func finish_run(r: Dictionary) -> Dictionary:
 		"breakdown": "Recogidas %d · Tiempo +%d · Derrotados +%d" % [picked, int(float(r["time"]) / 6.0), int(float(r["kills"]) / 10.0)] + String(r.get("extra", ""))}
 	save()
 	return last_run
+
+static var run_chal: Dictionary = {}
+
+const Z_CRYSTAL_P_PURPLE := 0.06
+
+const PURPLE_LEGEND_P := 0.3
