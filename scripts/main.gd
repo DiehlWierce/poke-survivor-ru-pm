@@ -4085,18 +4085,50 @@ func _preload_upcoming(until: float) -> void:
 
 var _pl_done := {}
 var _pl_q: Array = []
+static var _pl_pend: Array = []   # пути, запрошенные load_threaded_request и ещё не забранные (static: переживают смену сцены,
+								# иначе недогруженное при выходе в меню оставалось бы в загрузчике до конца процесса)
+var _pl_hold: Dictionary = {}   # путь -> текстура: удерживаем последние PL_HOLD штук (порядок вставки = порядок вытеснения)
+const PL_HOLD_HH := 245   # приставка: ~35 видов по 7 анимаций (≈100 МБ). Раньше результаты не забирались вовсе и копились до конца забега
+const PL_HOLD_PC := 700   # ПК: памяти хватает, держим дольше (меньше подгрузок «на лету» при появлении вида)
+					# Утечка давала ~+100 МБ на каждые ~40 видов: на приставке с 1 ГБ — «смертельная спираль» после ~30 мин (perf_log 3.1.0)
+
+
+# Запрос фоновой загрузки одной анимации; результат потом забирает _pl_collect.
+func _pl_request(path: String) -> void:
+	if ResourceLoader.exists(path) and not ResourceLoader.has_cached(path) and not _pl_pend.has(path):
+		ResourceLoader.load_threaded_request(path)
+		_pl_pend.append(path)
+
+
+# Забирает готовое (load_threaded_get освобождает запись загрузчика) и держит ограниченное число текстур.
+func _pl_collect() -> void:
+	var n := 0
+	while n < _pl_pend.size() and n < 8:
+		var path: String = _pl_pend[n]
+		var st: int = ResourceLoader.load_threaded_get_status(path)
+		if st == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			n += 1
+			continue
+		_pl_pend.remove_at(n)
+		var res = ResourceLoader.load_threaded_get(path)
+		if st == ResourceLoader.THREAD_LOAD_LOADED and res != null:
+			_pl_hold.erase(path)
+			_pl_hold[path] = res
+	var cap: int = PL_HOLD_HH if _hh() else PL_HOLD_PC
+	while _pl_hold.size() > cap:
+		_pl_hold.erase(_pl_hold.keys()[0])
 
 
 # Las peticiones se reparten (3 Pokémon por fotograma): antes eran cientos de ResourceLoader.exists de golpe cada 10 s
 func _preload_step() -> void:
+	if not _pl_pend.is_empty():
+		_pl_collect()
 	for i in range(3):
 		if _pl_q.is_empty():
 			return
 		var dx: int = _pl_q.pop_front()
 		for a in ANIMS:
-			var path: String = "res://assets/pokemon/%d/%s.png" % [dx, a]
-			if ResourceLoader.exists(path) and not ResourceLoader.has_cached(path):
-				ResourceLoader.load_threaded_request(path)
+			_pl_request("res://assets/pokemon/%d/%s.png" % [dx, a])
 
 
 func _preload_dex(dex: int) -> void:
@@ -4107,9 +4139,7 @@ func _preload_dex(dex: int) -> void:
 		_pl_q.append(dex)
 		return
 	for a in ANIMS:
-		var path: String = "res://assets/pokemon/%d/%s.png" % [dex, a]
-		if ResourceLoader.exists(path) and not ResourceLoader.has_cached(path):
-			ResourceLoader.load_threaded_request(path)
+		_pl_request("res://assets/pokemon/%d/%s.png" % [dex, a])
 
 
 # ---------------------------------------------------------------

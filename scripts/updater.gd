@@ -11,7 +11,7 @@ const PAD = preload("res://scripts/pad.gd")
 const DSP = preload("res://scripts/display.gd")
 
 const REPO := "JayElDragon/poke-survivor"
-const FALLBACK_VERSION := "3.1.1"
+const FALLBACK_VERSION := "3.1.2"
 static var APP_VERSION: String = _current()
 
 

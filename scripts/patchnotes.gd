@@ -9,6 +9,17 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.1.2",
+		"date": "2026-10-21",
+		"title": "Poke Survivors para PortMaster 3.1.2: arreglo de la memoria en partidas largas",
+		"new": [],
+		"changes": [],
+		"fixes": [
+			"Arreglo: fuga de memoria que, tras unos 30 minutos de juego, ralentizaba la consola hasta casi pararla (típico al llegar al 4.º jefe). Ahora la memoria se mantiene estable.",
+			"Arreglo: perf_log.txt ahora anota el tiempo real de cada tirón, la memoria y el estado de la partida, y ya no se queda mudo a los pocos minutos.",
+		],
+	},
+	{
 		"ver": "3.1.1",
 		"date": "2026-10-21",
 		"title": "Poke Survivors para PortMaster 3.1.1: arreglos de la prueba en consola",

@@ -3,6 +3,8 @@
 #   tools/mode_matrix.sh                       # полная матрица (см. MODES/DEXES/SEEDS/METAS ниже)
 #   MODES="rush" DEXES="4 25" SEEDS="1 2" METAS="zero max" SECS=600 JOBS=8 tools/mode_matrix.sh
 #   ONE="rush 4 1 zero" tools/mode_matrix.sh   # один прогон с выводом в терминал
+#   LANGX=ru tools/mode_matrix.sh              # язык интерфейса (ru, ja, fr, ...); по умолчанию язык из default_data()
+#   VERBOSE=1 tools/mode_matrix.sh             # печатать STAT раз в 30 игровых с (память, объекты, ресурсы) — для soak.sh
 #   KEYS= tools/mode_matrix.sh   # без --keys-only: путь ПК (не приставки)
 #   PROJECT=/path/to/other/checkout tools/mode_matrix.sh   # прогнать тот же бот на другой ветке (например main)
 # Каждый прогон — отдельный процесс Godot с временным HOME (сохранение и логи игрока не трогаются;
@@ -48,7 +50,7 @@ run_one() {
 	mkdir -p "$h"
 	cp "$TOOL" "$PROJECT/tools/mode_matrix.gd" 2>/dev/null || true
 	HOME="$h" "$GODOT_BIN" --headless --path "$PROJECT" --fixed-fps 30 --script res://tools/mode_matrix.gd -- ${KEYS---keys-only} \
-		--mode "$mode" --dex "$dex" --seed "$seed" --meta "$meta" --secs "$(secs_for "$mode")" >"$log" 2>&1
+		--mode "$mode" --dex "$dex" --seed "$seed" --meta "$meta" --secs "$(secs_for "$mode")" ${LANGX:+--lang "$LANGX"} ${VERBOSE:+--verbose} >"$log" 2>&1
 	rm -rf "$h"
 	local res errs st
 	res="$(grep -m1 '^MATRIX_RESULT ' "$log" | cut -d' ' -f2-)"

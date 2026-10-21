@@ -22,6 +22,7 @@ var GOD := _arg_i("--god", 1) == 1        # не даём умереть (леч
 var TS := _arg_f("--ts", 1.0)
 var LVL := _arg_i("--lvl", 0)   # стартовый уровень (сильный игрок): опыт выдаётся сразу, карточки выбираются как обычно
 var META := _arg_s("--meta", "zero")   # zero | mid | max — профиль мета-прогресса (временный, в памяти)
+var LANG := _arg_s("--lang", "")   # язык интерфейса (пусто = по умолчанию из сохранения)
 var VERBOSE := "--verbose" in OS.get_cmdline_user_args()
 var PROBE := "--probe" in OS.get_cmdline_user_args()
 var rng := RandomNumberGenerator.new()
@@ -149,6 +150,9 @@ func _apply_meta(SVl) -> void:
 	var d: Dictionary = SVl.d
 	var k: float = {"zero": 0.0, "mid": 0.5, "max": 1.0}.get(META, 0.0)
 	d["selected"] = DEX
+	if LANG != "":
+		d["settings"]["lang"] = LANG
+		load("res://scripts/lang.gd").apply()
 	if not d["owned"].has(str(DEX)):
 		d["owned"][str(DEX)] = {"shiny": false}
 	if k <= 0.0:
@@ -250,8 +254,9 @@ func _process(delta: float) -> bool:
 		stat_last = int(rt) / 30
 		nodes_max = maxi(nodes_max, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
 		if VERBOSE:
-			print("STAT t=%.0f nodes=%d enemies=%d orbs=%d bullets=%d ebullets=%d fx=%d ms_avg=%.2f lvl=%d" % [rt, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
-				m.enemies.size(), (_g(m, "orbs", []) as Array).size(), (_g(m, "bullets", []) as Array).size(), (_g(m, "ebullets", []) as Array).size(), m.fx.get_child_count(), ms_acc / maxf(1.0, ms_n), m.player.level])
+			print("STAT t=%.0f nodes=%d enemies=%d orbs=%d bullets=%d ebullets=%d fx=%d ms_avg=%.2f lvl=%d mem=%.0fMB obj=%d res=%d orph=%d" % [rt, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+				m.enemies.size(), (_g(m, "orbs", []) as Array).size(), (_g(m, "bullets", []) as Array).size(), (_g(m, "ebullets", []) as Array).size(), m.fx.get_child_count(), ms_acc / maxf(1.0, ms_n), m.player.level,
+				OS.get_static_memory_usage() / 1048576.0, int(Performance.get_monitor(Performance.OBJECT_COUNT)), int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))])
 		ms_acc = 0.0
 		ms_n = 0
 	if rt >= SECS:
