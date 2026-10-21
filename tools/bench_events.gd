@@ -454,7 +454,15 @@ func _rift_flow(sat: bool, bmode: String, pause: bool = false) -> void:
 		m._kill_enemy(b)
 	_mark("победа")
 	label = "окна"
-	var ok: bool = await _until(func() -> bool: return m.arena == null, 40.0, "возврат в мир")
+	var ok: bool = await _until(func() -> bool:
+		if m.arena != null and "--dbgchunks" in OS.get_cmdline_user_args() and n % 15 == 0:
+			var g = m.ground
+			var st := []
+			for key in g._keys_in(g.vis_r):
+				var ch = g.chunks.get(key)
+				st.append("%s:%s" % [key, "нет" if ch == null else ("ok" if ch["tex"] != null and ch["tb"] == g.biome else "ждёт")])
+			_log("в арене: очередь=%d задач=%d готовых=%d пауза=%.1f вид: %s" % [g.queue.size(), g.jobs.size(), g.done_jobs.size(), g.bake_pause_t, " ".join(st)])
+		return m.arena == null, 40.0, "возврат в мир")
 	if not ok:
 		return
 	_mark("мир")

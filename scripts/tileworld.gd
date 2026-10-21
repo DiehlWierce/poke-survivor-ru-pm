@@ -1208,6 +1208,7 @@ func _bake_visible_status() -> void:
 
 
 var _redraw_acc := 0.0
+var _view_skip := 0
 var lite: bool = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 
 
@@ -1219,6 +1220,14 @@ func _process(delta: float) -> void:
 		# арены. Очередь мира (вид прошлого кадра в мире) допекается в фоне: к возврату всё готово.
 		bake_pause_t = maxf(0.0, bake_pause_t - delta)
 		_bake_tick()
+		_view_skip = 2
+		return
+	if _view_skip > 0:
+		# первый кадр после возврата: трансформ холста ещё от камеры арены — по нему вид оказался бы у арены
+		# и там синхронно допеклись бы 4 куска (было 130–290 мс в кадр выхода из греты)
+		_view_skip -= 1
+		_bake_tick()
+		queue_redraw()
 		return
 	var dirty := false
 	if fade_t <= 0.0 and fade_hold < HOLD_MAX and not _vis_ready():
