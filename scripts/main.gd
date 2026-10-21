@@ -1889,7 +1889,8 @@ func _new_move(id: String, lvl: int) -> Dictionary:
 	m["t"] = 0.0
 	m["evolved"] = false
 	var ladder: Array = MD.LADDERS[String(m["kind"])]
-	for i in range(lvl - 1):
+	# no mas alla de la escalera: el companero del cooperativo pide hasta nivel 6 (jugador 30+) y la de proyectil es mas corta
+	for i in range(mini(lvl - 1, ladder.size())):
 		_apply_mods(m, ladder[i]["m"])
 		m["lvl"] = int(m["lvl"]) + 1
 	return m
