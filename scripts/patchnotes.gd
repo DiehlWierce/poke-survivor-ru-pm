@@ -9,6 +9,22 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.2.0",
+		"date": "2026-10-21",
+		"title": "Poke Survivors para PortMaster 3.2.0: contenido de la V5",
+		"new": [
+			"Fusión: dos movimientos vinculados y evolucionados al máximo se unen en uno nuevo, con efectos propios.",
+			"Nuevos sucesos en el mundo: cuevas, laboratorio de Mewtwo, meteoritos, invasiones, rescates, Pokémon alfa y zonas secretas.",
+			"Tienda de Kecleon, Poké Balls y ciclo de día y noche.",
+		],
+		"changes": [
+			"Las bombas eliminan a todos los enemigos de la pantalla y los jefes pierden un 30 % de vida.",
+			"Nuevos movimientos y habilidades; las trampas tienen más alcance.",
+			"Al cerrar la tienda o las cartas hay una cuenta atrás de 3 s con invulnerabilidad.",
+		],
+		"fixes": [],
+	},
+	{
 		"ver": "3.1.2",
 		"date": "2026-10-21",
 		"title": "Poke Survivors para PortMaster 3.1.2: arreglo de la memoria en partidas largas",
