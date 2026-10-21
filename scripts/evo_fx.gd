@@ -335,7 +335,11 @@ func _draw_p(q: Dictionary) -> void :
 			draw_line(p - d3 * s * 0.8, p + d3 * s * 0.8, cc, 2.0)
 		"star":
 			var l2: float = s * (0.6 + 0.4 * sin(k * PI))
-			draw_colored_polygon(PackedVector2Array([p + Vector2(0, - l2), p + Vector2(l2 * 0.28, - l2 * 0.28), p + Vector2(l2, 0), p + Vector2(l2 * 0.28, l2 * 0.28), p + Vector2(0, l2), p + Vector2( - l2 * 0.28, l2 * 0.28), p + Vector2( - l2, 0), p + Vector2( - l2 * 0.28, - l2 * 0.28)]), cc)
+			if l2 < 1.0:
+				return
+			draw_set_transform(p, 0.0, Vector2.ONE)   # вершины от нуля: у далёких координат float32 склеивает точки и триангуляция падает
+			draw_colored_polygon(PackedVector2Array([Vector2(0, - l2), Vector2(l2 * 0.28, - l2 * 0.28), Vector2(l2, 0), Vector2(l2 * 0.28, l2 * 0.28), Vector2(0, l2), Vector2( - l2 * 0.28, l2 * 0.28), Vector2( - l2, 0), Vector2( - l2 * 0.28, - l2 * 0.28)]), cc)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		"heart":
 			var hs: float = s * 0.3
 			draw_circle(p + Vector2( - hs * 0.5, - hs * 0.3), hs * 0.6, cc)

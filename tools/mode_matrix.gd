@@ -644,6 +644,9 @@ func _watch(delta: float, rt: float) -> void:
 		biome_seen.append(bi)
 	if MODE != "tower" and not in_arena:
 		var want: int = int(rt / (150.0 if MODE == "rush" else 240.0)) + int(_g(m, "biome_off", 0))
+		if MODE == "normal" and _g(m, "dir_map") != null:
+			# V5.1: в обычном режиме биом меняет только событие директора «map» (после убийства первого босса), всего 2 биома
+			want = int(_g(m, "biome_off", 0)) + (1 if bool(_g(m, "dir_map", false)) else 0)
 		if want != bi:
 			biome_bad_t += delta
 			if biome_bad_t > 15.0 and int(biome_bad_t * FPS) % int(FPS * 15) == 0:
