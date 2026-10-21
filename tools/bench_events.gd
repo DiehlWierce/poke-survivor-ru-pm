@@ -18,6 +18,7 @@ var m: Node
 var SCEN := _arg_str("--scenario", "rift")
 var OUT := _arg_str("--out", "")
 var CAPTURE := "--capture" in OS.get_cmdline_user_args()
+var veil_shots := 0
 var PICK := float(_arg_str("--pick", "0.45"))
 var rng := RandomNumberGenerator.new()
 
@@ -105,6 +106,13 @@ func _process(delta: float) -> bool:
 	_god()
 	if m.get("rift_wait") and not marks.has("завеса"):
 		_mark("завеса")
+	if CAPTURE and OUT != "" and marks.has("вход") and veil_shots < 10:
+		var k: int = n - int(marks["вход"])
+		if k <= 3 or (m.get("rift_wait") and k % 15 == 0):
+			# снимок в начале кадра = то, что нарисовано в прошлом кадре (k=1 — кадр входа)
+			var vi: Image = get_root().get_texture().get_image()
+			vi.save_png(OUT.path_join("%s_veil_k%02d%s.png" % [SCEN, k, "_wait" if m.get("rift_wait") else ""]))
+			veil_shots += 1
 	_checks()
 	_bot(delta)
 	_cards(ms, now)
