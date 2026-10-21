@@ -46,6 +46,7 @@ const ORB_CAP := 420
 const ORB_MERGE := 50      # consola: con mas orbes de XP en el suelo, el nuevo se funde en el mas cercano (la suma de XP no cambia)
 const ORB_MERGE_SCAN := 48 # cuantos orbes (los mas nuevos) se miran para hallar el mas cercano
 const ORB_SC_MAX := 1.6    # tope del tamano visual de un orbe fundido
+const ORB_MERGE_R := 36.0  # consola: solo se funde con un orbe que este ahi mismo (el dropeo se sigue viendo donde murio el enemigo)
 const ORB_SLEEP_T := 4.5   # consola: orbes lejanos y fuera de pantalla se actualizan cada ~4-5 fotogramas
 const ORB_POOL_MAX := 48
 const DMG_TXT_MAX := 12    # consola: maximo de numeros de dano a la vez; el exceso se suma en el mas cercano
@@ -1327,17 +1328,19 @@ func _tick_quality(delta: float) -> void:
 			q_bad_t = 0.0
 
 
+# Tope de efectos Fx breves. Cuenta solo los Fx (antes contaba todos los hijos de fx: orbes, proyectiles,
+# numeros; con cientos de orbes en el suelo cada Fx nuevo se borraba al nacer) y solo recorta los
+# cosmeticos ("burst" de hierba cortada): los rayos de peligro avisan de un golpe y se ven siempre.
 func _trim_fx() -> void:
-	var fcap := _fx_cap()
-	if fx.get_child_count() > fcap:
-		var over: int = fx.get_child_count() - fcap
-		for i in range(fx.get_child_count()):
-			if over <= 0:
-				break
-			var ch: Node = fx.get_child(i)
-			if ch is Fx and not ch.is_queued_for_deletion():
-				ch.queue_free()
-				over -= 1
+	var over: int = active_fx.size() - _fx_cap()
+	if over <= 0:
+		return
+	for ch in active_fx:
+		if over <= 0:
+			break
+		if is_instance_valid(ch) and ch.kind == "burst" and not ch.is_queued_for_deletion():
+			ch.queue_free()
+			over -= 1
 
 
 # Jugador caido: camara lenta, animacion de desmayo y cierre de la partida por etapas.
@@ -4297,7 +4300,7 @@ func _update_enemies(delta: float) -> void:
 			if e.poison_fx <= 0.0 and e.visible:
 				e.poison_fx = 0.2
 				var fxp: Vector2 = e.position + Vector2(randf_range(-e.radius, e.radius), -randf_range(2.0, maxf(8.0, e.body_h * 0.9)))
-				pfx.sp("bubble", "poison", fxp, {"v": Vector2(randf_range(-10.0, 10.0), -44.0), "life": 0.7, "scale": randf_range(0.7, 1.0)})
+				pfx.sp("bubble", "poison", fxp, {"v": Vector2(randf_range(-10.0, 10.0), -44.0), "life": 0.7, "scale": randf_range(0.7, 1.0), "cosm": true})
 				if randf() < 0.7:
 					# gota que se desprende del cuerpo y cae
 					var dp: Vector2 = e.position + Vector2(randf_range(-e.radius, e.radius) * 0.8, -randf_range(3.0, maxf(8.0, e.body_h * 0.6)))
@@ -6067,7 +6070,7 @@ func _spawn_orb(pos: Vector2, kind: String, value: float):
 				seen += 1
 				if seen >= ORB_MERGE_SCAN:
 					break
-			if best != null:
+			if best != null and bd <= ORB_MERGE_R * ORB_MERGE_R:
 				best.value += value
 				best.sc = minf(ORB_SC_MAX, pow(best.value / maxf(best.base, 0.001), 0.25))
 				best.queue_redraw()

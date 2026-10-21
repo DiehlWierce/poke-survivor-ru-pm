@@ -5,7 +5,11 @@ const VFX = preload("res://scripts/vfx.gd")
 const PX := 2.0
 const LITE_PART_CAP := 180
 const LITE_SPRITE_CAP := 64
-const LITE_UPDATE_SEC := 1.0 / 30.0
+const LITE_UPDATE_SEC := 1.0 / 40.0   # consola: paso de ~30 Hz; el umbral bajo evita saltarse un fotograma por la fluctuacion del delta a 30 k/s
+# Topes de seguridad para lo que NO se puede perder (sprites de habilidades y Z, particulas force):
+# el limite lite solo recorta los extras cosmeticos (opcion "cosm", particulas pequenas sin force).
+const HARD_SPRITES := 1000
+const HARD_PARTS := 1400
 
 var dens := 1.0
 var lite := false
@@ -54,7 +58,7 @@ static func rnd(a: float, b: float) -> float:
 
 # ---------------- creacion ----------------
 func px(pos: Vector2, color: Color, vel: Vector2 = Vector2.ZERO, life: float = 0.4, size: float = 1.0, grav: float = 0.0, drag: float = 0.9, force: bool = false) -> void:
-	if parts.size() >= cap_parts:
+	if parts.size() >= (HARD_PARTS if force else cap_parts):
 		return
 	if lite and size < 1.5 and not force:
 		# Presupuesto por fotograma para las pequenas; las grandes y las de golpes importantes (force) pasan siempre
@@ -84,10 +88,12 @@ func spark(pos: Vector2, color: Color, dir: Vector2, n: int = 4) -> void:
 		px(pos, color, Vector2.from_angle(a) * rnd(60.0, 170.0), rnd(0.14, 0.32))
 
 
+# o.cosm = true: extra cosmetico (burbujas de veneno, etc.), sujeto a cap_sprites. Todo lo demas es el visual
+# de una habilidad / Z / golpe y se dibuja siempre (solo el tope de seguridad HARD_SPRITES).
 func sp(shape: String, pal: String, pos: Vector2, o: Dictionary = {}) -> void:
-	if sprs.size() >= cap_sprites:
+	if sprs.size() >= (cap_sprites if bool(o.get("cosm", false)) else HARD_SPRITES):
 		return
-	sprs.append({"shape": shape, "pal": pal, "p": pos, "v": o.get("v", Vector2.ZERO), "t": 0.0, "life": float(o.get("life", 0.4)),
+	sprs.append({"nw": true, "shape": shape, "pal": pal, "p": pos, "v": o.get("v", Vector2.ZERO), "t": 0.0, "life": float(o.get("life", 0.4)),
 		"scale": float(o.get("scale", 1.0)), "ang": float(o.get("angle", 0.0)), "spin": float(o.get("spin", 0.0)),
 		"g": float(o.get("grav", 0.0)), "fr": float(o.get("fr", 10.0)), "fade": bool(o.get("fade", true))})
 
@@ -118,7 +124,7 @@ func trail(kind: String, pal: String, pos: Vector2, vel: Vector2) -> void:
 
 
 func ring(pos: Vector2, r0: float, r1: float, color: Color, life: float = 0.3, width: float = 3.0) -> void:
-	rings.append({"p": pos, "r0": r0, "r1": r1, "c": color, "life": life, "t": 0.0, "w": width})
+	rings.append({"nw": true, "p": pos, "r0": r0, "r1": r1, "c": color, "life": life, "t": 0.0, "w": width})
 
 
 # Golpe cuerpo a cuerpo. vis = VFX.for_move(...)
@@ -126,7 +132,7 @@ func slash(pos: Vector2, angle: float, radius: float, arc: float, vis: Dictionar
 	var pal: String = String(vis.get("pal", "normal"))
 	var melee: String = String(vis.get("melee", ""))
 	var life := 0.3 if melee == "vine" else 0.22
-	slashes.append({"p": pos, "ang": angle, "r": radius, "arc": arc, "pal": pal, "t": 0.0, "life": life, "vine": melee == "vine", "seed": randf() * 100.0})
+	slashes.append({"nw": true, "p": pos, "ang": angle, "r": radius, "arc": arc, "pal": pal, "t": 0.0, "life": life, "vine": melee == "vine", "seed": randf() * 100.0})
 	var m: Vector2 = pos + Vector2.from_angle(angle) * radius * 0.7
 	match melee:
 		"impact":
@@ -146,7 +152,7 @@ func slash(pos: Vector2, angle: float, radius: float, arc: float, vis: Dictionar
 # Rayo recto. vis.beam = forma que viaja por el o "lightning".
 func beam(pos: Vector2, angle: float, length: float, width: float, vis: Dictionary) -> void:
 	var pal: String = String(vis.get("pal", "normal"))
-	beams.append({"p": pos, "ang": angle, "len": length, "w": width, "pal": pal, "shape": String(vis.get("beam", "")), "t": 0.0, "life": 0.2, "seed": randf() * 100.0})
+	beams.append({"nw": true, "p": pos, "ang": angle, "len": length, "w": width, "pal": pal, "shape": String(vis.get("beam", "")), "t": 0.0, "life": 0.2, "seed": randf() * 100.0})
 	var d := Vector2.from_angle(angle)
 	sp("impact", pal, pos + d * 10.0, {"life": 0.12, "scale": 1.0})
 	sp("impact", pal, pos + d * length, {"life": 0.18, "scale": 1.5})
@@ -180,6 +186,9 @@ func _step_particles(delta: float) -> void:
 		p["v"] = v
 	for i in range(sprs.size() - 1, -1, -1):
 		var s: Dictionary = sprs[i]
+		if s.has("nw"):   # recien creado: su vida empieza en el primer dibujo (con un delta grande moria sin verse)
+			s.erase("nw")
+			continue
 		s["t"] = float(s["t"]) + delta
 		if float(s["t"]) >= float(s["life"]):
 			sprs.remove_at(i)
@@ -191,6 +200,9 @@ func _step_particles(delta: float) -> void:
 		s["ang"] = float(s["ang"]) + float(s["spin"]) * delta
 	for arr in [rings, slashes, beams]:
 		for i in range(arr.size() - 1, -1, -1):
+			if arr[i].has("nw"):
+				arr[i].erase("nw")
+				continue
 			arr[i]["t"] = float(arr[i]["t"]) + delta
 			if float(arr[i]["t"]) >= float(arr[i]["life"]):
 				arr.remove_at(i)
@@ -200,8 +212,10 @@ func _step_particles(delta: float) -> void:
 		_was_empty = true
 	else:
 		_was_empty = false
-	if not lite or (Engine.get_process_frames() & 1) == 0:   # consola: dibujo cada 2 fotogramas
-		queue_redraw()
+	# Siempre se redibuja tras un paso. Antes en la consola solo en fotogramas pares: junto con el paso a 30 Hz
+	# (que a veces se salta un fotograma) habia rachas sin ningun redibujo: rayos, auras y golpes de vida corta
+	# no llegaban a verse o parpadeaban, y el ultimo dibujo quedaba congelado en pantalla.
+	queue_redraw()
 
 var _was_empty := false
 
