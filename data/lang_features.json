@@ -12,7 +12,17 @@
     "No tienes suficientes Pokémonedas.": "Not enough coins.",
     "Enseñar movimiento con TM · 400 monedas": "Teach a move with a TM · 400 coins",
     "Comprar y enseñar": "Buy and teach",
-    "TM aprendida: %s": "TM learned: %s"
+    "TM aprendida: %s": "TM learned: %s",
+    "Usar menta de naturaleza (%d)": "Use nature mint (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "Buy nature mint · 350 coins",
+    "Abrir tienda diaria": "Open daily shop",
+    "Tienda diaria": "Daily shop",
+    "Consigue un Pokémon para usar la tienda.": "Get a Pokémon to use the shop.",
+    "Elige un Pokémon para aprender TM": "Choose a Pokémon to teach a TM",
+    "Pokémonedas: %d": "Coins: %d",
+    "TMs del día": "Today's TMs",
+    "No hay movimientos disponibles para este Pokémon.": "No eligible moves are available for this Pokémon.",
+    "TM: %s · 250 monedas": "TM: %s · 250 coins"
   },
   "es_419": {
     "Equilibrada": "Equilibrada",
@@ -27,7 +37,17 @@
     "No tienes suficientes Pokémonedas.": "No tienes suficientes Pokémonedas.",
     "Enseñar movimiento con TM · 400 monedas": "Enseñar movimiento con MT · 400 monedas",
     "Comprar y enseñar": "Comprar y enseñar",
-    "TM aprendida: %s": "MT aprendida: %s"
+    "TM aprendida: %s": "MT aprendida: %s",
+    "Usar menta de naturaleza (%d)": "Usar menta de naturaleza (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "Comprar menta de naturaleza · 350 monedas",
+    "Abrir tienda diaria": "Abrir tienda diaria",
+    "Tienda diaria": "Tienda diaria",
+    "Consigue un Pokémon para usar la tienda.": "Consigue un Pokémon para usar la tienda.",
+    "Elige un Pokémon para aprender TM": "Elige un Pokémon para aprender MT",
+    "Pokémonedas: %d": "Pokémonedas: %d",
+    "TMs del día": "MT del día",
+    "No hay movimientos disponibles para este Pokémon.": "No hay movimientos disponibles para este Pokémon.",
+    "TM: %s · 250 monedas": "MT: %s · 250 monedas"
   },
   "fr": {
     "Equilibrada": "Équilibrée",
@@ -42,7 +62,17 @@
     "No tienes suficientes Pokémonedas.": "Vous n’avez pas assez de pièces Pokémon.",
     "Enseñar movimiento con TM · 400 monedas": "Apprendre une capacité avec une CT · 400 pièces",
     "Comprar y enseñar": "Acheter et apprendre",
-    "TM aprendida: %s": "CT apprise : %s"
+    "TM aprendida: %s": "CT apprise : %s",
+    "Usar menta de naturaleza (%d)": "Utiliser une menthe nature (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "Acheter une menthe nature · 350 pièces",
+    "Abrir tienda diaria": "Ouvrir la boutique quotidienne",
+    "Tienda diaria": "Boutique quotidienne",
+    "Consigue un Pokémon para usar la tienda.": "Obtenez un Pokémon pour utiliser la boutique.",
+    "Elige un Pokémon para aprender TM": "Choisissez un Pokémon pour apprendre une CT",
+    "Pokémonedas: %d": "Pièces Pokémon : %d",
+    "TMs del día": "CT du jour",
+    "No hay movimientos disponibles para este Pokémon.": "Aucune capacité compatible pour ce Pokémon.",
+    "TM: %s · 250 monedas": "CT : %s · 250 pièces"
   },
   "it": {
     "Equilibrada": "Equilibrata",
@@ -57,7 +87,17 @@
     "No tienes suficientes Pokémonedas.": "Non hai abbastanza Pokémonete.",
     "Enseñar movimiento con TM · 400 monedas": "Insegna una mossa con una MT · 400 monete",
     "Comprar y enseñar": "Compra e insegna",
-    "TM aprendida: %s": "MT appresa: %s"
+    "TM aprendida: %s": "MT appresa: %s",
+    "Usar menta de naturaleza (%d)": "Usa una menta natura (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "Compra menta natura · 350 monete",
+    "Abrir tienda diaria": "Apri il negozio giornaliero",
+    "Tienda diaria": "Negozio giornaliero",
+    "Consigue un Pokémon para usar la tienda.": "Ottieni un Pokémon per usare il negozio.",
+    "Elige un Pokémon para aprender TM": "Scegli un Pokémon a cui insegnare una MT",
+    "Pokémonedas: %d": "Pokémonete: %d",
+    "TMs del día": "MT del giorno",
+    "No hay movimientos disponibles para este Pokémon.": "Nessuna mossa compatibile per questo Pokémon.",
+    "TM: %s · 250 monedas": "MT: %s · 250 monete"
   },
   "pt_BR": {
     "Equilibrada": "Equilibrada",
@@ -72,7 +112,17 @@
     "No tienes suficientes Pokémonedas.": "Moedas insuficientes.",
     "Enseñar movimiento con TM · 400 monedas": "Ensinar movimento com MT · 400 moedas",
     "Comprar y enseñar": "Comprar e ensinar",
-    "TM aprendida: %s": "MT aprendida: %s"
+    "TM aprendida: %s": "MT aprendida: %s",
+    "Usar menta de naturaleza (%d)": "Usar menta de natureza (%d)",
+    "Comprar menta de natureza · 350 moedas": "Comprar menta de natureza · 350 moedas",
+    "Abrir tienda diaria": "Abrir loja diária",
+    "Tienda diaria": "Loja diária",
+    "Consigue un Pokémon para usar la tienda.": "Consiga um Pokémon para usar a loja.",
+    "Elige un Pokémon para aprender TM": "Escolha um Pokémon para aprender uma MT",
+    "Pokémonedas: %d": "Moedas: %d",
+    "TMs del día": "MTs do dia",
+    "No hay movimientos disponibles para este Pokémon.": "Não há movimentos disponíveis para este Pokémon.",
+    "TM: %s · 250 monedas": "MT: %s · 250 moedas"
   },
   "pt_PT": {
     "Equilibrada": "Equilibrada",
@@ -87,7 +137,17 @@
     "No tienes suficientes Pokémonedas.": "Não tens moedas suficientes.",
     "Enseñar movimiento con TM · 400 monedas": "Ensinar movimento com MT · 400 moedas",
     "Comprar y enseñar": "Comprar e ensinar",
-    "TM aprendida: %s": "MT aprendida: %s"
+    "TM aprendida: %s": "MT aprendida: %s",
+    "Usar menta de naturaleza (%d)": "Usar menta da natureza (%d)",
+    "Comprar menta de natureza · 350 monedas": "Comprar menta da natureza · 350 moedas",
+    "Abrir tienda diaria": "Abrir loja diária",
+    "Tienda diaria": "Loja diária",
+    "Consigue un Pokémon para usar la tienda.": "Consiga um Pokémon para usar a loja.",
+    "Elige un Pokémon para aprender TM": "Escolha um Pokémon para aprender uma MT",
+    "Pokémonedas: %d": "Moedas: %d",
+    "TMs del día": "MTs do dia",
+    "No hay movimientos disponibles para este Pokémon.": "Não há movimentos disponíveis para este Pokémon.",
+    "TM: %s · 250 monedas": "MT: %s · 250 moedas"
   },
   "ru": {
     "Equilibrada": "Сбалансированная",
@@ -102,7 +162,17 @@
     "No tienes suficientes Pokémonedas.": "Недостаточно монет.",
     "Enseñar movimiento con TM · 400 monedas": "Обучить приёму с помощью ТМ · 400 монет",
     "Comprar y enseñar": "Купить и обучить",
-    "TM aprendida: %s": "Выученная ТМ: %s"
+    "TM aprendida: %s": "Выученная ТМ: %s",
+    "Usar menta de naturaleza (%d)": "Использовать мяту характера (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "Купить мяту характера · 350 монет",
+    "Abrir tienda diaria": "Открыть ежедневный магазин",
+    "Tienda diaria": "Ежедневный магазин",
+    "Consigue un Pokémon para usar la tienda.": "Получите покемона, чтобы пользоваться магазином.",
+    "Elige un Pokémon para aprender TM": "Выберите покемона для обучения ТМ",
+    "Pokémonedas: %d": "Покемонеты: %d",
+    "TMs del día": "ТМ дня",
+    "No hay movimientos disponibles para este Pokémon.": "Для этого покемона нет подходящих приёмов.",
+    "TM: %s · 250 monedas": "ТМ: %s · 250 монет"
   },
   "ja": {
     "Equilibrada": "バランス型",
@@ -117,7 +187,17 @@
     "No tienes suficientes Pokémonedas.": "コインが足りません。",
     "Enseñar movimiento con TM · 400 monedas": "わざマシンで技を覚える · 400コイン",
     "Comprar y enseñar": "購入して覚える",
-    "TM aprendida: %s": "習得したわざマシン: %s"
+    "TM aprendida: %s": "習得したわざマシン: %s",
+    "Usar menta de naturaleza (%d)": "ミントを使う (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "ミントを購入 · 350コイン",
+    "Abrir tienda diaria": "デイリーショップを開く",
+    "Tienda diaria": "デイリーショップ",
+    "Consigue un Pokémon para usar la tienda.": "ショップを使うにはポケモンが必要です。",
+    "Elige un Pokémon para aprender TM": "わざを覚えるポケモンを選択",
+    "Pokémonedas: %d": "コイン: %d",
+    "TMs del día": "今日のわざマシン",
+    "No hay movimientos disponibles para este Pokémon.": "このポケモンに使えるわざはありません。",
+    "TM: %s · 250 monedas": "わざマシン: %s · 250コイン"
   },
   "zh_CN": {
     "Equilibrada": "均衡",
@@ -132,7 +212,17 @@
     "No tienes suficientes Pokémonedas.": "金币不足。",
     "Enseñar movimiento con TM · 400 monedas": "使用招式学习技能 · 400金币",
     "Comprar y enseñar": "购买并学习",
-    "TM aprendida: %s": "已学技能机：%s"
+    "TM aprendida: %s": "已学技能机：%s",
+    "Usar menta de naturaleza (%d)": "使用薄荷（%d）",
+    "Comprar menta de naturaleza · 350 monedas": "购买薄荷 · 350金币",
+    "Abrir tienda diaria": "打开每日商店",
+    "Tienda diaria": "每日商店",
+    "Consigue un Pokémon para usar la tienda.": "拥有宝可梦后即可使用商店。",
+    "Elige un Pokémon para aprender TM": "选择要学习招式的宝可梦",
+    "Pokémonedas: %d": "金币：%d",
+    "TMs del día": "今日技能机",
+    "No hay movimientos disponibles para este Pokémon.": "这只宝可梦没有可学习的招式。",
+    "TM: %s · 250 monedas": "技能机：%s · 250金币"
   },
   "zh_HK": {
     "Equilibrada": "均衡",
@@ -147,7 +237,17 @@
     "No tienes suficientes Pokémonedas.": "金幣不足。",
     "Enseñar movimiento con TM · 400 monedas": "使用招式學習技能 · 400 金幣",
     "Comprar y enseñar": "購買並學習",
-    "TM aprendida: %s": "已學技能機：%s"
+    "TM aprendida: %s": "已學技能機：%s",
+    "Usar menta de naturaleza (%d)": "使用薄荷（%d）",
+    "Comprar menta de naturaleza · 350 monedas": "購買薄荷 · 350 金幣",
+    "Abrir tienda diaria": "打開每日商店",
+    "Tienda diaria": "每日商店",
+    "Consigue un Pokémon para usar la tienda.": "擁有寶可夢後即可使用商店。",
+    "Elige un Pokémon para aprender TM": "選擇要學習招式的寶可夢",
+    "Pokémonedas: %d": "金幣：%d",
+    "TMs del día": "今日招式學習器",
+    "No hay movimientos disponibles para este Pokémon.": "這隻寶可夢沒有可學習的招式。",
+    "TM: %s · 250 monedas": "招式學習器：%s · 250 金幣"
   },
   "vi": {
     "Equilibrada": "Cân bằng",
@@ -162,6 +262,16 @@
     "No tienes suficientes Pokémonedas.": "Không đủ xu.",
     "Enseñar movimiento con TM · 400 monedas": "Dạy chiêu bằng TM · 400 xu",
     "Comprar y enseñar": "Mua và dạy",
-    "TM aprendida: %s": "TM đã học: %s"
+    "TM aprendida: %s": "TM đã học: %s",
+    "Usar menta de naturaleza (%d)": "Dùng bạc hà tính cách (%d)",
+    "Comprar menta de naturaleza · 350 monedas": "Mua bạc hà tính cách · 350 xu",
+    "Abrir tienda diaria": "Mở cửa hàng hằng ngày",
+    "Tienda diaria": "Cửa hàng hằng ngày",
+    "Consigue un Pokémon para usar la tienda.": "Cần có Pokémon để sử dụng cửa hàng.",
+    "Elige un Pokémon para aprender TM": "Chọn Pokémon để học TM",
+    "Pokémonedas: %d": "Xu: %d",
+    "TMs del día": "TM hôm nay",
+    "No hay movimientos disponibles para este Pokémon.": "Pokémon này không có chiêu thức phù hợp.",
+    "TM: %s · 250 monedas": "TM: %s · 250 xu"
   }
 }

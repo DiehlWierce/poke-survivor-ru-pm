@@ -90,7 +90,7 @@ const GOALS := [
 static func default_data() -> Dictionary:
 	return {
 		"v": SAVE_SCHEMA_VERSION, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
-		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {}, "natures": {}, "pability": {}, "ability_capsules": 0, "learned_tms": {},
+		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {}, "natures": {}, "pability": {}, "ability_capsules": 0, "nature_mints": 0, "learned_tms": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
 		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true, "max_fps": -1, "manual_aim": false, "mono_bonus": false, "fx_op": 1, "act_side": 0, "text_sz": 0},
 	}
@@ -412,6 +412,27 @@ static func nature_of(dex: int) -> Dictionary:
 	return NATURES_D.definition(nature_id(dex))
 
 
+static func buy_nature_mint() -> bool:
+	const COST := 350
+	if int(d.get("coins", 0)) < COST:
+		return false
+	d["coins"] = int(d["coins"]) - COST
+	d["nature_mints"] = int(d.get("nature_mints", 0)) + 1
+	save()
+	return true
+
+
+static func use_nature_mint(dex: int) -> bool:
+	if not owns(dex) or int(d.get("nature_mints", 0)) <= 0:
+		return false
+	var old_id := nature_id(dex)
+	var next_index := (NATURES_D.IDS.find(old_id) + 1) % NATURES_D.IDS.size()
+	d["natures"][str(dex)] = String(NATURES_D.IDS[next_index])
+	d["nature_mints"] = int(d["nature_mints"]) - 1
+	save()
+	return true
+
+
 static func buy_ability_capsule() -> bool:
 	const COST := 400
 	if int(d.get("coins", 0)) < COST:
@@ -549,6 +570,32 @@ static func buy_and_teach_tm(dex: int, id: String, cost: int = 400) -> bool:
 	d["learned_tms"] = learned
 	save()
 	return true
+
+
+static func daily_tm_stock(dex: int) -> Array:
+	var MDd = load("res://scripts/moves_data.gd")
+	var GPM = load("res://scripts/gachapon.gd")
+	var types: Array = dex_by[dex]["types"]
+	var pool: Array = []
+	for id in MDd.ORDER:
+		var mid := String(id)
+		var move: Dictionary = MDd.MOVES[mid]
+		var ty := String(move["type"])
+		if String(move["kind"]) != "buff" and ty != "normal" and not types.has(ty) and GPM.playable(mid):
+			pool.append(mid)
+	if pool.is_empty():
+		return []
+	var date: Dictionary = Time.get_date_dict_from_system()
+	var day_seed := int(date.get("year", 0)) * 10000 + int(date.get("month", 0)) * 100 + int(date.get("day", 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = day_seed * 104729 + dex * 7919
+	var out: Array = []
+	var count := mini(8, pool.size())
+	while out.size() < count:
+		var move_id: String = String(pool[rng.randi_range(0, pool.size() - 1)])
+		if not out.has(move_id):
+			out.append(move_id)
+	return out
 
 
 static func ban_list(dex: int) -> Array:
