@@ -308,7 +308,8 @@ func _draw_p(q: Dictionary) -> void :
 			var d2: Vector2 = Vector2.from_angle(rot)
 			var n2: Vector2 = Vector2( - d2.y, d2.x)
 			var w: float = 0.35 if String(q["k"]) == "shard" else 0.6
-			draw_colored_polygon(PackedVector2Array([p + d2 * s * 0.6, p + n2 * s * w, p - d2 * s * 0.6, p - n2 * s * w]), cc)
+			if s > 0.5:
+				draw_colored_polygon(PackedVector2Array([p + d2 * s * 0.6, p + n2 * s * w, p - d2 * s * 0.6, p - n2 * s * w]), cc)
 		"impact":
 			for j in range(6):
 				var an2: float = float(j) / 6.0 * TAU + rot

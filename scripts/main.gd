@@ -1328,6 +1328,7 @@ func _process_body(delta: float, pt: int) -> void:
 		pt = Prof.lap(Prof.S_FX, pt)
 	if ret_cd > 0.0 and not paused and not player.dead:
 		ret_cd -= delta
+		_cleanup_enemies()   # la cuenta atras no corre _tick_run: los muertos que se desvanecen no pueden quedar en la lista
 		player.invuln = maxf(player.invuln, 0.3)
 		var rn: int = ceili(maxf(ret_cd, 0.0))
 		if rn != ret_last and rn >= 1:
