@@ -485,6 +485,13 @@ static func draw(ci: CanvasItem, shape: String, pal: String, pos: Vector2, angle
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+static var _pc_cache := {}   # paleta -> colores ya convertidos (antes Color.html() en cada pixel de cada golpe/rayo)
+
+
 static func pc(pal: String, i: int) -> Color:
-	var cols: Array = PAL.get(pal, PAL["normal"])
-	return Color.html(String(cols[i]))
+	var cc: Array = _pc_cache.get(pal, [])
+	if cc.is_empty():
+		for h in PAL.get(pal, PAL["normal"]):
+			cc.append(Color.html(String(h)))
+		_pc_cache[pal] = cc
+	return cc[i]

@@ -231,6 +231,8 @@ func _draw() -> void:
 		_draw_beam(b, now)
 	for s in slashes:
 		_draw_slash(s, now)
+	# anillos y particulas: mismo resultado que _rect()/snap() por punto, pero con el color y el giro calculados
+	# una vez (rotacion incremental en vez de cos/sin por punto): es lo mas dibujado en una pelea llena
 	for r in rings:
 		var k: float = float(r["t"]) / float(r["life"])
 		var rad: float = lerpf(float(r["r0"]), float(r["r1"]), k)
@@ -238,13 +240,29 @@ func _draw() -> void:
 		var size: float = PX * 2.0 if float(r["w"]) >= 4.0 else PX
 		var pos: Vector2 = r["p"]
 		var col: Color = r["c"]
-		var a: float = step(1.0 - k)
+		col.a *= step(1.0 - k)
+		var da: float = TAU / float(n)
+		var cd: float = cos(da)
+		var sd: float = sin(da)
+		var cx: float = 1.0
+		var sy: float = 0.0
+		var ry: float = rad * 0.9
+		var rc := Rect2(0.0, 0.0, size, size)
 		for i in range(n):
-			var an: float = float(i) / float(n) * TAU
-			_rect(snap(pos.x + cos(an) * rad), snap(pos.y + sin(an) * rad * 0.9), size, size, col, a)
+			rc.position = Vector2(roundf((pos.x + cx * rad) / PX) * PX, roundf((pos.y + sy * ry) / PX) * PX)
+			draw_rect(rc, col)
+			var nx: float = cx * cd - sy * sd
+			sy = cx * sd + sy * cd
+			cx = nx
+	var prc := Rect2()
 	for p in parts:
 		var pp: Vector2 = p["p"]
-		_rect(snap(pp.x), snap(pp.y), float(p["s"]), float(p["s"]), p["c"], step(1.0 - float(p["t"]) / float(p["life"])))
+		var ps: float = p["s"]
+		var pcol: Color = p["c"]
+		pcol.a *= step(1.0 - float(p["t"]) / float(p["life"]))
+		prc.position = Vector2(roundf(pp.x / PX) * PX, roundf(pp.y / PX) * PX)
+		prc.size = Vector2(ps, ps)
+		draw_rect(prc, pcol)
 	for s in sprs:
 		var k2: float = 1.0 - float(s["t"]) / float(s["life"])
 		VFX.draw(self, String(s["shape"]), String(s["pal"]), s["p"], float(s["ang"]), float(s["scale"]), int(float(s["t"]) * float(s["fr"])), step(k2) if bool(s["fade"]) else 1.0)
@@ -261,6 +279,11 @@ func _draw_beam(b: Dictionary, now: float) -> void:
 	var al: float = step(k)
 	var seg: float = PX * 2.0
 	draw_set_transform(pos, ang, Vector2.ONE)
+	var bc: Array = []   # colores de la paleta con alfa, una vez por rayo
+	for ci0 in range(5):
+		var cc: Color = VFX.pc(pal, ci0)
+		cc.a *= al
+		bc.append(cc)
 	if String(b["shape"]) == "lightning":
 		var py := 0.0
 		var d := 0.0
@@ -270,8 +293,8 @@ func _draw_beam(b: Dictionary, now: float) -> void:
 				ny = snap((VFX.hh(int(d), int(now * 30.0), int(seed_v)) - 0.5) * width)
 			var lo: float = minf(py, ny)
 			var hi: float = maxf(py, ny)
-			_rect(d - PX, lo - PX * 2.0, seg + PX * 2.0, hi - lo + PX * 4.0, VFX.pc(pal, 3), al)
-			_rect(d, lo - PX, seg, hi - lo + PX * 2.0, VFX.pc(pal, 4), al)
+			draw_rect(Rect2(d - PX, lo - PX * 2.0, seg + PX * 2.0, hi - lo + PX * 4.0), bc[3])
+			draw_rect(Rect2(d, lo - PX, seg, hi - lo + PX * 2.0), bc[4])
 			py = ny
 			d += seg
 	else:
@@ -279,11 +302,11 @@ func _draw_beam(b: Dictionary, now: float) -> void:
 		while d2 < length:
 			var wob: float = 0.7 + 0.3 * sin(d2 * 0.18 + now * 30.0 + seed_v)
 			var hw: float = maxf(PX, snap(width / 2.0 * wob * (0.6 + 0.4 * k)))
-			_rect(d2, -hw - PX, seg, hw * 2.0 + PX * 2.0, VFX.pc(pal, 1), al)
-			_rect(d2, -hw, seg, hw * 2.0, VFX.pc(pal, 2), al)
+			draw_rect(Rect2(d2, -hw - PX, seg, hw * 2.0 + PX * 2.0), bc[1])
+			draw_rect(Rect2(d2, -hw, seg, hw * 2.0), bc[2])
 			var h2: float = snap(hw * 0.55)
-			_rect(d2, -h2, seg, h2 * 2.0, VFX.pc(pal, 3), al)
-			_rect(d2, -PX, seg, PX * 2.0, VFX.pc(pal, 4), al)
+			draw_rect(Rect2(d2, -h2, seg, h2 * 2.0), bc[3])
+			draw_rect(Rect2(d2, -PX, seg, PX * 2.0), bc[4])
 			d2 += seg
 		var shape: String = String(b["shape"])
 		if shape != "":
@@ -313,14 +336,24 @@ func _draw_slash(s: Dictionary, now: float) -> void:
 	var al: float = step(k)
 	if bool(s["vine"]):
 		al *= 0.55          # el arco queda de fondo; el latigo es el protagonista
+	# colores de la paleta con alfa una vez por golpe, cos/sin una vez por columna (el mismo dibujo, mucho mas barato)
+	var cols: Array = []
+	for ci0 in range(5):
+		var cc: Color = VFX.pc(pal, ci0)
+		cc.a *= al
+		cols.append(cc)
+	var rc := Rect2(0.0, 0.0, PX, PX)
 	for i in range(n + 1):
 		var u: float = float(i) / float(n)
 		var a: float = angle - half + u * half * 2.0
+		var ca: float = cos(a)
+		var sa: float = sin(a)
 		var thick: int = roundi(sin(PI * u) * 3.0 * k)
 		for j in range(-1, thick + 1):
 			var rr: float = r - float(j) * PX
 			var ci: int = 0 if j < 0 else (4 if j == thick else (3 if j > thick / 2 else 2))
-			_rect(snap(pos.x + cos(a) * rr), snap(pos.y + sin(a) * rr), PX, PX, VFX.pc(pal, ci), al)
+			rc.position = Vector2(roundf((pos.x + ca * rr) / PX) * PX, roundf((pos.y + sa * rr) / PX) * PX)
+			draw_rect(rc, cols[ci])
 	if bool(s["vine"]):
 		_draw_whip(s, now)
 
