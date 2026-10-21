@@ -90,6 +90,7 @@ func _run() -> void:
 	await _check_chal()
 	await _check_gachapon()
 	await _check_dex()
+	await _check_modes_walk()
 	if failures == 0:
 		print("MENU_UX_OK")
 	else:
@@ -353,3 +354,31 @@ func _check_dex() -> void:
 	m.dex_only_owned = false
 	m._show("main")
 	await _frames(3)
+
+
+# ---------- 7) Геймпадом по списку режимов: фокус идёт по всем карточкам, A запускает режим ----------
+func _check_modes_walk() -> void:
+	m._show("modes")
+	for _i in 400:
+		await _frames(1)
+		if m.fq.is_empty():
+			break
+	await _frames(5)
+	var titles := {}
+	for _k in 40:
+		var f: Control = root.gui_get_focus_owner()
+		if f is Button and (f as Button).text.contains("\n"):
+			titles[(f as Button).text.get_slice("\n", 0)] = true
+		_press("ui_down")
+		await _frames(4)
+	_shot("modes_walk")
+	if titles.size() < 8:
+		_fail("режимы: геймпадом достижимо только %d карточек из ≥8" % titles.size())
+	var sv = load("res://scripts/save_data.gd")
+	for _k in 40:
+		_press("ui_up")
+		await _frames(2)
+	_press("ui_accept")
+	await _frames(2)
+	if String(sv.run_mode) != "normal":
+		_fail("режимы: A на первой карточке дал run_mode='%s', ожидался normal" % String(sv.run_mode))
