@@ -4509,9 +4509,10 @@ func _up_button_update(bt: Button, id: String, lv: int, mx: int) -> void:
 # Paneles de debajo (MT, veto, atajos): se rehacen solo si lo que muestran cambia, por porciones.
 func _up_tail() -> void:
 	var show_tm: bool = SV.up_level("tm", up_dex) > 0 and tm_open
+	var show_second: bool = SV.up_level("moves", up_dex) > 0
 	var ban_lv: int = SV.up_level("ban", up_dex)
 	var show_ban: bool = ban_lv > 0 and ban_open
-	var key := "%d_%d_%d_%d_%d_%s_%s_%s" % [up_dex, lay_gen, int(show_tm), int(show_ban), ban_lv, SV.start_move_of(up_dex) if show_tm else "", ",".join(PackedStringArray(SV.ban_list(up_dex))) if show_ban else "", ",".join(PackedStringArray(SV.bind_list(up_dex)))]
+	var key := "%d_%d_%d_%d_%d_%s_%s_%s_%s" % [up_dex, lay_gen, int(show_tm), int(show_second), int(show_ban), SV.start_move_of(up_dex) if show_tm else "", SV.second_start_move_of(up_dex) if show_second else "", ",".join(PackedStringArray(SV.ban_list(up_dex))) if show_ban else "", ",".join(PackedStringArray(SV.bind_list(up_dex)))]
 	if key == up_tail_key:
 		return
 	up_tail_key = key
@@ -4520,9 +4521,43 @@ func _up_tail() -> void:
 		_retire(c, up_tail)
 	if show_tm:
 		_later(up_tail, func(): up_tail.add_child(_tm_panel()))
+	if show_second:
+		_later(up_tail, func(): up_tail.add_child(_second_start_panel()))
 	if show_ban:
 		_later(up_tail, func(): up_tail.add_child(_ban_panel(ban_lv)))
 	_later(up_tail, func(): _bind_panel_into(up_tail))
+
+
+# Elegir el segundo movimiento inicial tras desbloquear Repertorio; Aleatorio conserva el comportamiento anterior.
+func _second_start_panel() -> Control:
+	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", _card_sb())
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	pc.add_child(v)
+	var cur: String = SV.second_start_move_of(up_dex)
+	var sub := _label(L.t("Elige el segundo movimiento inicial. Aleatorio conserva la selección normal."), 18, Color("#c8d6ee"))
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(sub)
+	var fl := HFlowContainer.new()
+	fl.add_theme_constant_override("h_separation", 8)
+	fl.add_theme_constant_override("v_separation", 8)
+	v.add_child(fl)
+	var ids: Array = SV.second_start_pool(up_dex)
+	ids.sort_custom(func(a, b): return L.t(String(MD.MOVES[a]["name"])) < L.t(String(MD.MOVES[b]["name"])))
+	var choices: Array = [""] + ids
+	for id in choices:
+		var pick: String = String(id)
+		var label: String = L.t("Aleatorio") if pick == "" else L.t(String(MD.MOVES[pick]["name"]))
+		var b := _btn(("✔ " if pick == cur else "") + label, func():
+			if SV.set_second_start_move(up_dex, pick):
+				Aud.sfx("select")
+			_refresh_up_keep("second:" + pick), Vector2(0, 40))
+		b.set_meta("fk", "second:" + pick)
+		if pick == cur:
+			b.add_theme_stylebox_override("normal", _sb(Color("#7a5a14"), Color("#ffd23f"), 3, 10))
+		fl.add_child(b)
+	return pc
 
 
 # MT: elige el movimiento con el que empiezas cada partida (gratis cambiarlo cuando quieras).

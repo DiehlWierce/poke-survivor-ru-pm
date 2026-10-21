@@ -9380,7 +9380,10 @@ func _heal_real(amount: float) -> float:
 func _start_moves(dex: int, types: Array) -> Array:
 	var first_move: String = SV.start_move_of(dex)
 	var out: Array = [_new_move(first_move, 1)]
-	if int(perks["moves"]) >= 2:
+	if SV.up_level("moves", dex) > 0:
+		var selected_second: String = SV.second_start_move_of(dex)
+		if selected_second != "":
+			return [out[0], _new_move(selected_second, 1)]
 		var cands: Array = []
 		for mid in MD.ORDER:
 			var md: Dictionary = MD.MOVES[mid]

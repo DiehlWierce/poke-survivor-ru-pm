@@ -1,0 +1,57 @@
+{
+  "en": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Choose the second starting move. Random keeps the game's normal selection.",
+    "Segundo movimiento inicial": "Second starting move",
+    "Aleatorio": "Random"
+  },
+  "es_419": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.",
+    "Segundo movimiento inicial": "Segundo movimiento inicial",
+    "Aleatorio": "Aleatorio"
+  },
+  "fr": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Choisissez le deuxième mouvement de départ. Aléatoire conserve le choix normal du jeu.",
+    "Segundo movimiento inicial": "Deuxième mouvement de départ",
+    "Aleatorio": "Aléatoire"
+  },
+  "it": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Scegli la seconda mossa iniziale. Casuale mantiene la scelta normale del gioco.",
+    "Segundo movimiento inicial": "Seconda mossa iniziale",
+    "Aleatorio": "Casuale"
+  },
+  "pt_BR": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Escolha o segundo movimento inicial. Aleatório mantém a escolha normal do jogo.",
+    "Segundo movimiento inicial": "Segundo movimento inicial",
+    "Aleatorio": "Aleatório"
+  },
+  "pt_PT": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Escolha o segundo movimento inicial. Aleatório mantém a escolha normal do jogo.",
+    "Segundo movimiento inicial": "Segundo movimento inicial",
+    "Aleatorio": "Aleatório"
+  },
+  "ru": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Выберите второй стартовый приём. Случайно сохраняет обычный выбор игры.",
+    "Segundo movimiento inicial": "Второй стартовый приём",
+    "Aleatorio": "Случайно"
+  },
+  "ja": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "2つ目の初期わざを選びます。「ランダム」は通常の選択を維持します。",
+    "Segundo movimiento inicial": "2つ目の初期わざ",
+    "Aleatorio": "ランダム"
+  },
+  "zh_CN": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "选择第二个初始招式。“随机”保留游戏原有的随机选择。",
+    "Segundo movimiento inicial": "第二个初始招式",
+    "Aleatorio": "随机"
+  },
+  "zh_HK": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "選擇第二個起始招式。「隨機」會保留遊戲原有的隨機選擇。",
+    "Segundo movimiento inicial": "第二個起始招式",
+    "Aleatorio": "隨機"
+  },
+  "vi": {
+    "Elige el segundo movimiento inicial. Aleatorio conserva la selección normal.": "Chọn chiêu thức khởi đầu thứ hai. Ngẫu nhiên giữ cách chọn mặc định của trò chơi.",
+    "Segundo movimiento inicial": "Chiêu thức khởi đầu thứ hai",
+    "Aleatorio": "Ngẫu nhiên"
+  }
+}
