@@ -359,6 +359,8 @@ func _main() -> void:
 			await _rush_chain()
 		"v51":
 			await _v51_flow()
+		"v51b":
+			await _v51b_flow()
 		"sat_rift":
 			await _rift_flow(true, "")
 		"rift_biome_before", "rift_biome_same", "rift_biome_after":
@@ -584,6 +586,68 @@ func _v51_flow() -> void:
 			m.paused = false
 	res["v51_spawn"] = ok
 	res["v51_alive"] = is_instance_valid(m.player) and m.player.hp > 0.0
+
+
+# Дельта 5.1 с проверками: Кеклеон (Корона/Королевская добыча/Лента), Башня 60 этажей и Приговор (cine → бой).
+func _v51b_flow() -> void:
+	var ok := {}
+	# --- Кеклеон
+	var kec = m.kec
+	label = "кеклеон"
+	for id in ["crown", "royal", "ribbon", "ribbon", "ribbon"]:
+		kec.bought = false
+		kec.offers = [id]
+		kec.variant = "gold"
+		m.coins = 9999
+		ok["buy_" + id] = String(kec.buy(id))
+	ok["royal_n"] = kec.n("royal")
+	ok["ribbon_n"] = kec.n("ribbon")
+	var dodged := 0
+	for i in range(4000):
+		if kec.dodge():
+			dodged += 1
+	ok["dodge_frac"] = snappedf(float(dodged) / 4000.0, 0.001)   # ждём ≈0,09 (3 ленты по 3 %)
+	var c0: int = m.coins
+	var fake_boss = m._spawn_boss({"at": 0.0, "dex": 150, "name": "Test", "hp": 50.0, "spd": 40.0, "dmg": 1.0, "xp": 1.0, "behavior": "chase", "shotDmg": 1.0, "shotCd": 5.0, "range": 100.0})
+	kec.on_kill(fake_boss)
+	ok["kill_ok"] = true
+	_mark("кеклеон")
+	await _secs(5.0)
+	# --- Башня
+	label = "башня"
+	ok["tower_floors"] = m.TOWER_FLOORS
+	var relics := 0
+	var finals := 0
+	var bosses_ok := true
+	for f in range(1, int(m.TOWER_FLOORS) + 1):
+		var d: Dictionary = m._tower_def(f)
+		if bool(d.get("final", false)):
+			finals += 1
+			ok["final_dex"] = int(d["dex"])
+		if d.is_empty() or int(d["dex"]) <= 0:
+			bosses_ok = false
+		if f % 5 == 0:
+			relics += 1
+	ok["tower_relics_max"] = relics
+	ok["tower_finals"] = finals
+	ok["tower_bosses_ok"] = bosses_ok
+	_mark("башня")
+	# --- Приговор
+	label = "приговор"
+	m.player.hp = m.player.max_hp
+	m.jd.begin()
+	ok["jd_phase"] = String(m.jd.phase)
+	await _secs(2.0)
+	m.jd.skip()
+	await _until(func() -> bool: return String(m.jd.phase) == "fight", 60.0, "приговор: бой")
+	ok["jd_fight"] = String(m.jd.phase) == "fight"
+	for i in range(60):
+		m.player.hp = m.player.max_hp
+		await _secs(1.0)
+	ok["jd_phase_end"] = String(m.jd.phase)
+	_mark("приговор")
+	res["v51b"] = ok
+	res["v51b_alive"] = is_instance_valid(m.player) and m.player.hp > 0.0
 
 
 func _report() -> void:

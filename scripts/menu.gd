@@ -11,6 +11,7 @@ const MD = preload("res://scripts/moves_data.gd")
 const TD = preload("res://scripts/types_data.gd")
 const AB = preload("res://scripts/abilities.gd")
 const ZM = preload("res://scripts/zmove.gd")
+const CAVEI = preload("res://scripts/cave_int.gd")
 const FUS = preload("res://scripts/fusions.gd")
 const KCX = preload("res://scripts/kecleon.gd")
 const DYN = preload("res://scripts/dynamax.gd")
@@ -27,10 +28,17 @@ const UPD = preload("res://scripts/updater.gd")
 const PN = preload("res://scripts/patchnotes.gd")
 const KO = preload("res://scripts/keys_only.gd")
 
-const C_PANEL := Color("#27449a")
-const C_PANEL_D := Color("#18296a")
-const C_BTN := Color("#1c3a8c")
-const C_BTN_H := Color("#2f58c9")
+# Темы интерфейса (V5.1): панель, тёмная панель, акцент, кнопка, кнопка под курсором. Индекс 1 — прежний синий вид.
+const UI_THEMES := [
+	["#9a2e27", "#6a1e18", Color("#c8362c"), "#8c1c1c", "#c92f2f"],
+	["#27449a", "#18296a", Color("#2f58c9"), "#1c3a8c", "#2f58c9"],
+	["#2a8a3e", "#1a5a28", Color("#34b04c"), "#1c7a30", "#2fc94f"],
+	["#5a2a9a", "#3a186a", Color("#7a3fd0"), "#4c1c8c", "#7a2fc9"],
+]
+var C_PANEL := Color("#27449a")
+var C_PANEL_D := Color("#18296a")
+var C_BTN := Color("#1c3a8c")
+var C_BTN_H := Color("#2f58c9")
 const C_GOLD := Color("#ffd33d")
 const PER_PAGE := 24
 
@@ -951,8 +959,25 @@ func _build_theme() -> void:
 	theme = theme_main
 
 
+func _apply_ui_theme(i: int) -> void:
+	i = clampi(i, 0, UI_THEMES.size() - 1)
+	SV.d["ui_theme"] = i
+	SV.save()
+	var t: Array = UI_THEMES[i]
+	C_PANEL = Color(String(t[0]))
+	C_PANEL_D = Color(String(t[1]))
+	C_BTN = Color(String(t[3]))
+	C_BTN_H = Color(String(t[4]))
+	_build_theme()
+
+
 func _ready() -> void:
 	SV.ensure()
+	var th0: Array = UI_THEMES[clampi(int(SV.d.get("ui_theme", 1)), 0, UI_THEMES.size() - 1)]
+	C_PANEL = Color(String(th0[0]))
+	C_PANEL_D = Color(String(th0[1]))
+	C_BTN = Color(String(th0[3]))
+	C_BTN_H = Color(String(th0[4]))
 	is_overlay = bool(Engine.get_meta("menu_overlay", false))
 	Engine.set_meta("menu_overlay", false)
 	L.apply()
@@ -2971,7 +2996,7 @@ func _refresh_modes() -> void:
 				SV.d["tower_start"] = int(tstarts[(i + 1) % tstarts.size()])
 				SV.save()
 				_refresh_modes())
-		_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("30 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 6."), [tbest, rel]), func(): _start_mode("tower"), "m_tower"), tsb))
+		_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("60 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 12."), [tbest, rel]), func(): _start_mode("tower"), "m_tower"), tsb))
 	_later(modes_box, func():
 		var rbest: int = int(SV.d.get("rifts_best", 0))
 		_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock")))
@@ -5823,6 +5848,38 @@ func _goals_profile() -> Button:
 		var tl := _label(_type_text(sd), 18, Color("#c8d6ee"))
 		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		right.add_child(tl)
+	# tema de la interfaz (V5.1) y medallas de tipo
+	left.add_child(_label("Tema de la interfaz", 24, C_GOLD))
+	var thr := HBoxContainer.new()
+	thr.add_theme_constant_override("separation", 8)
+	left.add_child(thr)
+	var cur_th: int = int(SV.d.get("ui_theme", 1))
+	for ti in range(UI_THEMES.size()):
+		var tix: int = ti
+		var tb := _btn("", func(): _apply_ui_theme(tix); _refresh_goals(), Vector2(0, 56))
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var sel_t: bool = ti == cur_th
+		for stn in ["normal", "hover", "pressed", "focus"]:
+			tb.add_theme_stylebox_override(stn, _sb(Color(0, 0, 0, 0), C_GOLD if (sel_t or stn == "focus") else Color(0, 0, 0, 0), 4 if (sel_t or stn == "focus") else 0, 12))
+		var tic := TextureRect.new()
+		tic.texture = CAVEI.tex_in("ui", "theme" + str(ti))
+		tic.stretch_mode = TextureRect.STRETCH_SCALE
+		tic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tic.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tic.offset_left = 2
+		tic.offset_top = 2
+		tic.offset_right = -2
+		tic.offset_bottom = -2
+		tic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tb.add_child(tic)
+		thr.add_child(tb)
+	left.add_child(_label("Medallas de tipo", 24, C_GOLD))
+	var mg := HFlowContainer.new()
+	mg.add_theme_constant_override("h_separation", 6)
+	mg.add_theme_constant_override("v_separation", 6)
+	left.add_child(mg)
+	for ty3 in TYPE_IDS:
+		mg.add_child(_medal_icon(String(ty3), 40))
 	return name_btn if name_btn != null else first
 
 

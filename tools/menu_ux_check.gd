@@ -79,6 +79,11 @@ func _run() -> void:
 	var sv = load("res://scripts/save_data.gd")
 	sv.ensure()
 	sv.set("save_blocked", true)   # проверка не пишет сейв
+	var ua := OS.get_cmdline_user_args()
+	var li := ua.find("--lang")
+	if li >= 0 and li + 1 < ua.size():   # язык интерфейса: ru, ja, fr, ...
+		sv.d["settings"]["lang"] = ua[li + 1]
+		load("res://scripts/lang.gd").apply()
 	var t0 := Time.get_ticks_usec()
 	m = (load("res://scenes/menu.tscn") as PackedScene).instantiate()
 	root.add_child(m)
