@@ -5,6 +5,7 @@ const SV = preload("res://scripts/save_data.gd")
 var failures := 0
 var cases := 0
 var real_root := ""
+var legacy_files: Array = []   # --legacy <файл.json> (можно несколько): сейв старой версии с прогрессом (coins 12345, tickets 42, owned.25 shiny, tower_best 17, rifts_best 9, mods [fast])
 
 
 func _initialize() -> void:
@@ -12,6 +13,9 @@ func _initialize() -> void:
 	var root_arg := args.find("--real-root")
 	if root_arg >= 0 and root_arg + 1 < args.size():
 		real_root = String(args[root_arg + 1])
+	for i in range(args.size() - 1):
+		if args[i] == "--legacy":
+			legacy_files.append(args[i + 1])
 	call_deferred("_run")
 
 
@@ -101,6 +105,9 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_string(SV.PATH) == future_before, "файл новой версии оставлен без изменений")
 
 	_clear_test_files()
+	for lp in legacy_files:
+		_check_legacy(String(lp))
+	_clear_test_files()
 	_check_real_saves()
 	if failures == 0:
 		print("SAVE_CHECK_OK: %d assertions" % cases)
@@ -138,3 +145,31 @@ func _check_real_saves() -> void:
 		print("REAL_SAVE_READ_ONLY: %s version=%s usable=%s; открыт только для чтения" % [app_name, str(version), str(usable)])
 	if found == 0:
 		print("REAL_SAVE_SCAN: файлов save.json не найдено")
+
+
+# Сейв старой версии: прогресс на месте, новые поля по умолчанию, повторная загрузка/запись идемпотентна.
+func _check_legacy(path: String) -> void:
+	var tag := path.get_file()
+	_reset_state()
+	_write_primary(FileAccess.get_file_as_string(path))
+	SV.ensure()
+	_check(not SV.save_blocked, "%s: не заблокирован" % tag)
+	_check(int(SV.d["coins"]) == 12345 and int(SV.d["tickets"]) == 42, "%s: монеты и билеты на месте" % tag)
+	_check(SV.d["owned"].has("25") and bool(SV.d["owned"]["25"]["shiny"]), "%s: покемон и шайни на месте" % tag)
+	_check(int(SV.d["tower_best"]) == 17 and int(SV.d.get("rifts_best", 0)) == 9, "%s: рекорды на месте" % tag)
+	_check(Array(SV.d["mods"]) == ["fast"], "%s: модификаторы на месте" % tag)
+	var dd: Dictionary = SV.default_data()
+	var missing: Array = []
+	for k in dd:
+		if not SV.d.has(k):
+			missing.append(k)
+	_check(missing.is_empty(), "%s: все поля текущей схемы есть (нет: %s)" % [tag, str(missing)])
+	_check(int(SV.d.get("gcoins", 0)) == 1 and int(SV.d.get("gold_coins", 0)) == 0, "%s: Gachapon: разовый подарок 1 монета, золотых 0" % tag)
+	_check(SV.save(), "%s: записан" % tag)
+	var first: Variant = JSON.parse_string(FileAccess.get_file_as_string(SV.PATH))
+	SV.loaded = false
+	SV.d = {}
+	SV.ensure()
+	_check(SV.save(), "%s: повторно записан" % tag)
+	var second: Variant = JSON.parse_string(FileAccess.get_file_as_string(SV.PATH))
+	_check(first == second, "%s: загрузка+запись идемпотентны (подарок не выдаётся дважды)" % tag)

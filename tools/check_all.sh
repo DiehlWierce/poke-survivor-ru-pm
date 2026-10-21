@@ -74,7 +74,7 @@ ca="$(grep -Ec 'get_system_ca_certificates \(platform/macos/os_macos.mm:1035\)' 
 known_ca_errors=$((known_ca_errors + ca))
 rm -f "$PG_LOG"
 echo "== savecheck (искусственные + реальные только на чтение) =="
-run_check "savecheck" "$GODOT_BIN" --headless --path "$ROOT" --script res://tools/savecheck.gd -- --real-root "$REAL_SAVE_ROOT" || true
+run_check "savecheck" "$GODOT_BIN" --headless --path "$ROOT" --script res://tools/savecheck.gd -- --real-root "$REAL_SAVE_ROOT" --legacy "$ROOT/tools/fixtures/save_v3.0.0.json" --legacy "$ROOT/tools/fixtures/save_v3.1.1.json" || true
 echo "== savenotice (плашка о сохранении в меню) =="
 run_check "savenotice" "$GODOT_BIN" --headless --path "$ROOT" --script res://tools/savenotice.gd || true
 echo "== summary =="
