@@ -2809,18 +2809,22 @@ func _start_mode(mode: String) -> void:
 func _build_modes() -> void:
 	var s: Control = _screen("modes")
 	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", StyleBoxEmpty.new())   # sin panel de fondo: se ve el mundo del menu entre las tarjetas
 	s.add_child(pc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	pc.add_child(v)
-	v.add_child(_label("Elige un modo", 34, C_GOLD))
+	var ttl := PanelContainer.new()
+	ttl.add_theme_stylebox_override("panel", _sb(Color(0.03, 0.07, 0.18, 0.86), Color("#33498f"), 2, 10))
+	ttl.add_child(_label("Elige un modo", 30, C_GOLD))
+	v.add_child(ttl)
 	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(sc)
 	modes_box = VBoxContainer.new()
 	modes_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	modes_box.add_theme_constant_override("separation", 12)
+	modes_box.add_theme_constant_override("separation", 14)
 	sc.add_child(modes_box)
 
 
@@ -2831,6 +2835,8 @@ func _content_w() -> float:
 
 # Columnas de la lista de modos segun el ancho util: 1 en 640x480 a 140 %, 2 en ~914 de ancho, 3 a partir de ~1260.
 func _modes_cols() -> int:
+	if compact or get_window().size.x < 900:
+		return 1   # pantallas pequenas (consolas 640x480, ventana fisica < 900 px): una columna, se leen mejor y se ve el fondo
 	return DSP.cols(_content_w(), 400.0, 12.0, 3)
 
 
@@ -2844,6 +2850,11 @@ func _mode_card(title: String, desc: String, cb: Callable, icon: String = "") ->
 		b.add_theme_constant_override("h_separation", 12 if compact else 16)
 		b.add_theme_constant_override("icon_max_width", isz)
 	b.text = title + "\n" + desc
+	# tarjeta semitransparente con borde: separa bien los modos y deja ver el fondo
+	b.add_theme_stylebox_override("normal", _sb(Color(0.04, 0.09, 0.24, 0.84), Color("#33498f"), 2, 10))
+	b.add_theme_stylebox_override("hover", _sb(Color(0.1, 0.2, 0.5, 0.9), C_GOLD, 2, 10))
+	b.add_theme_stylebox_override("pressed", _sb(Color(0.07, 0.15, 0.4, 0.92), C_GOLD, 3, 10))
+	b.add_theme_stylebox_override("focus", _sb(Color(0.14, 0.28, 0.68, 0.92), C_GOLD, 3, 10))
 	b.custom_minimum_size = Vector2(0, 76 if compact else 92)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -2882,8 +2893,12 @@ func _modes_grid(cols: int) -> GridContainer:
 	var g := GridContainer.new()
 	g.columns = cols
 	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if cols == 1 and get_window().size.x < 900:
+		# una columna con el ancho de una de las dos: se ve el mundo del menu a los lados
+		g.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		g.custom_minimum_size.x = floorf((_content_w() - 12.0) / 2.0)
 	g.add_theme_constant_override("h_separation", 12)
-	g.add_theme_constant_override("v_separation", 12)
+	g.add_theme_constant_override("v_separation", 14)
 	modes_box.add_child(g)
 	return g
 
