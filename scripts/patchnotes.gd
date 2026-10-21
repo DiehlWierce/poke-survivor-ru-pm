@@ -17,6 +17,7 @@ const ENTRIES := [
 			"Nuevos sucesos en el mundo: cuevas, laboratorio de Mewtwo, meteoritos, invasiones, rescates, Pokémon alfa y zonas secretas.",
 			"Tienda de Kecleon, Poké Balls y ciclo de día y noche.",
 			"Menú: pantalla de Desafíos y TM Gachapon (máquina de monedas y colección de movimientos), manejables con el mando.",
+			"Menú: pestaña Medallas en Metas y nuevas secciones del Léxico (Fusion Dex, Kecleon, Novedades).",
 		],
 		"changes": [
 			"Las bombas eliminan a todos los enemigos de la pantalla y los jefes pierden un 30 % de vida.",
