@@ -34,6 +34,9 @@ var load_frames := 0
 var last_us := 0
 var hitches: Array = []         # [t, ms]
 var worst_ms := 0.0
+var rw_t0 := -1              # начало завесы греты (мс по часам)
+var rift_waits := 0
+var rift_wait_ms_max := 0
 var wall_t0 := 0
 
 # бот
@@ -503,6 +506,21 @@ func _watch(delta: float, rt: float) -> void:
 	var cine: bool = str(_g(m, "z_state", "")) == "cine" or (m.jd.cinematic() if _g(m, "jd") != null else false)
 	if cine:
 		cine_frames += 1
+	# 0) завеса входа в грету (арена допекается в потоке): мир стоит законно, кадры не считаем —
+	# в headless с --fixed-fps за 0,4 с ожидания потока проходят сотни «игровых» кадров. Меряем по часам.
+	if bool(_g(m, "rift_wait", false)):
+		if rw_t0 < 0:
+			rw_t0 = Time.get_ticks_msec()
+			rift_waits += 1
+		rt_still = 0
+		last_rt = rt
+		return
+	if rw_t0 >= 0:
+		var w: int = Time.get_ticks_msec() - rw_t0
+		rw_t0 = -1
+		rift_wait_ms_max = maxi(rift_wait_ms_max, w)
+		if w > 5000:
+			_issue("RIFT_WAIT_LONG", "завеса греты %d мс: " % w + _state())
 	# 1) игровое время стоит
 	if rt <= last_rt + 1e-6:
 		rt_still += 1
@@ -670,7 +688,7 @@ func _finish(why: String) -> bool:
 		"biomes": biome_seen, "rifts": int(_g(m, "run_rifts", 0)), "rift_entered": rift_entered,
 		"cards": cards_picked, "rerolls": rerolls_used, "bans": bans_used, "slot_sw": slot_switches, "z": z_used, "dyn": dyn_used, "near_deaths": near_deaths,
 		"dist": roundi(dist_total), "far": roundi(max_from_origin),
-		"nodes_max": nodes_max, "hitches": hitches.size(), "worst_ms": snappedf(worst_ms, 0.1), "hitch_list": hitches.slice(0, 6),
+		"nodes_max": nodes_max, "hitches": hitches.size(), "worst_ms": snappedf(worst_ms, 0.1), "rift_waits": rift_waits, "rift_wait_ms_max": rift_wait_ms_max, "hitch_list": hitches.slice(0, 6),
 		"blank_frames": blank_frames, "blank_run_max": blank_run_max,
 		"issues": issues, "issue_kinds": issue_kinds,
 	}

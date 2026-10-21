@@ -8,7 +8,7 @@
 # Каждый прогон — отдельный процесс Godot с временным HOME (сохранение и логи игрока не трогаются;
 # сам бот ещё и держит сохранение только в памяти с save_blocked). Ошибки скриптов ищутся в stderr.
 # Известный шум (есть и на main, гонка фоновой загрузки текстур в headless dummy-рендере): ERROR Parameter "t" is null
-# в texture_2d_initialize — не считается провалом.
+# в texture_2d_initialize (иногда вместе с «Initializing already initialized RID» и Parameter "mem" is null) — не провал.
 # Итог: таблица и $OUT/summary.txt; провал = SCRIPT ERROR/push_error/ISSUE/нет MATRIX_RESULT.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -52,7 +52,7 @@ run_one() {
 	rm -rf "$h"
 	local res errs st
 	res="$(grep -m1 '^MATRIX_RESULT ' "$log" | cut -d' ' -f2-)"
-	errs="$(grep -E 'SCRIPT ERROR|Parse Error|^ERROR:|USER ERROR' "$log" | grep -vE 'resources still in use at exit|ret != noErr|get_system_ca_certificates|RID allocations|Parameter "t" is null' | sort | uniq -c | sort -rn | head -5)"
+	errs="$(grep -E 'SCRIPT ERROR|Parse Error|^ERROR:|USER ERROR' "$log" | grep -vE 'resources still in use at exit|ret != noErr|get_system_ca_certificates|RID allocations|Parameter "t" is null|already initialized RID|Parameter "mem" is null' | sort | uniq -c | sort -rn | head -5)"
 	if [[ -z "$res" ]]; then st="FAIL(no result)"
 	elif [[ -n "$errs" ]]; then st="FAIL(script error)"
 	elif echo "$res" | grep -q '"ok":false'; then st="FAIL(issue)"
