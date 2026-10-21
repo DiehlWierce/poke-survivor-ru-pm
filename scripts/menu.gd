@@ -2172,7 +2172,7 @@ func _popup_open() -> bool:
 
 # Pantallas con pestanas: L1/R1 (o Q/E, RePag/AvPag) las cambian al instante.
 const TAB_SCREENS := ["settings", "goals", "lexicon", "gacha"]
-const GOALS_TABS := ["m", "a", "z", "p", "r"]
+const GOALS_TABS := ["m", "a", "h", "z", "p", "r"]
 const LEX_TABS := ["i", "m", "s", "a", "z"]
 # Con izquierda/derecha sobre la fila de pestanas el foco se queda en la fila (se pueden encadenar);
 # con L1/R1 y al pulsar una pestana el foco salta al primer elemento del contenido.
@@ -4997,11 +4997,14 @@ func _build_goals() -> void:
 	pc.add_child(v)
 	goals_tabs = HFlowContainer.new()
 	v.add_child(goals_tabs)
-	for t in [["m", "Misiones"], ["a", "Logros"], ["z", "Cristales Z"], ["p", "Perfil"], ["r", "Récords"]]:
+	for t in [["m", "Misiones"], ["a", "Logros"], ["h", "Medallas"], ["z", "Cristales Z"], ["p", "Perfil"], ["r", "Récords"]]:
 		var k: String = String(t[0])
 		var tb := _btn(String(t[1]), func(): goals_tab = k; _refresh_goals(); _tab_scroll_top(); _focus_content(), Vector2(60, 46))
 		_tab_fit(tb)
 		if k == "a":
+			tb.icon = IC.btn_tex("medal1", 28)
+			tb.expand_icon = false
+		elif k == "h":
 			tb.icon = IC.btn_tex("medal1", 28)
 			tb.expand_icon = false
 		elif k == "z":
@@ -5237,7 +5240,7 @@ func _refresh_goals() -> void:
 	var first: Button = null
 	var tbs: Array = goals_tabs.get_children()
 	for i in range(tbs.size()):
-		var key: String = ["m", "a", "z", "p", "r"][i]
+		var key: String = ["m", "a", "h", "z", "p", "r"][i]
 		_gold_btn(tbs[i], key == goals_tab)
 		if key == goals_tab:
 			tab_sel = tbs[i]
@@ -5246,6 +5249,8 @@ func _refresh_goals() -> void:
 		first = _goals_missions()
 	elif goals_tab == "a":
 		first = _goals_ach()
+	elif goals_tab == "h":
+		first = _goals_medals()
 	elif goals_tab == "z":
 		first = _goals_zcrystals()
 	elif goals_tab == "r":
@@ -5334,6 +5339,78 @@ func _claim_mission(m: Dictionary, weekly: bool) -> void:
 		Aud.sfx("buy")
 		toast(L.t("¡Recompensa reclamada!"))
 	_refresh_goals()
+
+
+var med_cat := "explore"
+
+
+func _type_medal_got(ty: String) -> bool:
+	return int(SV.d["stats"].get("tk_" + ty, 0)) >= ZM.NEED or int(SV.d["stats"].get("zcr_" + ty, 0)) >= 1
+
+
+func _medal_icon(ty: String, sz: int) -> Control:
+	var tr := TextureRect.new()
+	tr.texture = load("res://scripts/cave_int.gd").tex_in("medal", ty)
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.custom_minimum_size = Vector2(sz, sz)
+	if not _type_medal_got(ty):
+		tr.modulate = Color(0.16, 0.2, 0.32, 0.9)
+	return tr
+
+
+# Pestaña «Medallas» (V5.1): medallas de tipo (ZM.NEED derrotados) y logros de ach.gd por categoría
+func _goals_medals() -> Button:
+	const ACHM = preload("res://scripts/ach.gd")
+	goals_box.add_child(_label(L.t("Medallas: %d / %d") % [ACHM.count_got(), ACHM.LIST.size()], 28, C_GOLD))
+	goals_box.add_child(_label(L.t("Medallas de tipo"), 22, Color("#9fd0ff")))
+	goals_box.add_child(_label(L.t("Derrota %d Pokémon de un tipo para ganar su medalla.") % ZM.NEED, 16, Color("#c8d6ee")))
+	var tg := GridContainer.new()
+	tg.columns = DSP.cols(_content_w(), 90.0, 8.0, 6)
+	tg.add_theme_constant_override("h_separation", 8)
+	tg.add_theme_constant_override("v_separation", 8)
+	goals_box.add_child(tg)
+	for ty2 in TYPE_IDS:
+		var ty: String = String(ty2)
+		_later(goals_box, func():
+			var tcard := VBoxContainer.new()
+			tcard.add_child(_medal_icon(ty, 64))
+			var tl := _label("%d/%d" % [mini(int(SV.d["stats"].get("tk_" + ty, 0)), ZM.NEED), ZM.NEED], 14, Color("#c8d6ee"))
+			tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			tl.autowrap_mode = TextServer.AUTOWRAP_OFF
+			tcard.add_child(tl)
+			tg.add_child(tcard))
+	var chips := HFlowContainer.new()
+	chips.add_theme_constant_override("h_separation", 8)
+	chips.add_theme_constant_override("v_separation", 8)
+	goals_box.add_child(chips)
+	var first: Button = null
+	for c in ACHM.CATS:
+		var ck: String = String(c[0])
+		var n := 0
+		var d := 0
+		for a in ACHM.LIST:
+			if String(a[1]) == ck:
+				n += 1
+				if bool(ACHM.entry(String(a[0]))["got"]):
+					d += 1
+		var cb := _btn("%s  %d/%d" % [L.t(String(c[1])), d, n], func(): med_cat = ck; _refresh_goals(), Vector2(0, 44))
+		_gold_btn(cb, ck == med_cat)
+		chips.add_child(cb)
+		if first == null:
+			first = cb
+	for a in ACHM.LIST:
+		if String(a[1]) != med_cat:
+			continue
+		var e: Dictionary = ACHM.entry(String(a[0]))
+		var got: bool = bool(e["got"])
+		var prog: int = mini(int(e["prog"]), int(a[4]))
+		var txt: String = ("★ " if got else "☆ ") + L.t(String(a[2])) + "  (" + str(prog) + "/" + str(int(a[4])) + ")\n" + L.t(String(a[3]))
+		_later(goals_box, func():
+			var lb := _label(txt, 18, C_GOLD if got else Color(0.7, 0.7, 0.75))
+			lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			goals_box.add_child(lb))
+	return first
 
 
 func _goals_ach() -> Button:

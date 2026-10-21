@@ -89,6 +89,7 @@ func _run() -> void:
 	await _check_tabs()
 	await _check_chal()
 	await _check_gachapon()
+	await _check_medals()
 	await _check_dex()
 	await _check_modes_walk()
 	if failures == 0:
@@ -283,6 +284,27 @@ func _check_chal() -> void:
 		_fail("B из Испытаний ведёт в '%s', а не в modes" % m.cur)
 	m._show("main")
 	await _frames(3)
+
+
+# ---------- 5a) Вкладка «Медали»: 18 типов + список по категориям, без ошибок, кнопки категорий фокусируются ----------
+func _check_medals() -> void:
+	m.goals_tab = "h"
+	m._show("goals")
+	await _frames(30)
+	var chips := 0
+	for b in m.goals_box.find_children("*", "Button", true, false):
+		chips += 1
+	if chips < 4:
+		_fail("medals: кнопок категорий %d, ожидалось ≥4" % chips)
+	if m.focus_first == null:
+		_fail("medals: нет первой точки фокуса")
+	_shot("medals_0")
+	m.med_cat = "mastery"
+	m._refresh_goals()
+	await _frames(30)
+	m.goals_tab = "m"
+	m._show("main")
+	await _frames(5)
 
 
 # ---------- 5) TM Gachapon: монета тратится, ручка крутится, капсула даёт приём ----------
