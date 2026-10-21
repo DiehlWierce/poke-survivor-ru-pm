@@ -87,6 +87,7 @@ func _run() -> void:
 	await _check_world()
 	await _check_nav()
 	await _check_tabs()
+	await _check_chal()
 	if failures == 0:
 		print("MENU_UX_OK")
 	else:
@@ -252,3 +253,30 @@ func _check_tabs() -> void:
 			_fail("видимых страниц %d" % vis)
 		if n0 < 3:
 			_fail("вкладка %d пустая" % m.set_tab)
+
+
+# ---------- 4) Испытания: все вкладки строятся, карточек столько, сколько испытаний, Играть достижим ----------
+func _check_chal() -> void:
+	var ch = load("res://scripts/challenges.gd")
+	for cat in ["p", "d", "w"]:
+		m.chal_cat = cat
+		m._show("chal")
+		for _i in 400:
+			await _frames(1)
+			if m.fq.is_empty():
+				break
+		var n: int = m.chal_box.get_child_count()
+		var want: int = 100 if cat == "p" else (3 if cat == "d" else 5)
+		var cards := 0
+		for c in m.chal_box.get_children():
+			if c is PanelContainer:
+				cards += 1
+		if cards != want:
+			_fail("chal %s: карточек %d, ожидалось %d (детей %d)" % [cat, cards, want, n])
+		_shot("chal_" + cat)
+	m._leave()
+	await _frames(2)
+	if m.cur != "modes":
+		_fail("B из Испытаний ведёт в '%s', а не в modes" % m.cur)
+	m._show("main")
+	await _frames(3)

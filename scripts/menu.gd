@@ -14,6 +14,7 @@ const ZM = preload("res://scripts/zmove.gd")
 const DYN = preload("res://scripts/dynamax.gd")
 const ST = preload("res://scripts/starters_data.gd")
 const IC = preload("res://scripts/icons.gd")
+const CH = preload("res://scripts/challenges.gd")
 const PXF = preload("res://scripts/pxfont.gd")
 const DSP = preload("res://scripts/display.gd")
 const SLOTS = preload("res://scripts/slots.gd")
@@ -1896,6 +1897,9 @@ func _release_screen(name: String) -> void:
 		"goals":
 			_fq_cancel(goals_box, true)
 			_clear(goals_box)
+		"chal":
+			_fq_cancel(chal_box, true)
+			_clear(chal_box)
 		"settings":
 			_fq_cancel(settings_host, true)
 			settings_pages.clear()
@@ -2949,6 +2953,13 @@ func _refresh_modes() -> void:
 		var rbest: int = int(SV.d.get("rifts_best", 0))
 		_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock")))
 	_later(modes_box, func():
+		CH.st()
+		for ce in [["p", "Retos permanentes", ["100 retos de 10 minutos como máximo.", "Cada uno da su premio una sola vez.", "Los más difíciles dan Gachapon Coin Dorada."], "gcoin"], ["d", "Retos diarios", ["3 retos nuevos cada día.", "Cada uno da 1 Gachapon Coin la primera vez."], "gcoin"], ["w", "Retos semanales", ["5 retos nuevos cada semana.", "Uno es de nivel Experto y da Gachapon Coin Dorada."], "gcoin_gold"]]:
+			var ck: String = String(ce[0])
+			_mode_cell(mg, _mode_card(L.t(String(ce[1])), " ".join((ce[2] as Array).map(func(x): return L.t(String(x)))), func():
+				chal_cat = ck
+				_show("chal"), String(ce[3]))))
+	_later(modes_box, func():
 		var ty: String = String(SV.d.get("mode_type", "fire"))
 		if not TYPE_IDS.has(ty):
 			ty = "fire"
@@ -2996,6 +3007,157 @@ func _refresh_modes() -> void:
 				SV.save())
 			(mm[0] as Control).add_child(cb))
 	focus_first = first
+
+
+var chal_box: VBoxContainer
+var chal_cat := "p"
+var chal_diff := ""
+
+
+func _build_chal() -> void:
+	var s: Control = _screen("chal")
+	var pc := PanelContainer.new()
+	s.add_child(pc)
+	var sc := _new_scroll()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pc.add_child(sc)
+	chal_box = VBoxContainer.new()
+	chal_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chal_box.add_theme_constant_override("separation", 8)
+	sc.add_child(chal_box)
+
+
+func _coin_row(n: int, gold: bool, size: int = 26) -> HBoxContainer:
+	var r := HBoxContainer.new()
+	r.add_theme_constant_override("separation", 6)
+	r.add_child(IC.rect("gcoin_gold" if gold else "gcoin", size))
+	var l := _label("×%d" % n, int(size * 0.85), Color("#ffd23f") if gold else Color("#9fd0ff"))
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	r.add_child(l)
+	return r
+
+
+# Tarjeta de reto; devuelve su boton "Jugar" (null si ya esta reclamado o no esta disponible).
+func _chal_card(d: Dictionary, inst: Dictionary) -> Button:
+	var done: bool = CH.is_done(String(inst["key"]))
+	var ok: bool = CH.available(d)
+	var gold: bool = CH.reward_gold(inst)
+	var dcol: Color = CH.DIFF_COL[String(d["d"])]
+	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", _sb(Color(0.08, 0.14, 0.36, 0.8) if ok else Color(0.1, 0.1, 0.16, 0.7), Color("#ffd23f") if (gold and ok) else Color("#33498f"), 3 if gold else 2, 14))
+	chal_box.add_child(pc)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	pc.add_child(col)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	col.add_child(top)
+	var num := _label("#%03d" % int(d["id"]), 16 if compact else 18, Color("#8fa3d0"))
+	num.autowrap_mode = TextServer.AUTOWRAP_OFF
+	top.add_child(num)
+	var nm := _label(CH.name_of(d), 20 if compact else 24, Color.WHITE if ok else Color("#8a93a8"))
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(nm)
+	var dl := _label(L.t(String(CH.DIFF_NAME[String(d["d"])])), 15 if compact else 16, dcol)
+	dl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	top.add_child(dl)
+	for ln in CH.lines(d, CH.new_metrics()):
+		col.add_child(_label("• " + String(ln[0]), 16 if compact else 18, Color("#d6e2ff") if ok else Color("#7d869b")))
+	for rt in CH.restrictions(d):
+		col.add_child(_label("⚠ " + String(rt), 15 if compact else 17, Color("#ffb454") if ok else Color("#7d869b")))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	col.add_child(row)
+	var cr := _coin_row(1, gold)
+	cr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(cr)
+	var out: Button = null
+	var b: Button
+	if done:
+		b = _btn("Reclamado", func(): pass, Vector2(180, 44))
+		b.disabled = true
+	elif not ok:
+		b = _btn("Próximamente", func(): pass, Vector2(180, 44))
+		b.disabled = true
+	else:
+		var ii: Dictionary = inst
+		b = _btn("Jugar", func(): _chal_play(ii), Vector2(180, 44))
+		out = b
+	b.text = L.t(b.text)
+	row.add_child(b)
+	return out
+
+
+func _chal_play(inst: Dictionary) -> void:
+	SV.run_mode = "chal"
+	SV.run_chal = inst.duplicate()
+	SV.run_mods = []
+	SV.run_dex = int(SV.d["selected"])
+	SV.run_type = String(SV.d.get("mode_type", "fire"))
+	SV.save()
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+
+func _refresh_chal() -> void:
+	_fq_cancel(chal_box, true)
+	_clear(chal_box)
+	gi_dirty = true
+	CH.st()
+	var bal := HBoxContainer.new()
+	bal.add_theme_constant_override("separation", 18)
+	var t1 := _label(L.t("Retos de 10 minutos"), 24 if compact else 28, C_GOLD)
+	t1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bal.add_child(t1)
+	bal.add_child(_coin_row(int(SV.d.get("gcoins", 0)), false, 28))
+	bal.add_child(_coin_row(int(SV.d.get("gold_coins", 0)), true, 28))
+	chal_box.add_child(bal)
+	var chips := HFlowContainer.new()
+	chips.add_theme_constant_override("h_separation", 8)
+	chips.add_theme_constant_override("v_separation", 8)
+	chal_box.add_child(chips)
+	var sel_chip: Button = null
+	for c in [["p", "Permanentes"], ["d", "Diarios"], ["w", "Semanales"]]:
+		var ck: String = String(c[0])
+		var cb := _btn(L.t(String(c[1])), func(): chal_cat = ck; _refresh_chal(), Vector2(170, 44))
+		_gold_btn(cb, ck == chal_cat)
+		chips.add_child(cb)
+		if ck == chal_cat:
+			sel_chip = cb
+			tab_sel = cb
+	tab_row = chips
+	var info := _label(L.t("Cada intento dura 10 minutos como máximo. Si no lo logras, no hay premio y puedes reintentar. Cada reto da su premio una sola vez."), 16, Color("#c8d6ee"))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chal_box.add_child(info)
+	var cards: Array = []
+	if chal_cat == "p":
+		var dch := HFlowContainer.new()
+		dch.add_theme_constant_override("h_separation", 8)
+		dch.add_theme_constant_override("v_separation", 8)
+		chal_box.add_child(dch)
+		for f in [["", "Todos"], ["e", "Fácil"], ["n", "Normal"], ["h", "Difícil"], ["x", "Nivel experto"]]:
+			var fk: String = String(f[0])
+			var fb := _btn(L.t(String(f[1])), func(): chal_diff = fk; _refresh_chal(), Vector2(110, 40))
+			_gold_btn(fb, fk == chal_diff)
+			dch.add_child(fb)
+		var done_n := 0
+		for d in CH.all():
+			if CH.is_done(CH.key_perm(int(d["id"]))):
+				done_n += 1
+		chal_box.add_child(_label(L.t("Completados: %d / 100") % done_n, 20, Color("#cfd9f5")))
+		for d in CH.all():
+			if chal_diff == "" or String(d["d"]) == chal_diff:
+				cards.append([d, CH.instance_perm(d)])
+	else:
+		var wk: bool = chal_cat == "w"
+		chal_box.add_child(_label(L.t("Se renuevan en %s") % CH.fmt_left(CH.secs_to_reset(wk)), 20, Color("#ffd23f")))
+		for inst in (CH.weekly() if wk else CH.daily()):
+			cards.append([CH.by_id(int(inst["id"])), inst])
+	# Las tarjetas se construyen por tandas (100 retos permanentes de golpe congelan la consola).
+	for cd in cards:
+		_later(chal_box, func():
+			_chal_card(cd[0], cd[1]))
+	focus_first = sel_chip
 
 
 func _refresh_main() -> void:
