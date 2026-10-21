@@ -82,3 +82,9 @@
 | 2–6 | не начаты | см. карту; main.gd 54 чистых/41 конфликт/187 новых, menu.gd 10/36/141 |
 
 Открыто: `docs/v5_compare_report.md` так и не появился; недельный лимит на старте работы был 84 % (потолок 98 %) — перенос 26 новых файлов не помещается, продолжать в новом окне лимитов.
+
+### Этап 1 (готово частично)
+Коммиты на `port/v5`: данные `abilities/moves_data/types_data` (чистая дельта); новые модули `gachapon, gachapon_data, challenges, challenges_data, fusions, kec_spr, evo_abil, ach, textscale, touch_scroll` (пока не подключены из main/menu — подключение в этапах 2–6); чистые дельты `progress, save_data, slots, pxfont, zmove, dynamax, lang(LANGS+vi)`; новые поля `default_data` (`fusions`, `manual_aim, mono_bonus, fx_op, act_side, text_sz`) — только добавлением, `SAVE_SCHEMA_VERSION` не менялся; `gift_6h` (1 gcoin) в `ensure` — только если сейв не повреждён/не из бэкапа; ключи `lang_*` добавлены недостающие из V5.1 (наши значения не перезаписаны), `lang_vi.json` скопирован.
+Осталось в этапе 1: `kecleon.gd`, `icons`, `vfx` (требует `vfx2`, этап 2), `judgment`/`display`/`pad`/`pause_ui`/`patchnotes`/`updater` (этап 5–6), конфликтные `save_data.default_data` уже слит, `ensure` частично.
+Вопросы владельцу: шрифт/диакритика для `vi` (проверить на 640x480, рост pck); подключение `ach`/`challenges` к меню — этап 4.
+Инструменты: `tools/v5_splice.py` (замена символа телом V5.1), `tools/v5_append.py` (добавление нового символа).

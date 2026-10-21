@@ -234,25 +234,25 @@ static func check() -> Array:
 
 # ---------------- misiones de Cristales Z ----------------
 # Una mision por tipo: al completarla se desbloquea el movimiento Z de ese tipo (igual que el cristal del gacha).
-const ZMIS: = [
-	["normal", "Derrota a 1.500 Pokémon en total.", "totalKills", 1500], 
-	["fire", "Aguanta 8 minutos en una partida.", "bestMin", 8], 
-	["water", "Juega 15 partidas.", "runs", 15], 
-	["electric", "Llega al nivel 25 en una partida.", "bestLevel", 25], 
-	["grass", "Abre 25 cofres.", "chests", 25], 
-	["ice", "Haz 30 tiradas en el gacha.", "pulls", 30], 
-	["fighting", "Derrota a 10 jefes.", "bossesTotal", 10], 
-	["poison", "Evoluciona 10 movimientos.", "evolutions", 10], 
-	["ground", "Consigue 30 Pokémon.", "own", 30], 
-	["flying", "Juega 5 Desafíos diarios.", "dailyPlays", 5], 
-	["psychic", "Encuentra 10 objetos distintos.", "itemsFound", 10], 
-	["bug", "Derrota a 4 jefes en el Rush de Jefes.", "rushBest", 4], 
-	["rock", "Supera el piso 8 de la Torre.", "towerBest", 8], 
-	["ghost", "Gana 5 peleas en grietas.", "riftWins", 5], 
-	["dragon", "Aguanta 12 minutos en una partida.", "bestMin", 12], 
-	["dark", "Vence a 3 legendarios distintos.", "legends", 3], 
-	["steel", "Aguanta 8 minutos en Supervivencia por tipo.", "typeBestMin", 8], 
-	["fairy", "Aguanta 8 minutos en Modo Equipo.", "teamBestMin", 8], 
+const ZMIS := [
+	["normal", "Derrota a 1.500 Pokémon en total.", "totalKills", 1500],
+	["fire", "Aguanta 8 minutos en una partida.", "bestMin", 8],
+	["water", "Juega 15 partidas.", "runs", 15],
+	["electric", "Llega al nivel 25 en una partida.", "bestLevel", 25],
+	["grass", "Abre 25 cofres.", "chests", 25],
+	["ice", "Haz 30 tiradas en el gacha.", "pulls", 30],
+	["fighting", "Derrota a 10 jefes.", "bossesTotal", 10],
+	["poison", "Evoluciona 10 movimientos.", "evolutions", 10],
+	["ground", "Consigue 30 Pokémon.", "own", 30],
+	["flying", "Juega 5 Desafíos diarios.", "dailyPlays", 5],
+	["psychic", "Encuentra 10 objetos distintos.", "itemsFound", 10],
+	["bug", "Derrota a 4 jefes en el Rush de Jefes.", "rushBest", 4],
+	["rock", "Supera el piso 8 de la Torre.", "towerBest", 8],
+	["ghost", "Gana 5 peleas en grietas.", "riftWins", 5],
+	["dragon", "Aguanta 12 minutos en una partida.", "bestMin", 12],
+	["dark", "Vence a 3 legendarios distintos.", "legends", 3],
+	["steel", "Aguanta 8 minutos en Supervivencia por tipo.", "typeBestMin", 8],
+	["fairy", "Aguanta 8 minutos en Modo Equipo.", "teamBestMin", 8],
 ]
 const ZMIS_COINS := 500
 

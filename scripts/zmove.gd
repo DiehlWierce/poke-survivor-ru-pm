@@ -36,25 +36,25 @@ static func unlocked(type: String, stats: Dictionary) -> bool:
 
 # Fuego fatuo: bola de fuego flotante con llama que ondula, estela de brasas y nucleo claro (estilo Fuego Fatuo).
 class Wisp extends Node2D:
-	var life: = 0.0
-	var sd: = randf() * 10.0
+	var life := 0.0
+	var sd := randf() * 10.0
 	var home: Node2D = null
-	var ang: = 0.0
-	var rad: = 70.0
-	var t_spawn: = 0.0
-	var t_go: = 1.0
-	var dash: = 0.5
-	var to: = Vector2.ZERO
-	var from: = Vector2.ZERO
-	var ctrl: = Vector2.ZERO
-	var launched: = false
+	var ang := 0.0
+	var rad := 70.0
+	var t_spawn := 0.0
+	var t_go := 1.0
+	var dash := 0.5
+	var to := Vector2.ZERO
+	var from := Vector2.ZERO
+	var ctrl := Vector2.ZERO
+	var launched := false
 	var cb: Callable
 	var trail: Array = []
-	var sz: = 1.0
-	var vel: = Vector2.ZERO
+	var sz := 1.0
+	var vel := Vector2.ZERO
 
 	func _init() -> void :
-		var mat: = CanvasItemMaterial.new()
+		var mat := CanvasItemMaterial.new()
 		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		material = mat
 		z_index = 30
@@ -110,7 +110,7 @@ class Wisp extends Node2D:
 		var layers: Array = [[1.0, Color(0.9, 0.18, 0.04, 0.6)], [0.78, Color(1.0, 0.45, 0.08, 0.7)], [0.52, Color(1.0, 0.78, 0.3, 0.8)], [0.3, Color(1.0, 0.97, 0.85, 0.95)]]
 		for ly in layers:
 			var k2: float = float(ly[0])
-			var pts: = PackedVector2Array()
+			var pts := PackedVector2Array()
 			for j in range(14):
 				var a: float = TAU * float(j) / 14.0
 				var base: Vector2 = Vector2.from_angle(a) * r * k2

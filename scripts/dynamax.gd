@@ -32,10 +32,10 @@ var aura_node = null
 
 # Aura roja que envuelve al Pokemon Dynamax (como en Espada y Escudo): niebla roja y violeta que sube en espiral y chispas.
 class Aura extends Node2D:
-	var t: = randf() * 10.0
-	var h: = 40.0
-	var w: = 24.0
-	var col: = Color(0.9, 0.08, 0.25)
+	var t := randf() * 10.0
+	var h := 40.0
+	var w := 24.0
+	var col := Color(0.9, 0.08, 0.25)
 
 	func _init() -> void :
 		show_behind_parent = true
@@ -46,9 +46,9 @@ class Aura extends Node2D:
 
 	func _draw() -> void :
 		var beat: float = 0.5 + 0.5 * sin(t * 4.0)
-		var c: = Vector2(0.0, - h * 0.5)
+		var c := Vector2(0.0, - h * 0.5)
 
-		var pts: = PackedVector2Array()
+		var pts := PackedVector2Array()
 		for i in range(28):
 			var a: float = TAU * float(i) / 28.0
 			pts.append(Vector2(cos(a) * w * (1.7 + 0.12 * beat), sin(a) * w * 0.55))
@@ -62,7 +62,7 @@ class Aura extends Node2D:
 			var ph: float = fposmod(t * 0.55 + float(i) * 0.0714, 1.0)
 			var a2: float = t * 1.6 + float(i) * 0.9
 			var rr: float = w * (0.9 + 0.35 * sin(t * 2.0 + float(i)))
-			var p: = Vector2(cos(a2) * rr, c.y + h * 0.55 - ph * h * 1.25 + sin(a2) * rr * 0.3)
+			var p := Vector2(cos(a2) * rr, c.y + h * 0.55 - ph * h * 1.25 + sin(a2) * rr * 0.3)
 			var al: float = sin(ph * PI) * 0.45
 			var cc: Color = col.lerp(Color(0.5, 0.1, 0.7), 0.5 + 0.5 * sin(float(i)))
 			draw_circle(p, 4.0 + 6.0 * (1.0 - ph) + 2.0 * beat, Color(cc.r, cc.g, cc.b, al))
@@ -77,7 +77,7 @@ class Aura extends Node2D:
 
 
 class Den extends Node2D:
-	var t: = randf() * 10.0
+	var t := randf() * 10.0
 
 	func _process(d: float) -> void :
 		t += d
@@ -90,7 +90,7 @@ class Den extends Node2D:
 		return fposmod(sin(float(i) * 12.9898 + float(k) * 78.233) * 43758.5453, 1.0)
 
 	func _ring_poly(rx: float, ry: float, jag: float, seed: int, n: int = 26) -> PackedVector2Array:
-		var pts: = PackedVector2Array()
+		var pts := PackedVector2Array()
 		for i in range(n):
 			var a: float = TAU * float(i) / float(n)
 			var r: float = 1.0 + (hs(i, seed) - 0.5) * jag
@@ -114,7 +114,7 @@ class Den extends Node2D:
 
 		for i in range(9):
 			var a1: float = TAU * float(i) / 9.0 + 0.3
-			var bp: = Vector2(sn(cos(a1) * 72.0), sn(sin(a1) * 28.0))
+			var bp := Vector2(sn(cos(a1) * 72.0), sn(sin(a1) * 28.0))
 			var rs: float = 6.0 + hs(i, 21) * 7.0
 			draw_colored_polygon(PackedVector2Array([bp + Vector2( - rs, 0.0), bp + Vector2( - rs * 0.4, - rs), bp + Vector2(rs * 0.6, - rs * 0.8), bp + Vector2(rs, 0.0)]), Color("#5d4448"))
 			draw_colored_polygon(PackedVector2Array([bp + Vector2( - rs * 0.4, - rs), bp + Vector2(rs * 0.6, - rs * 0.8), bp + Vector2(rs * 0.1, - rs * 0.3)]), Color("#7a5c60"))
@@ -123,11 +123,11 @@ class Den extends Node2D:
 		order.sort_custom( func(x, y): return sin(TAU * float(x) / 7.0 + 0.5) < sin(TAU * float(y) / 7.0 + 0.5))
 		for idx in order:
 			var a2: float = TAU * float(idx) / 7.0 + 0.5
-			var b: = Vector2(sn(cos(a2) * 68.0), sn(sin(a2) * 26.0))
+			var b := Vector2(sn(cos(a2) * 68.0), sn(sin(a2) * 26.0))
 			var hh: float = 30.0 + hs(idx, 33) * 26.0
 			var wd: float = 9.0 + hs(idx, 35) * 5.0
 			var tilt: float = (hs(idx, 37) - 0.5) * 14.0
-			var top: = b + Vector2(tilt, - hh)
+			var top := b + Vector2(tilt, - hh)
 
 			draw_circle(b + Vector2(tilt * 0.5, - hh * 0.5), hh * 0.8, Color(1.0, 0.2, 0.4, 0.05 + 0.04 * beat))
 			draw_colored_polygon(PackedVector2Array([b + Vector2( - wd, 0.0), b + Vector2( - wd * 0.8, - hh * 0.65), top, b + Vector2(0.0, 0.0)]), Color("#b3103a"))

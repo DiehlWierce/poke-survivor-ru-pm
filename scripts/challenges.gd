@@ -8,83 +8,83 @@ const PG = preload("res://scripts/progress.gd")
 const L = preload("res://scripts/lang.gd")
 const DATA = preload("res://scripts/challenges_data.gd")
 
-const CH_TIME: = 600.0
+const CH_TIME := 600.0
 
 
 const READY: Array = ["gachapon", "upgrade", "infat"]
 
-const DIFF_NAME: = {"e": "Fácil", "n": "Normal", "h": "Difícil", "x": "Nivel experto"}
-const DIFF_COL: = {"e": Color("#7fe08a"), "n": Color("#6fb4ff"), "h": Color("#ffb454"), "x": Color("#ff6b8a")}
+const DIFF_NAME := {"e": "Fácil", "n": "Normal", "h": "Difícil", "x": "Nivel experto"}
+const DIFF_COL := {"e": Color("#7fe08a"), "n": Color("#6fb4ff"), "h": Color("#ffb454"), "x": Color("#ff6b8a")}
 
 
-const LABEL: = {
-	"survive": "Sobrevive %d min", 
-	"survive_full": "Sobrevive los 10 minutos completos", 
-	"nodmg": "%d min seguidos sin recibir daño", 
-	"kills": "Enemigos derrotados: %d", 
-	"move_min": "Minutos distintos con movimiento: %d", 
-	"dodges": "Esquivas con éxito: %d", 
-	"surround": "Cercos de enemigos esquivados: %d", 
-	"elites": "Élites derrotados: %d", 
-	"bosses": "Jefes derrotados: %d", 
-	"crits": "Golpes críticos: %d", 
-	"kills_status": "Derrotados con un estado alterado: %d", 
-	"legend": "Derrota al legendario designado", 
-	"burn_n": "Enemigos distintos quemados: %d", 
-	"poison_n": "Enemigos distintos envenenados: %d", 
-	"freeze_n": "Enemigos distintos congelados: %d", 
-	"para_n": "Enemigos distintos paralizados: %d", 
-	"infat_n": "Enemigos distintos enamorados: %d", 
-	"kinds": "Tipos de estado distintos aplicados: %d", 
-	"kills_cc": "Derrotados bajo control de masas: %d", 
-	"multi_status_n": "Enemigos con 2 estados distintos: %d", 
-	"evolves": "Movimientos evolucionados: %d", 
-	"bonded": "Movimientos vinculados activos: %d", 
-	"fusions": "Fusiones realizadas: %d", 
-	"kills_after_fusion": "Derrotados tras la fusión: %d", 
-	"kills_proj": "Derrotados con proyectiles: %d", 
-	"kills_melee": "Derrotados cuerpo a cuerpo: %d", 
-	"kills_aoe": "Derrotados con ataques de área: %d", 
-	"moves_20": "Movimientos con 20 derrotas cada uno: %d", 
-	"types_10": "Tipos con 10 derrotas cada uno: %d", 
-	"types_20": "Tipos con 20 derrotas cada uno: %d", 
-	"types_any": "Tipos de movimiento usados: %d", 
-	"env_kills": "Derrotados con bono de entorno activo: %d", 
-	"upgrades": "Mejoras compradas: %d", 
-	"milestones": "Objetos en su siguiente hito: %d", 
-	"pierce3": "Ataques que golpean a 3 o más enemigos: %d", 
-	"double": "Golpes dobles: %d", 
-	"lifesteal": "Vida recuperada con robo de vida: %d", 
-	"coins": "Pokémonedas recogidas: %d", 
-	"coins_end": "Terminar con al menos %d Pokémonedas", 
-	"loot": "Objetos de botín recogidos: %d", 
-	"equipped": "Movimientos equipados: %d", 
-	"slot_buys": "Ampliaciones de hueco compradas: %d", 
-	"slots6": "Alcanza los 6 huecos de movimiento", 
-	"gacha_unlock": "Movimientos desbloqueados en el Gachapon: %d", 
-	"new_move": "Movimientos nuevos desbloqueados: %d", 
-	"compat_kills": "Derrotados con un movimiento compatible: %d", 
-	"moves_used": "Movimientos distintos usados: %d", 
-	"waves": "Oleadas superadas: %d", 
-	"outbreak_kills": "Derrotados en el brote controlado: %d", 
-	"boss_clean": "Jefes derrotados sin recibir su daño: %d", 
+const LABEL := {
+	"survive": "Sobrevive %d min",
+	"survive_full": "Sobrevive los 10 minutos completos",
+	"nodmg": "%d min seguidos sin recibir daño",
+	"kills": "Enemigos derrotados: %d",
+	"move_min": "Minutos distintos con movimiento: %d",
+	"dodges": "Esquivas con éxito: %d",
+	"surround": "Cercos de enemigos esquivados: %d",
+	"elites": "Élites derrotados: %d",
+	"bosses": "Jefes derrotados: %d",
+	"crits": "Golpes críticos: %d",
+	"kills_status": "Derrotados con un estado alterado: %d",
+	"legend": "Derrota al legendario designado",
+	"burn_n": "Enemigos distintos quemados: %d",
+	"poison_n": "Enemigos distintos envenenados: %d",
+	"freeze_n": "Enemigos distintos congelados: %d",
+	"para_n": "Enemigos distintos paralizados: %d",
+	"infat_n": "Enemigos distintos enamorados: %d",
+	"kinds": "Tipos de estado distintos aplicados: %d",
+	"kills_cc": "Derrotados bajo control de masas: %d",
+	"multi_status_n": "Enemigos con 2 estados distintos: %d",
+	"evolves": "Movimientos evolucionados: %d",
+	"bonded": "Movimientos vinculados activos: %d",
+	"fusions": "Fusiones realizadas: %d",
+	"kills_after_fusion": "Derrotados tras la fusión: %d",
+	"kills_proj": "Derrotados con proyectiles: %d",
+	"kills_melee": "Derrotados cuerpo a cuerpo: %d",
+	"kills_aoe": "Derrotados con ataques de área: %d",
+	"moves_20": "Movimientos con 20 derrotas cada uno: %d",
+	"types_10": "Tipos con 10 derrotas cada uno: %d",
+	"types_20": "Tipos con 20 derrotas cada uno: %d",
+	"types_any": "Tipos de movimiento usados: %d",
+	"env_kills": "Derrotados con bono de entorno activo: %d",
+	"upgrades": "Mejoras compradas: %d",
+	"milestones": "Objetos en su siguiente hito: %d",
+	"pierce3": "Ataques que golpean a 3 o más enemigos: %d",
+	"double": "Golpes dobles: %d",
+	"lifesteal": "Vida recuperada con robo de vida: %d",
+	"coins": "Pokémonedas recogidas: %d",
+	"coins_end": "Terminar con al menos %d Pokémonedas",
+	"loot": "Objetos de botín recogidos: %d",
+	"equipped": "Movimientos equipados: %d",
+	"slot_buys": "Ampliaciones de hueco compradas: %d",
+	"slots6": "Alcanza los 6 huecos de movimiento",
+	"gacha_unlock": "Movimientos desbloqueados en el Gachapon: %d",
+	"new_move": "Movimientos nuevos desbloqueados: %d",
+	"compat_kills": "Derrotados con un movimiento compatible: %d",
+	"moves_used": "Movimientos distintos usados: %d",
+	"waves": "Oleadas superadas: %d",
+	"outbreak_kills": "Derrotados en el brote controlado: %d",
+	"boss_clean": "Jefes derrotados sin recibir su daño: %d",
 }
-const RS_LABEL: = {
-	"no_heal": "Sin curación activa", 
-	"frail": "Tu vida máxima se reduce a la mitad", 
-	"max_moves": "Máximo 2 movimientos de ataque", 
-	"one_move": "Solo puedes tener 1 movimiento de ataque", 
-	"one_hp": "Tu vida máxima es 1 y no puedes curarte", 
-	"no_move": "Tu Pokémon no puede caminar", 
-	"no_evo": "No puedes evolucionar movimientos", 
-	"no_fusion": "No puedes fusionar movimientos", 
-	"no_upgrade": "No puedes comprar mejoras", 
-	"no_status": "Los estados alterados no cuentan", 
-	"no_crit": "Los golpes críticos no cuentan", 
-	"coins_max": "Máximo %d Pokémonedas recogidas", 
+const RS_LABEL := {
+	"no_heal": "Sin curación activa",
+	"frail": "Tu vida máxima se reduce a la mitad",
+	"max_moves": "Máximo 2 movimientos de ataque",
+	"one_move": "Solo puedes tener 1 movimiento de ataque",
+	"one_hp": "Tu vida máxima es 1 y no puedes curarte",
+	"no_move": "Tu Pokémon no puede caminar",
+	"no_evo": "No puedes evolucionar movimientos",
+	"no_fusion": "No puedes fusionar movimientos",
+	"no_upgrade": "No puedes comprar mejoras",
+	"no_status": "Los estados alterados no cuentan",
+	"no_crit": "Los golpes críticos no cuentan",
+	"coins_max": "Máximo %d Pokémonedas recogidas",
 }
 
-const NO_NUM: = ["survive_full", "legend", "slots6"]
+const NO_NUM := ["survive_full", "legend", "slots6"]
 
 
 static func all() -> Array:
@@ -157,7 +157,7 @@ static func daily() -> Array:
 	var key: String = String(ids["d"])
 	var rng: Array = [PG._rng_state("chal-d-" + key)]
 	var out: Array = []
-	var i: = 0
+	var i := 0
 	for tier in ["e", "n", "h"]:
 		var got: Array = _pick(_pool(tier), 1, rng)
 		if got.is_empty():
@@ -184,7 +184,7 @@ static func weekly() -> Array:
 		for d in _pick(pool, int(tier[1]), rng):
 			picks.append([d, String(tier[0])])
 			seen.append(int(d["id"]))
-	var i: = 0
+	var i := 0
 	for pk in picks:
 		out.append({"key": "w:%s:%d" % [key, i], "id": int(pk[0]["id"]), "kind": "w", "gold": String(pk[1]) == "x"})
 		i += 1
@@ -243,10 +243,10 @@ static func grant(inst: Dictionary) -> String:
 
 
 static func new_metrics() -> Dictionary:
-	return {"time": 0.0, "survive_full": 0, "nodmg": 0.0, "nodmg_cur": 0.0, "kills": 0, "elites": 0, "bosses": 0, "crits": 0, 
-		"coins": 0, "loot": 0, "evolves": 0, "equipped": 0, "bonded": 0, "kills_status": 0, "kills_cc": 0, 
-		"kills_proj": 0, "kills_melee": 0, "kills_aoe": 0, "burn_n": 0, "poison_n": 0, "freeze_n": 0, "para_n": 0, 
-		"kinds": 0, "multi_status_n": 0, "pierce3": 0, "move_min": 0, "moves_20": 0, "types_10": 0, "types_20": 0, "types_any": 0, 
+	return {"time": 0.0, "survive_full": 0, "nodmg": 0.0, "nodmg_cur": 0.0, "kills": 0, "elites": 0, "bosses": 0, "crits": 0,
+		"coins": 0, "loot": 0, "evolves": 0, "equipped": 0, "bonded": 0, "kills_status": 0, "kills_cc": 0,
+		"kills_proj": 0, "kills_melee": 0, "kills_aoe": 0, "burn_n": 0, "poison_n": 0, "freeze_n": 0, "para_n": 0,
+		"kinds": 0, "multi_status_n": 0, "pierce3": 0, "move_min": 0, "moves_20": 0, "types_10": 0, "types_20": 0, "types_any": 0,
 		"moves_used": 0, "boss_clean": 0, "upgrades": 0, "dead": false, "heals": 0}
 
 
@@ -269,10 +269,10 @@ static func lines(d: Dictionary, m: Dictionary) -> Array:
 	var out: Array = []
 	var req: Dictionary = d["req"]
 	for k in req:
-		var key: = String(k)
+		var key := String(k)
 		var tg: float = float(req[k])
 		var cur: float = _val(m, key)
-		var txt: = ""
+		var txt := ""
 		if key.begins_with("kills_type:"):
 			var tn: String = L.t(String(preload("res://scripts/moves_data.gd").TYPE_NAME.get(key.substr(11), key.substr(11))))
 			txt = L.t("Derrotados con movimientos de tipo %s: %d") % [tn, int(tg)]
@@ -300,7 +300,7 @@ static func restrictions(d: Dictionary) -> Array:
 	var out: Array = []
 	var rs: Dictionary = d["rs"]
 	for k in rs:
-		var key: = String(k)
+		var key := String(k)
 		if key == "coins_max":
 			out.append(L.t(String(RS_LABEL[key])) % int(rs[k]))
 		elif RS_LABEL.has(key):

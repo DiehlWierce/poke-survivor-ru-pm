@@ -2,25 +2,25 @@ extends RefCounted
 
 const SV = preload("res://scripts/save_data.gd")
 
-const CATS: = [["explore", "Exploración"], ["pokemon", "Pokémon"], ["events", "Eventos"], ["merch", "Comerciantes"], ["mastery", "Maestría"]]
-const CAVE_TYPES: = ["fire", "water", "grass", "electric", "ice", "fighting", "poison", "ground", "psychic", "bug", "ghost", "dragon", "dark", "fairy"]
-const KEC_VARS: = ["green", "blue", "red", "purple", "gold", "shiny"]
+const CATS := [["explore", "Exploración"], ["pokemon", "Pokémon"], ["events", "Eventos"], ["merch", "Comerciantes"], ["mastery", "Maestría"]]
+const CAVE_TYPES := ["fire", "water", "grass", "electric", "ice", "fighting", "poison", "ground", "psychic", "bug", "ghost", "dragon", "dark", "fairy"]
+const KEC_VARS := ["green", "blue", "red", "purple", "gold", "shiny"]
 
-const LIST: = [
-	["cave1", "explore", "Espeleólogo", "Completa una cueva elemental.", 1], 
-	["cave_master", "mastery", "Maestro elemental", "Completa una cueva de cada uno de los 14 tipos disponibles.", 14], 
-	["secret1", "explore", "Ojo de halcón", "Descubre un secreto.", 1], 
-	["secret_hunter", "explore", "Cazador de secretos", "Descubre 25 secretos.", 25], 
-	["night", "events", "Superviviente nocturno", "Sobrevive a una noche entera.", 1], 
-	["inv1", "events", "Frente común", "Sobrevive a una invasión.", 1], 
-	["inv_night", "events", "Pesadilla superada", "Sobrevive a una invasión nocturna.", 1], 
-	["deoxys", "events", "Visitante del espacio", "Derrota a Deoxys.", 1], 
-	["mewtwo", "events", "Proyecto completado", "Derrota a Mewtwo.", 1], 
-	["kec_col", "merch", "Coleccionista de Kecleon", "Encuentra las 6 variantes de Kecleon.", 6], 
-	["alpha", "pokemon", "Domador de Alfas", "Captura un Pokémon Alfa.", 1], 
-	["alpha10", "pokemon", "Maestro de Alfas", "Captura 10 Pokémon Alfa.", 10], 
-	["rescue1", "pokemon", "Buen samaritano", "Rescata a un Pokémon herido.", 1], 
-	["guardian", "pokemon", "Guardián de Pokémon", "Rescata a 25 Pokémon.", 25], 
+const LIST := [
+	["cave1", "explore", "Espeleólogo", "Completa una cueva elemental.", 1],
+	["cave_master", "mastery", "Maestro elemental", "Completa una cueva de cada uno de los 14 tipos disponibles.", 14],
+	["secret1", "explore", "Ojo de halcón", "Descubre un secreto.", 1],
+	["secret_hunter", "explore", "Cazador de secretos", "Descubre 25 secretos.", 25],
+	["night", "events", "Superviviente nocturno", "Sobrevive a una noche entera.", 1],
+	["inv1", "events", "Frente común", "Sobrevive a una invasión.", 1],
+	["inv_night", "events", "Pesadilla superada", "Sobrevive a una invasión nocturna.", 1],
+	["deoxys", "events", "Visitante del espacio", "Derrota a Deoxys.", 1],
+	["mewtwo", "events", "Proyecto completado", "Derrota a Mewtwo.", 1],
+	["kec_col", "merch", "Coleccionista de Kecleon", "Encuentra las 6 variantes de Kecleon.", 6],
+	["alpha", "pokemon", "Domador de Alfas", "Captura un Pokémon Alfa.", 1],
+	["alpha10", "pokemon", "Maestro de Alfas", "Captura 10 Pokémon Alfa.", 10],
+	["rescue1", "pokemon", "Buen samaritano", "Rescata a un Pokémon herido.", 1],
+	["guardian", "pokemon", "Guardián de Pokémon", "Rescata a 25 Pokémon.", 25],
 ]
 static var pending: Array = []
 
@@ -101,7 +101,7 @@ static func event(name: String, data: Dictionary) -> void :
 
 
 static func count_got() -> int:
-	var n: = 0
+	var n := 0
 	for a in LIST:
 		if bool(entry(String(a[0]))["got"]):
 			n += 1

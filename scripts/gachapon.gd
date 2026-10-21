@@ -1,8 +1,8 @@
 extends RefCounted
 
-const DATA: = preload("res://scripts/gachapon_data.gd")
-const MD: = preload("res://scripts/moves_data.gd")
-const SV: = preload("res://scripts/save_data.gd")
+const DATA := preload("res://scripts/gachapon_data.gd")
+const MD := preload("res://scripts/moves_data.gd")
+const SV := preload("res://scripts/save_data.gd")
 
 
 static func unlocked() -> Array:
@@ -46,15 +46,15 @@ static func type_color(t: String) -> Color:
 
 
 static func spend(gold: bool) -> Array:
-	var key: = "gold_coins" if gold else "gcoins"
+	var key := "gold_coins" if gold else "gcoins"
 	if int(SV.d.get(key, 0)) <= 0:
 		return []
-	var locked: = locked_ids()
+	var locked := locked_ids()
 	if locked.is_empty():
 		return []
 	var got: Array = []
 	for _i in range(mini(2 if gold else 1, locked.size())):
-		var tot: = 0.0
+		var tot := 0.0
 		for id in locked:
 			tot += float(def_of(String(id)).get("w", 2))
 		var roll: float = randf() * tot
@@ -156,7 +156,7 @@ class Disc extends Control:
 		var o: float = - r
 		for j in range(n):
 			var row: Array = rows[j]
-			var i: = 0
+			var i := 0
 			while i < n:
 				var t: int = int(row[i])
 				if t < 0:
@@ -181,9 +181,9 @@ class MachineArt extends Control:
 	signal finished
 	signal poked
 	var bump: float = 0.0
-	const BW: = 400.0
-	const BH: = 520.0
-	const CAPS: = [Color("#e0434f"), Color("#4b9bff"), Color("#ffd33d"), Color("#5fcb6a"), Color("#ff9ed8"), Color("#ff7b3d")]
+	const BW := 400.0
+	const BH := 520.0
+	const CAPS := [Color("#e0434f"), Color("#4b9bff"), Color("#ffd33d"), Color("#5fcb6a"), Color("#ff9ed8"), Color("#ff7b3d")]
 	var t: float = -1.0
 	var gold: bool = false
 	var discs: Array = []
@@ -198,13 +198,13 @@ class MachineArt extends Control:
 	func _init() -> void :
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		custom_minimum_size = Vector2(300, 390)
-		var rng: = RandomNumberGenerator.new()
+		var rng := RandomNumberGenerator.new()
 		rng.seed = 7
 		var pts: Array = []
 		while pts.size() < 54:
 			var yy: float = lerpf(-34.0, 62.0, pow(rng.randf(), 0.7))
 			var hw: float = 108.0 * sqrt(maxf(0.05, 1.0 - pow(yy / 84.0, 2.0)))
-			var pp: = Vector2(rng.randf_range( - hw, hw), yy)
+			var pp := Vector2(rng.randf_range( - hw, hw), yy)
 			pts.append(pp)
 		pts.sort_custom( func(a, b): return a.y < b.y)
 		for i in pts.size():
@@ -234,7 +234,7 @@ class MachineArt extends Control:
 	func poke(local_pos: Vector2, power: float = 1.0) -> void :
 		if t >= 0.0:
 			return
-		var GC: = Vector2(200, 205)
+		var GC := Vector2(200, 205)
 		for cp in seed_caps:
 			var cpos: Vector2 = GC + (cp["p"] as Vector2) + (cp["o"] as Vector2)
 			var d: Vector2 = cpos - local_pos
@@ -332,16 +332,16 @@ class MachineArt extends Control:
 
 	func _draw() -> void :
 		var sc: float = minf(size.x / BW, size.y / BH)
-		var off: = Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
+		var off := Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
 		draw_set_transform(off + Vector2(sin(idle_t * 50.0) * bump * 2.0, - bump * 2.0) * sc, 0.0, Vector2(sc, sc))
-		var line: = Color("#1a1a2e")
-		var white: = Color("#f4f6fb")
-		var shade: = Color("#c9d2e6")
-		var grey: = Color("#a3a9b8")
-		var red: = Color("#e8262d")
-		var dred: = Color("#a8141c")
-		var lred: = Color("#ff6b5e")
-		var GC: = Vector2(200, 205)
+		var line := Color("#1a1a2e")
+		var white := Color("#f4f6fb")
+		var shade := Color("#c9d2e6")
+		var grey := Color("#a3a9b8")
+		var red := Color("#e8262d")
+		var dred := Color("#a8141c")
+		var lred := Color("#ff6b5e")
+		var GC := Vector2(200, 205)
 
 		draw_ellipse_shadow(Vector2(200, 508), 150.0, 10.0)
 		_rr(Rect2(74, 486, 62, 22), 4, Color("#2b2d3a"), line)
@@ -368,7 +368,7 @@ class MachineArt extends Control:
 			var p: Vector2 = GC + (cp["p"] as Vector2) + (cp["o"] as Vector2) + Vector2(shake * (1.0 if i % 2 == 0 else -1.0), absf(shake) * 0.4)
 			p += Vector2(cos(idle_t * 0.8 + float(i)) * 1.5, sin(idle_t * 0.9 + float(i) * 2.0) * 1.5)
 			_capsule(p, 19.0, cp["c"], float(cp["a"]) * 0.3 + float(cp["s"]), 0.0)
-		var gl: = _ell(GC, 130.0, 86.0, 0.0, TAU, 48)
+		var gl := _ell(GC, 130.0, 86.0, 0.0, TAU, 48)
 		gl.append(gl[0])
 		draw_polyline(gl, Color("#7fa6d6"), 6.0)
 		draw_polyline(gl, line, 2.5)
@@ -376,7 +376,7 @@ class MachineArt extends Control:
 		draw_polyline(_ell(GC, 114.0, 72.0, 0.0, 0.5, 8), Color(1, 1, 1, 0.5), 4.0)
 
 		_rr(Rect2(86, 108, 228, 24), 8, dred, line)
-		var cap: = _ell(Vector2(200, 112), 108.0, 82.0, PI, TAU, 28)
+		var cap := _ell(Vector2(200, 112), 108.0, 82.0, PI, TAU, 28)
 		draw_colored_polygon(cap, red)
 		cap.append(cap[0])
 		draw_polyline(cap, line, 3.0)
@@ -398,13 +398,13 @@ class MachineArt extends Control:
 		if t >= 0.95:
 			la = _ease(_seg(t, 0.95, 2.0)) * TAU
 		lever = la
-		var dc: = Vector2(200, 380)
+		var dc := Vector2(200, 380)
 		draw_arc(dc, 40.0, PI * 1.05, PI * 1.45, 8, Color("#ffb82e"), 4.0)
 		draw_arc(dc, 40.0, PI * 1.55, PI * 1.95, 8, Color("#ffb82e"), 4.0)
 		draw_circle(dc, 30.0, line)
 		draw_circle(dc, 27.0, Color("#b8bdc9"))
 		draw_circle(dc, 20.0, Color("#8e94a3"))
-		var hv: = Vector2(cos(la), sin(la))
+		var hv := Vector2(cos(la), sin(la))
 		draw_line(dc - hv * 19.0, dc + hv * 19.0, line, 11.0)
 		draw_line(dc - hv * 18.0, dc + hv * 18.0, Color("#d6dae4"), 6.0)
 
@@ -416,12 +416,12 @@ class MachineArt extends Control:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	func _draw_anim(_sc: float) -> void :
-		var line: = Color("#1a1a2e")
+		var line := Color("#1a1a2e")
 
 		if t < 1.0:
 			var a: float = _ease(_seg(t, 0.0, 0.75))
-			var p0: = Vector2(340, 60)
-			var p1: = Vector2(200, 344)
+			var p0 := Vector2(340, 60)
+			var p1 := Vector2(200, 344)
 			var p: Vector2 = p0.lerp(p1, a) + Vector2(0, - sin(a * PI) * 70.0)
 			var spin: float = cos(t * 18.0)
 			_coin(p, 22.0 * (1.0 - 0.45 * _seg(t, 0.75, 1.0)), spin)
@@ -431,8 +431,8 @@ class MachineArt extends Control:
 		if t >= 1.9 and t < 3.3:
 			_sfx("lever", "hover")
 			var a2: float = _seg(t, 1.9, 2.8)
-			var start: = Vector2(200, 272)
-			var endp: = Vector2(200, 452)
+			var start := Vector2(200, 272)
+			var endp := Vector2(200, 452)
 			var y: float = lerpf(start.y, endp.y, a2 * a2)
 			if t > 2.8:
 				y = endp.y - absf(sin((t - 2.8) * 9.0)) * 22.0 * (1.0 - _seg(t, 2.8, 3.3))
@@ -440,13 +440,13 @@ class MachineArt extends Control:
 		elif t >= 3.3 and t < 3.9:
 
 			var a3: float = _seg(t, 3.3, 3.9)
-			var pp: = Vector2(200, 452 - a3 * 120.0)
+			var pp := Vector2(200, 452 - a3 * 120.0)
 			_capsule(pp, 26.0 + a3 * 22.0, cap_col, sin(t * 40.0) * 0.25, 0.0)
 			_sfx("shake", "click")
 		elif t >= 3.9:
 
 			var ao: float = _seg(t, 3.9, 4.35)
-			var ctr: = Vector2(200, 332)
+			var ctr := Vector2(200, 332)
 			var gap: float = ao * 40.0
 			_capsule_half(ctr + Vector2( - gap * 0.4, - gap), 48.0, cap_col, - ao * 0.9, true)
 			_capsule_half(ctr + Vector2(gap * 0.4, gap * 0.6), 48.0, cap_col, ao * 0.7, false)
@@ -470,7 +470,7 @@ class MachineArt extends Control:
 				var py: float = ctr.y - sin(ad * PI) * 150.0 + ad * 30.0
 				var rr: float = 30.0 + 6.0 * sin(ad * PI)
 				var scd: float = minf(size.x / BW, size.y / BH)
-				var offd: = Vector2((size.x - BW * scd) * 0.5, (size.y - BH * scd) * 0.5)
+				var offd := Vector2((size.x - BW * scd) * 0.5, (size.y - BH * scd) * 0.5)
 				Disc.paint(self, Vector2(px, py), rr, discs[i], cos(ad * 14.0) if ad < 0.9 else 1.0, false, offd, scd)
 				draw_set_transform(offd, 0.0, Vector2(scd, scd))
 				if ad > 0.9:
@@ -478,21 +478,21 @@ class MachineArt extends Control:
 
 
 	func draw_ellipse_shadow(c: Vector2, rx: float, ry: float) -> void :
-		var pts: = PackedVector2Array()
+		var pts := PackedVector2Array()
 		for i in 28:
 			var a: float = float(i) / 28.0 * TAU
 			pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
 		draw_colored_polygon(pts, Color(0, 0, 0, 0.28))
 
 	static func _ell(c: Vector2, rx: float, ry: float, a0: float, a1: float, n: int) -> PackedVector2Array:
-		var pts: = PackedVector2Array()
+		var pts := PackedVector2Array()
 		for i in range(n + 1):
 			var a: float = lerpf(a0, a1, float(i) / float(n))
 			pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
 		return pts
 
 	func _rr(r: Rect2, rad: float, fill: Color, border: Color) -> void :
-		var sb: = StyleBoxFlat.new()
+		var sb := StyleBoxFlat.new()
 		sb.bg_color = fill
 		sb.border_color = border
 		sb.set_border_width_all(3)
@@ -503,7 +503,7 @@ class MachineArt extends Control:
 	func _coin(p: Vector2, r: float, spin: float) -> void :
 		var sx: float = maxf(absf(spin), 0.12)
 		var sc0: float = minf(size.x / BW, size.y / BH)
-		var off0: = Vector2((size.x - BW * sc0) * 0.5, (size.y - BH * sc0) * 0.5)
+		var off0 := Vector2((size.x - BW * sc0) * 0.5, (size.y - BH * sc0) * 0.5)
 		draw_set_transform(off0 + p * sc0, 0.0, Vector2(sx * sc0, sc0))
 		var gl: Color = Color("#ffd23f") if gold else Color("#f4f6fb")
 		var pr: Color = Color("#c9791a") if gold else Color("#7a3fd0")
@@ -516,16 +516,16 @@ class MachineArt extends Control:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 		var sc: float = minf(size.x / BW, size.y / BH)
-		var off: = Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
+		var off := Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
 		draw_set_transform(off, 0.0, Vector2(sc, sc))
 
 	func _capsule(p: Vector2, r: float, c: Color, rot: float, _open: float) -> void :
 		var sc: float = minf(size.x / BW, size.y / BH)
-		var off: = Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
+		var off := Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
 		draw_set_transform(off + p * sc, rot, Vector2(sc, sc))
 		draw_circle(Vector2.ZERO, r, Color("#1a1a2e"))
 		draw_circle(Vector2.ZERO, r - 2.5, Color("#dfe3ee"))
-		var pts: = PackedVector2Array()
+		var pts := PackedVector2Array()
 		for i in 17:
 			var a: float = PI + float(i) / 16.0 * PI
 			pts.append(Vector2(cos(a), sin(a)) * (r - 2.5))
@@ -538,9 +538,9 @@ class MachineArt extends Control:
 
 	func _capsule_half(p: Vector2, r: float, c: Color, rot: float, top: bool) -> void :
 		var sc: float = minf(size.x / BW, size.y / BH)
-		var off: = Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
+		var off := Vector2((size.x - BW * sc) * 0.5, (size.y - BH * sc) * 0.5)
 		draw_set_transform(off + p * sc, rot, Vector2(sc, sc))
-		var pts: = PackedVector2Array()
+		var pts := PackedVector2Array()
 		for i in 17:
 			var a: float = (PI if top else 0.0) + float(i) / 16.0 * PI
 			pts.append(Vector2(cos(a), sin(a)) * (r - 2.5))
@@ -591,7 +591,7 @@ class Machine extends SubViewportContainer:
 
 	func _gui_input(ev: InputEvent) -> void :
 		if not art.busy():
-			var pos: = Vector2(-1, -1)
+			var pos := Vector2(-1, -1)
 			var strong: float = 1.0
 			if (ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT) or (ev is InputEventScreenTouch and ev.pressed):
 				pos = ev.position
@@ -604,7 +604,7 @@ class Machine extends SubViewportContainer:
 			if pos.x >= 0.0 and size.x > 0.0 and art.size.x > 0.0:
 				var ap: Vector2 = pos * (art.size / size)
 				var sc: float = minf(art.size.x / art.BW, art.size.y / art.BH)
-				var off: = Vector2((art.size.x - art.BW * sc) * 0.5, (art.size.y - art.BH * sc) * 0.5)
+				var off := Vector2((art.size.x - art.BW * sc) * 0.5, (art.size.y - art.BH * sc) * 0.5)
 				art.poke((ap - off) / sc, strong)
 				if strong >= 1.0 and sfx_cb.is_valid():
 					sfx_cb.call("click")

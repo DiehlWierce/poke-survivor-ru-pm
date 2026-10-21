@@ -3,8 +3,8 @@ extends RefCounted
 
 
 const SV = preload("res://scripts/save_data.gd")
-const K: = [1.0, 1.15, 1.3]
-const NAMES: = ["Normal", "Grande", "Muy grande"]
+const K := [1.0, 1.15, 1.3]
+const NAMES := ["Normal", "Grande", "Muy grande"]
 
 
 static func idx() -> int:
@@ -23,7 +23,7 @@ static func set_idx(i: int) -> void :
 static func scale_node(n: Node) -> void :
 	if not is_instance_valid(n) or not n.is_inside_tree():
 		return
-	var key: = ""
+	var key := ""
 	if n is RichTextLabel:
 		key = "normal_font_size"
 	elif n is Label or n is Button or n is LineEdit:

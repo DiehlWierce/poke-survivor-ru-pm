@@ -260,8 +260,8 @@ func _icon(name: String, x: float, y: float, size: float, cy0: float = -10000000
 	if bot <= top:
 		return
 	var th: float = float(tx.get_height())
-	var src: = Rect2(0.0, (top - y) / size * th, float(tx.get_width()), (bot - top) / size * th)
-	var dst: = Rect2(org + Vector2(x, top) * k, Vector2(size, bot - top) * k)
+	var src := Rect2(0.0, (top - y) / size * th, float(tx.get_width()), (bot - top) / size * th)
+	var dst := Rect2(org + Vector2(x, top) * k, Vector2(size, bot - top) * k)
 	draw_texture_rect_region(tx, dst, src, mod)
 
 

@@ -2,10 +2,10 @@ extends Node
 
 
 var _sc: ScrollContainer = null
-var _start: = Vector2.ZERO
-var _moved: = false
-var _acc: = 0.0
-const THRESH: = 12.0
+var _start := Vector2.ZERO
+var _moved := false
+var _acc := 0.0
+const THRESH := 12.0
 
 
 func _ready() -> void :
@@ -19,7 +19,7 @@ func _under(n: Node, pos: Vector2) -> ScrollContainer:
 	if n is Window and n != get_tree().root:
 		pass
 	if n is ScrollContainer:
-		var sc: = n as ScrollContainer
+		var sc := n as ScrollContainer
 		var bar: VScrollBar = sc.get_v_scroll_bar()
 		if sc.is_visible_in_tree() and sc.get_global_rect().has_point(pos) and bar.max_value - bar.page > 1.0\
 		and sc.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
@@ -33,7 +33,7 @@ func _under(n: Node, pos: Vector2) -> ScrollContainer:
 
 func _input(event: InputEvent) -> void :
 	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-		var mb: = event as InputEventMouseButton
+		var mb := event as InputEventMouseButton
 		if mb.pressed:
 			_sc = null
 			_moved = false
@@ -44,7 +44,7 @@ func _input(event: InputEvent) -> void :
 			_sc = _under(get_tree().root, mb.position)
 			_start = mb.position
 		else:
-			var was: = _moved
+			var was := _moved
 			_sc = null
 			_moved = false
 			if was:
@@ -53,7 +53,7 @@ func _input(event: InputEvent) -> void :
 		if not is_instance_valid(_sc):
 			_sc = null
 			return
-		var mm: = event as InputEventMouseMotion
+		var mm := event as InputEventMouseMotion
 		if not (mm.button_mask & MOUSE_BUTTON_MASK_LEFT):
 			_sc = null
 			return
@@ -63,7 +63,7 @@ func _input(event: InputEvent) -> void :
 			_moved = true
 			_sc.propagate_notification(Control.NOTIFICATION_SCROLL_BEGIN)
 		_acc -= mm.relative.y
-		var step: = int(_acc)
+		var step := int(_acc)
 		if step != 0:
 			_sc.scroll_vertical += step
 			_acc -= float(step)
