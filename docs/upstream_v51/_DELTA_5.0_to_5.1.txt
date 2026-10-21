@@ -1,0 +1,13 @@
+Декомпилят V5.1 (Pokemon.Survivors.5.1.apk, 177537067 Б, sha256 ece13d848fe3ea73fc8031cc6e3cb0038f99b73edde6c2c2f5bc709dfc3bd4ef).
+Файлы scripts/data/scenes, изменённые относительно 5.0 (после нормализации комментариев/пробелов); новых и удалённых файлов нет:
+data/lang_{en,fr,it,ja,pt_BR,pt_PT,ru,vi,zh_CN,zh_HK}.json
+scripts/fusion_fx.gd   1520 -> 1522
+scripts/gachapon.gd     581 -> 615
+scripts/judgment.gd     697 -> 769
+scripts/kecleon.gd      807 -> 811
+scripts/main.gd       11657 -> 11675
+scripts/menu.gd        6871 -> 7006
+scripts/progress.gd     640 -> 641
+scripts/patchnotes.gd, scripts/updater.gd (версия/записи)
+Ассеты 5.1 vs 5.0 не сравнивались.
+Текст 5.0 для точной дельты: scratchpad сессии (v50_text), не в репозитории; при необходимости восстановить из Pokemon.Survivors.5.0.apk (sha256 f0d8ba9d...10d0).

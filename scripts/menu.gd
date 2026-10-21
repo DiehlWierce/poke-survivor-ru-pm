@@ -812,33 +812,33 @@ class Banner extends Control:
 	var c2 := Color("#1f6f7a")
 	var mons: Array = []
 
-	func _init() -> void:
+	func _init() -> void :
 		clip_contents = true
 
-	func add_mon(d: int, kk: float, f0: float, f1: float) -> void:
+	func add_mon(d: int, kk: float, f0: float, f1: float) -> void :
 		var m := Mon.new()
 		m.fx0 = f0
 		m.fx1 = f1
 		add_child(m)
 		m.setup(d, kk, false, Rect2(f0 * 700.0, 250.0, (f1 - f0) * 700.0, 60.0), false)
 		m.fixed = true
-		m.fdir = 1   # diagonal abajo-derecha
+		m.fdir = 1
 		m.dir = 1
 		m.wait = 0.5 + 0.9 * float(mons.size())
 		mons.append(m)
 		_layout()
 
-	func _notification(what: int) -> void:
+	func _notification(what: int) -> void :
 		if what == NOTIFICATION_RESIZED:
 			_layout()
 
-	func _layout() -> void:
+	func _layout() -> void :
 		for m in mons:
-			# fila fija: centrada en su tercio, todos a la misma altura
-			m.home = Vector2((m.fx0 + m.fx1) * 0.5 * size.x, size.y * 0.80)
+
+			m.home = Vector2((m.fx0 + m.fx1) * 0.5 * size.x, size.y * 0.8)
 			m.position = m.home
 
-	func _draw() -> void:
+	func _draw() -> void :
 		var w: float = size.x
 		var h: float = size.y
 		var pts := PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, h), Vector2(0, h)])
@@ -849,7 +849,7 @@ class Banner extends Control:
 		draw_rect(Rect2(1.5, 1.5, w - 3.0, h - 3.0), Color(0.7, 0.78, 1.0, 0.75), false, 3.0)
 
 
-# Retrato del Pokemon (pantalla de mejoras)
+
 class Portrait extends Control:
 	var edge := Color("#ff7b3d")
 	var mon: Mon = null
@@ -904,7 +904,7 @@ class Pips extends Control:
 # Construccion
 # ---------------------------------------------------------------
 # Foco de mando: borde negro con halo blanco (se ve sobre dorado, gris y azul).
-const TOWER_FLOORS_M := 30
+const TOWER_FLOORS_M := 60
 
 func _sb_focus(col: Color) -> StyleBoxFlat:
 	var s := _sb(col, Color.BLACK, 4, 12)
@@ -1816,7 +1816,10 @@ func _screen(name: String) -> Control:
 	return c
 
 
-func _leave() -> void:
+func _leave() -> void :
+	if cur == "chal":
+		_show("modes")
+		return
 	if is_overlay:
 		closed.emit()
 		queue_free()
@@ -1824,7 +1827,6 @@ func _leave() -> void:
 		_show("main")
 
 
-# Construye la pantalla si aun no existe y le aplica el ajuste a la zona util.
 func _ensure(name: String) -> void:
 	if screens.has(name):
 		return
@@ -2771,7 +2773,7 @@ var dex_pick_party := false
 var dex_pick_team := false
 var dex_pick_coop := false
 const TYPE_IDS := ["normal", "fire", "water", "grass", "electric", "ice", "fighting", "poison", "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy"]
-const MOD_ICON := {"fast": "boot", "horde": "m_horde", "tank": "shield", "hard": "fist", "frail": "heart", "nohealing": "berry"}
+const MOD_ICON := {"fast": "boot", "horde": "m_horde", "tank": "shield", "hard": "fist", "frail": "heart", "nohealing": "berry", "slow": "r_heavy", "brainy": "r_scholar", "glass": "r_glass", "rich": "r_l_bag", "plague": "r_swarm"}
 const MOD_INFO := {
 	"fast": ["Veloces", "Los enemigos corren un 40% más rápido."],
 	"horde": ["Horda", "Casi el doble de enemigos."],
@@ -2779,8 +2781,12 @@ const MOD_INFO := {
 	"hard": ["Golpes duros", "Los enemigos hacen un 50% más de daño."],
 	"frail": ["Frágil", "Tu vida máxima se reduce a la mitad."],
 	"nohealing": ["Sin curación", "No recuperas vida (solo la que te da subir de Vida)."],
+	"slow": ["Pesado", "Te mueves un 20% más lento."],
+	"brainy": ["Mente brillante", "Ganas un 50% más de experiencia, pero los enemigos tienen un 25% más de vida."],
+	"glass": ["Cañón de cristal", "Haces un 50% más de daño, pero los enemigos hacen el doble."],
+	"rich": ["Fiebre del oro", "Las monedas valen el doble, pero los enemigos tienen un 30% más de vida."],
+	"plague": ["Plaga", "Aparecen 2,5 veces más enemigos, pero con un 35% menos de vida."],
 }
-
 
 func _start_mode(mode: String) -> void:
 	SV.run_mode = mode
@@ -3637,10 +3643,10 @@ func _build_up() -> void:
 	sc.add_child(up_box)
 
 
-const UP_ICON := {"hp": "heart", "atk": "fist", "spd": "boot", "cd": "clock", "def": "shield", "regen": "sprout", "magnet": "magnet", "xp": "book", "coins": "coin", "moves": "cards", "crit": "star", "size": "size", "reroll": "bond", "ban": "ban", "revive": "revive", "bag": "bag", "tm": "tm"}
+const UP_ICON := {"hp": "heart", "atk": "fist", "spd": "boot", "cd": "clock", "def": "shield", "regen": "sprout", "magnet": "magnet", "xp": "book", "coins": "coin", "moves": "cards", "crit": "star", "size": "size", "reroll": "bond", "ban": "ban", "revive": "revive", "bag": "bag", "bag3": "bag", "tm": "tm", "wslot": "cards"}
 
 
-# Actualiza la pantalla de mejoras sin perder la seleccion del mando ni el scroll.
+
 func _refresh_up_keep(key: String) -> void:
 	var sc: ScrollContainer = null
 	var p: Node = up_box.get_parent()
@@ -4633,7 +4639,7 @@ func _build_goals() -> void:
 # ---------------------------------------------------------------
 # Lexico: objetos, movimientos y estados alterados
 # ---------------------------------------------------------------
-var lex_tab := "i"
+var lex_tab := "m"
 var lex_tabs: HFlowContainer
 var lex_box: VBoxContainer
 const LEX_STATUS := [
@@ -4644,6 +4650,7 @@ const LEX_STATUS := [
 	["burn", "Quemado", "Daño continuo y el enemigo hace menos daño."],
 	["poison", "Envenenado", "Daño continuo según su vida máxima (menos contra jefes)."],
 	["slow", "Ralentizado", "El enemigo se mueve más despacio durante un rato."],
+	["charm", "Enamorado", "El enemigo pelea de tu lado 20 s: ataca a otros enemigos y no te hace daño. Los jefes son inmunes y, al acabarse, no puede volver a enamorarse enseguida."],
 ]
 
 

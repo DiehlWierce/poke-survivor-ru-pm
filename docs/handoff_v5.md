@@ -88,3 +88,18 @@
 Осталось в этапе 1: `kecleon.gd`, `icons`, `vfx` (требует `vfx2`, этап 2), `judgment`/`display`/`pad`/`pause_ui`/`patchnotes`/`updater` (этап 5–6), конфликтные `save_data.default_data` уже слит, `ensure` частично.
 Вопросы владельцу: шрифт/диакритика для `vi` (проверить на 640x480, рост pck); подключение `ach`/`challenges` к меню — этап 4.
 Инструменты: `tools/v5_splice.py` (замена символа телом V5.1), `tools/v5_append.py` (добавление нового символа).
+
+### Этапы 2–3 и часть 5–6 (сделано в `port/v5`)
+- Скопированы целиком: `vfx2, evo_fx, fusion_fx, kecleon, poi, rescue, alpha, hazard, cave, cave_int, lab_int, invasion, meteor, mewtwo, secret, daynight` (из V5.1; лишние пробелы убраны, `: =` → `:=`).
+- `main.gd`: 54 чистых дельты (splice), все 187 новых символов (append), 41 конфликт — функции склеены `tools/v5_merge.py` (дельта V4→V5.1 применяется к нашему телу), оставшееся вручную: `_ready` (объекты poi/kec/…/dn, `ShieldAura`, `AimMark`, `_start_moves`, chal), `_process_body/_tick_run/_tick_hud` (ret_cd, watchdog `choosing`/`time_scale`, `poi.update`…`dn.update`, `ffx/evfx.step`, слияние, поля HUD), `_collect` (бомба стирает экран, боссы −30 % HP), `_trigger_trap` (TRAP_R=112), `_collide` (стены алтаря легенды), `_finish_run` (`_treasure_k`), `_unhandled_input` (магазин Кеклеона), `_arena_bond_ready` (пещера). Классы Enemy/Prop/Bullet/Field/Orb — склеены. `_abn("k")` везде заменено на `abx.k` (наш `AbilityFx`); `Legend._process` → `_tick_visual` (наш Actor не использует `_process`).
+- `scripts/ui/*`: Hud (новые поля/`draw_items/draw_fusion/draw_poi`, строки испытаний), Cards (`GRACE`), Minimap, Stick, `pause_ui` (сводка забега `show_summary`, кнопка размера текста, прицел), `pad` (стик → навигация), `display` (`menu_mode`, `view_v`; миграция не пишет в повреждённый/восстановленный сейв).
+- Другое: `judgment` (Арсеус/выход, 5.1), `icons`, `vfx.sprite`/`pfx.slash` (V2-спрайты).
+- Проверки: `check_all` зелёный; `mode_matrix` (normal/rush/tower × 25,4 × zero/max, 240 с) 12/12; `vischeck_suite` и полный `check_all` после этапа — см. отчёт ниже.
+
+### НЕ сделано (остаток)
+- **Меню (этап 4) — целиком.** V5 `menu.gd` переписан (новое «Играть» с `ModePrev`/видео-превью, Gachapon, испытания `_build_chal`, профиль, Лексикон, dex с поиском/сортировкой/`_is_fav`, `last_pick`, `UI_THEMES`, `TrainerFig`). Попытка механической склейки (`tools/v5_merge.py`) даёт неконсистентные полусклеенные функции (36 конфликтов, 141 новый символ) — откатил; сохранён только чистый срез (`Banner`, `MOD_*`, `UP_ICON`, `LEX_STATUS`, `TOWER_FLOORS_M`, `_leave`, `lex_tab`). Результат: режим `chal`, Gachapon (`gachapon.gd` скопирован, экрана нет), `ach`/`challenges` в меню недоступны. Попытка лежит в scratchpad (`menu_full_merge_attempt.gd`, не коммитилась). Нужен ручной перенос по экранам с navgrid.
+- Видео-превью (51 МБ `.ogv`) — не переносилось, вопрос владельцу открыт.
+- Ассеты V5 (`_new_assets_vs_v4.txt`): новые спрайты/звук не копировались; проверить обращения (`Aud.sfx("fusion")`, `kec_spr`, иконки Кеклеона/слияний).
+- Сцены `main.tscn/menu.tscn` V5 не сравнивались.
+- Этап 6: `patchnotes` (9 языков + vi), `FALLBACK_VERSION`/версия 3.2.0, сборка PortMaster — не делались. `tileworld._bake_rows`, `arena.hsh` — только форматирование, пропущены намеренно (детерминизм сидов).
+- Не проверены: `bench_ab`, `soak`, `menu_ux_check` с новым кодом, `bench_events` на новых событиях; нет баланс-проверки новых сущностей (пещеры/Мью/метеор) на A53; `_collide` легенда-алтарь ходит только по `solids`.
