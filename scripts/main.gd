@@ -6780,7 +6780,7 @@ func _offer() -> Array:
 		for id in MD.ORDER:
 			var d: Dictionary = MD.MOVES[id]
 			var ty: String = String(d["type"])
-			if ty != "normal" and not player.types.has(ty):
+			if ty != "normal" and not player.types.has(ty) and not SV.learned_tm(_pdex(), String(id)):
 				continue
 			if not GPM.playable(String(id)):
 				continue
@@ -9385,7 +9385,7 @@ func _start_moves(dex: int, types: Array) -> Array:
 		for mid in MD.ORDER:
 			var md: Dictionary = MD.MOVES[mid]
 			var ty: String = String(md["type"])
-			if mid != first_move and String(md["kind"]) != "buff" and GPM.playable(String(mid)) and (ty == "normal" or types.has(ty)):
+			if mid != first_move and String(md["kind"]) != "buff" and GPM.playable(String(mid)) and (ty == "normal" or types.has(ty) or SV.learned_tm(dex, String(mid))):
 				cands.append(mid)
 		if not cands.is_empty():
 			var okc: Array = []

@@ -9,7 +9,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Attack x%.2f · Speed x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Use capsule to change ability (%d)",
     "Comprar cápsula · 400 monedas": "Buy capsule · 400 coins",
-    "No tienes suficientes Pokémonedas.": "Not enough coins."
+    "No tienes suficientes Pokémonedas.": "Not enough coins.",
+    "Enseñar movimiento con TM · 400 monedas": "Teach a move with a TM · 400 coins",
+    "Comprar y enseñar": "Buy and teach",
+    "TM aprendida: %s": "TM learned: %s"
   },
   "es_419": {
     "Equilibrada": "Equilibrada",
@@ -21,7 +24,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Usar cápsula para cambiar habilidad (%d)",
     "Comprar cápsula · 400 monedas": "Comprar cápsula · 400 monedas",
-    "No tienes suficientes Pokémonedas.": "No tienes suficientes Pokémonedas."
+    "No tienes suficientes Pokémonedas.": "No tienes suficientes Pokémonedas.",
+    "Enseñar movimiento con TM · 400 monedas": "Enseñar movimiento con MT · 400 monedas",
+    "Comprar y enseñar": "Comprar y enseñar",
+    "TM aprendida: %s": "MT aprendida: %s"
   },
   "fr": {
     "Equilibrada": "Équilibrée",
@@ -33,7 +39,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PV x%.2f · Attaque x%.2f · Vitesse x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Utiliser une capsule pour changer de talent (%d)",
     "Comprar cápsula · 400 monedas": "Acheter une capsule · 400 pièces",
-    "No tienes suficientes Pokémonedas.": "Vous n’avez pas assez de pièces Pokémon."
+    "No tienes suficientes Pokémonedas.": "Vous n’avez pas assez de pièces Pokémon.",
+    "Enseñar movimiento con TM · 400 monedas": "Apprendre une capacité avec une CT · 400 pièces",
+    "Comprar y enseñar": "Acheter et apprendre",
+    "TM aprendida: %s": "CT apprise : %s"
   },
   "it": {
     "Equilibrada": "Equilibrata",
@@ -45,7 +54,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "PS x%.2f · Attacco x%.2f · Velocità x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Usa una capsula per cambiare abilità (%d)",
     "Comprar cápsula · 400 monedas": "Compra capsula · 400 monete",
-    "No tienes suficientes Pokémonedas.": "Non hai abbastanza Pokémonete."
+    "No tienes suficientes Pokémonedas.": "Non hai abbastanza Pokémonete.",
+    "Enseñar movimiento con TM · 400 monedas": "Insegna una mossa con una MT · 400 monete",
+    "Comprar y enseñar": "Compra e insegna",
+    "TM aprendida: %s": "MT appresa: %s"
   },
   "pt_BR": {
     "Equilibrada": "Equilibrada",
@@ -57,7 +69,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Usar cápsula para trocar habilidade (%d)",
     "Comprar cápsula · 400 monedas": "Comprar cápsula · 400 moedas",
-    "No tienes suficientes Pokémonedas.": "Moedas insuficientes."
+    "No tienes suficientes Pokémonedas.": "Moedas insuficientes.",
+    "Enseñar movimiento con TM · 400 monedas": "Ensinar movimento com MT · 400 moedas",
+    "Comprar y enseñar": "Comprar e ensinar",
+    "TM aprendida: %s": "MT aprendida: %s"
   },
   "pt_PT": {
     "Equilibrada": "Equilibrada",
@@ -69,7 +84,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Vida x%.2f · Ataque x%.2f · Velocidade x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Usar cápsula para trocar habilidade (%d)",
     "Comprar cápsula · 400 monedas": "Comprar cápsula · 400 moedas",
-    "No tienes suficientes Pokémonedas.": "Não tens moedas suficientes."
+    "No tienes suficientes Pokémonedas.": "Não tens moedas suficientes.",
+    "Enseñar movimiento con TM · 400 monedas": "Ensinar movimento com MT · 400 moedas",
+    "Comprar y enseñar": "Comprar e ensinar",
+    "TM aprendida: %s": "MT aprendida: %s"
   },
   "ru": {
     "Equilibrada": "Сбалансированная",
@@ -81,7 +99,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "Здоровье x%.2f · Атака x%.2f · Скорость x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Использовать капсулу для смены способности (%d)",
     "Comprar cápsula · 400 monedas": "Купить капсулу · 400 монет",
-    "No tienes suficientes Pokémonedas.": "Недостаточно монет."
+    "No tienes suficientes Pokémonedas.": "Недостаточно монет.",
+    "Enseñar movimiento con TM · 400 monedas": "Обучить приёму с помощью ТМ · 400 монет",
+    "Comprar y enseñar": "Купить и обучить",
+    "TM aprendida: %s": "Выученная ТМ: %s"
   },
   "ja": {
     "Equilibrada": "バランス型",
@@ -93,7 +114,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · 攻撃 x%.2f · 素早さ x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "カプセルで特性を変更 (%d)",
     "Comprar cápsula · 400 monedas": "カプセルを購入 · 400コイン",
-    "No tienes suficientes Pokémonedas.": "コインが足りません。"
+    "No tienes suficientes Pokémonedas.": "コインが足りません。",
+    "Enseñar movimiento con TM · 400 monedas": "わざマシンで技を覚える · 400コイン",
+    "Comprar y enseñar": "購入して覚える",
+    "TM aprendida: %s": "習得したわざマシン: %s"
   },
   "zh_CN": {
     "Equilibrada": "均衡",
@@ -105,7 +129,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻击 x%.2f · 速度 x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "使用胶囊更换特性（%d）",
     "Comprar cápsula · 400 monedas": "购买胶囊 · 400金币",
-    "No tienes suficientes Pokémonedas.": "金币不足。"
+    "No tienes suficientes Pokémonedas.": "金币不足。",
+    "Enseñar movimiento con TM · 400 monedas": "使用招式学习技能 · 400金币",
+    "Comprar y enseñar": "购买并学习",
+    "TM aprendida: %s": "已学技能机：%s"
   },
   "zh_HK": {
     "Equilibrada": "均衡",
@@ -117,7 +144,10 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "生命 x%.2f · 攻擊 x%.2f · 速度 x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "使用膠囊更換特性（%d）",
     "Comprar cápsula · 400 monedas": "購買膠囊 · 400 金幣",
-    "No tienes suficientes Pokémonedas.": "金幣不足。"
+    "No tienes suficientes Pokémonedas.": "金幣不足。",
+    "Enseñar movimiento con TM · 400 monedas": "使用招式學習技能 · 400 金幣",
+    "Comprar y enseñar": "購買並學習",
+    "TM aprendida: %s": "已學技能機：%s"
   },
   "vi": {
     "Equilibrada": "Cân bằng",
@@ -129,6 +159,9 @@
     "Vida x%.2f · Ataque x%.2f · Velocidad x%.2f": "HP x%.2f · Tấn công x%.2f · Tốc độ x%.2f",
     "Usar cápsula para cambiar habilidad (%d)": "Dùng viên nang đổi năng lực (%d)",
     "Comprar cápsula · 400 monedas": "Mua viên nang · 400 xu",
-    "No tienes suficientes Pokémonedas.": "Không đủ xu."
+    "No tienes suficientes Pokémonedas.": "Không đủ xu.",
+    "Enseñar movimiento con TM · 400 monedas": "Dạy chiêu bằng TM · 400 xu",
+    "Comprar y enseñar": "Mua và dạy",
+    "TM aprendida: %s": "TM đã học: %s"
   }
 }

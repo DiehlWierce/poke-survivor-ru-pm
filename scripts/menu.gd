@@ -4024,6 +4024,20 @@ func _dex_detail() -> void:
 				_dex_detail(), Vector2(0, 46)))
 	var mv: String = SV.start_move_of(dx)
 	dex_detail.add_child(_icon_label("move:" + mv, L.t("Movimiento inicial: %s") % L.t(String(MD.MOVES[mv]["name"])), 18, Color("#c8d6ee"), 32.0, true))
+	var teachable: Array = SV.teachable_moves(dx)
+	if not teachable.is_empty():
+		dex_detail.add_child(_label(L.t("Enseñar movimiento con TM · 400 monedas"), 17, C_GOLD))
+		var tm_pick := OptionButton.new()
+		tm_pick.custom_minimum_size = Vector2(0, 44)
+		tm_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		teachable.sort_custom(func(a, b): return L.t(String(MD.MOVES[a]["name"])) < L.t(String(MD.MOVES[b]["name"])) )
+		for id in teachable:
+			tm_pick.add_item(L.t(String(MD.MOVES[id]["name"])))
+			tm_pick.set_item_metadata(tm_pick.item_count - 1, String(id))
+		dex_detail.add_child(tm_pick)
+		dex_detail.add_child(_btn(L.t("Comprar y enseñar"), func(): _buy_and_teach_tm(dx, tm_pick), Vector2(0, 44)))
+	for id in Array(SV.d.get("learned_tms", {}).get(str(dx), [])):
+		dex_detail.add_child(_icon_label("move:" + String(id), L.t("TM aprendida: %s") % L.t(String(MD.MOVES[String(id)]["name"])), 16, Color("#a8e6cf"), 28.0, true))
 	dex_detail.add_child(_label(L.t("Rareza: %s · Tenido x%d") % [L.t(SV.RARITY_NAME[clampi(int(p["rarity"]) - 1, 0, 4)]), int(SV.d["owned"][str(dx)]["n"])], 16, Color("#9fb4f0")))
 	if shiny_owned:
 		var cb := CheckButton.new()
@@ -4050,6 +4064,18 @@ func _use_ability_capsule(dex: int) -> void:
 
 func _buy_ability_capsule() -> void:
 	if SV.buy_ability_capsule():
+		Aud.sfx("coin")
+		_dex_detail()
+	else:
+		Aud.sfx("error")
+		toast(L.t("No tienes suficientes Pokémonedas."))
+
+
+func _buy_and_teach_tm(dex: int, picker: OptionButton) -> void:
+	if picker.item_count <= 0:
+		return
+	var move_id: String = String(picker.get_item_metadata(picker.selected))
+	if SV.buy_and_teach_tm(dex, move_id):
 		Aud.sfx("coin")
 		_dex_detail()
 	else:
