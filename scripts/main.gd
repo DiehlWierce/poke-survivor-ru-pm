@@ -410,6 +410,7 @@ var run_chests := 0
 var perks: Dictionary = {}
 var rerolls := 0
 var revives := 0
+var items_waiting := 0   # objetos recogidos mientras habia otra eleccion abierta (se ofrecen al cerrarla)
 var has_bag := false   # mejora permanente Mochila: llevas 2 objetos
 var run_dmg := {}
 var sitrus_t := -999.0
@@ -1446,6 +1447,9 @@ func _tick_run(delta: float, pt: int) -> int:
 		pt = Prof.lap(Prof.S_CLEAN, pt)
 	if pending_levels > 0 and not choosing:
 		_open_cards()
+	elif items_waiting > 0 and not choosing:
+		items_waiting -= 1
+		_offer_item()
 	elif bonds > 0 and not choosing and (arena == null or _arena_bond_ready()):
 		_offer_bond(true)
 	return pt
@@ -1895,7 +1899,8 @@ func _new_move(id: String, lvl: int) -> Dictionary:
 	m["t"] = 0.0
 	m["evolved"] = false
 	var ladder: Array = MD.LADDERS[String(m["kind"])]
-	for i in range(lvl - 1):
+	# no mas alla de la escalera: el companero del cooperativo pide hasta nivel 6 (jugador 30+) y la de proyectil es mas corta
+	for i in range(mini(lvl - 1, ladder.size())):
 		_apply_mods(m, ladder[i]["m"])
 		m["lvl"] = int(m["lvl"]) + 1
 	return m
@@ -6248,7 +6253,12 @@ func _collect(kind: String, value: float) -> void:
 		Aud.sfx("shinyGet")
 		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), L.t("+%d tickets") % int(value), Color("#ffd23f"))
 	elif kind == "item":
-		_offer_item()
+		# Con otra eleccion abierta (descanso de la Torre al superar el piso en este mismo fotograma, cartas...) el objeto
+		# espera: antes sus cartas pisaban las del descanso y la Torre se quedaba en tw_phase=1 sin enemigos ni jefe.
+		if choosing:
+			items_waiting += 1
+		else:
+			_offer_item()
 	elif kind == "bomb":
 		Aud.sfx("ball")
 		shake = 12.0

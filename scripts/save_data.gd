@@ -674,7 +674,12 @@ static func pull(region: int, n: int = 1, use: String = "t1") -> Array:
 
 # ---- fin de partida ----
 # ---- modos de juego ----
+static var daily_seed_override := -1   # solo tools/mode_matrix.gd: otro "dia" (otro Pokemon y modificador) por semilla
+
+
 static func daily_seed() -> int:
+	if daily_seed_override >= 0:
+		return daily_seed_override
 	var t: Dictionary = Time.get_date_dict_from_system()
 	return int(t["year"]) * 10000 + int(t["month"]) * 100 + int(t["day"])
 
