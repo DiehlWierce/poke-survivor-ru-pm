@@ -1175,8 +1175,10 @@ func _bake_force() -> bool:
 		var ch: Dictionary = chunks.get(key, {})
 		if ch.is_empty() or _ready_tex(ch):
 			continue
-		if ch["old"] != null and fade_t < 0.8:
-			continue   # se ve el bioma anterior fundiendo: los hilos tienen tiempo hasta casi el final del fundido
+		if ch["old"] != null and fade_t <= 0.0:
+			continue   # смена биома ещё держится на старом (fade_hold): видимые куски готовит очередь/заранее запечённое
+		# во время растворения кусок без нового биома выделялся бы на фоне соседей (полусмена): допекаем сразу.
+		# После удержания такое бывает редко: кусок только что въехал в вид или растворение шло до входа в арену.
 		did = true
 		var t1 := Time.get_ticks_usec()
 		if _bake_now(key):
@@ -1212,8 +1214,11 @@ var lite: bool = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_u
 func _process(delta: float) -> void:
 	gt += delta
 	if not visible:
-		# слой земли спрятан (арена греты / Суда, камера далеко): ничего не печём под камерой арены — раньше здесь
-		# синхронно допекались 4–6 ненужных кусков в кадр входа и потоки грузились десятками кусков вокруг арены
+		# слой земли спрятан (арена греты / Суда, камера далеко): под камерой арены куски не заводим и синхронно
+		# не печём — раньше в кадр входа допекались 4–6 ненужных кусков и потоки грузились десятками кусков вокруг
+		# арены. Очередь мира (вид прошлого кадра в мире) допекается в фоне: к возврату всё готово.
+		bake_pause_t = maxf(0.0, bake_pause_t - delta)
+		_bake_tick()
 		return
 	var dirty := false
 	if fade_t <= 0.0 and fade_hold < HOLD_MAX and not _vis_ready():

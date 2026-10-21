@@ -99,6 +99,8 @@ func _process(delta: float) -> bool:
 	if m == null or not m.loading_done:
 		return false
 	frames.append([n, snappedf(ms, 0.01), label])
+	if ms > 100.0 and n > 60:
+		_log("кадр %.0f мс (%s) Prof: %s | куски: %s" % [ms, label, Prof.line_cur(), Prof.line_chunks()])
 	n += 1
 	_god()
 	if m.get("rift_wait") and not marks.has("завеса"):
