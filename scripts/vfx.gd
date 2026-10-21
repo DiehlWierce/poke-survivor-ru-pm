@@ -445,9 +445,9 @@ static func _gen(shape: String, P: Grid, f: int) -> void:
 
 
 static func sprite(shape: String, pal: String, frame: int) -> Texture2D:
-	if not META.has(shape):
+	if not META.has(shape) and not V2.META.has(shape):
 		shape = "ball"
-	var m: Array = META[shape]
+	var m: Array = V2.META[shape] if V2.META.has(shape) else META[shape]
 	var f: int = frame % int(m[2])
 	# clave en dos niveles (forma|paleta -> fotogramas): sin formatear una cadena por cada dibujo
 	var sp: Dictionary = cache.get(shape, {})
@@ -455,7 +455,10 @@ static func sprite(shape: String, pal: String, frame: int) -> Texture2D:
 	if fl.size() > f and fl[f] != null:
 		return fl[f]
 	var P := Grid.new(int(m[0]), int(m[1]))
-	_gen(shape, P, f)
+	if V2.META.has(shape):
+		V2.gen(shape, P, f)
+	else:
+		_gen(shape, P, f)
 	var img := Image.create(P.w, P.h, false, Image.FORMAT_RGBA8)
 	var colors: Array = PAL.get(pal, PAL["normal"])
 	for y in range(P.h):
@@ -502,4 +505,4 @@ static func pc(pal: String, i: int) -> Color:
 		_pc_cache[pal] = cc
 	return cc[i]
 
-const V2: = preload("res://scripts/vfx2.gd")
+const V2 := preload("res://scripts/vfx2.gd")

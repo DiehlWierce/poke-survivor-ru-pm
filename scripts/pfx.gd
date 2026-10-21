@@ -141,6 +141,10 @@ func slash(pos: Vector2, angle: float, radius: float, arc: float, vis: Dictionar
 			sp("jaws", pal, m, {"life": 0.24, "scale": 1.5, "fr": 9.0, "fade": false})
 		"claw":
 			sp("claw", pal, m, {"life": 0.2, "scale": 1.5, "angle": angle - PI / 4.0})
+		"slashx", "kick", "fist", "hammer", "xmark", "pincer":
+			sp(melee, pal, m, {"life": 0.26, "scale": 2.0, "fr": 10.0, "fade": true, "spin": 0.0})
+			for i in range(3):
+				sp(melee, pal, pos + Vector2.from_angle(angle + rnd( - arc / 2.0, arc / 2.0)) * radius * rnd(0.55, 1.0), {"life": 0.2, "scale": 1.0, "fr": 10.0})
 		"vine", "feather":
 			for i in range(4):
 				var a: float = angle + rnd(-arc / 2.0, arc / 2.0)
