@@ -11,6 +11,7 @@ extends SceneTree
 
 const FPS := 30.0
 const HITCH_MS := 100.0
+const SOFT := ["BOSS_NO_DAMAGE", "NO_KILLS", "TOWER_SLOW"]
 
 var m: Node
 var MODE := _arg_s("--mode", "normal")
@@ -19,6 +20,7 @@ var SEED := _arg_i("--seed", 1)
 var SECS := _arg_f("--secs", 600.0)       # игровых секунд забега
 var GOD := _arg_i("--god", 1) == 1        # не даём умереть (лечим при <30%), чтобы дойти до поздних этапов; смерти считаются
 var TS := _arg_f("--ts", 1.0)
+var LVL := _arg_i("--lvl", 0)   # стартовый уровень (сильный игрок): опыт выдаётся сразу, карточки выбираются как обычно
 var META := _arg_s("--meta", "zero")   # zero | mid | max — профиль мета-прогресса (временный, в памяти)
 var VERBOSE := "--verbose" in OS.get_cmdline_user_args()
 var PROBE := "--probe" in OS.get_cmdline_user_args()
@@ -60,6 +62,9 @@ var boss_ref = null
 var boss_best_hp := 0.0
 var boss_hp_still_t := 0.0
 var boss_alive_t := 0.0
+var boss_prev_hp := 0.0
+var boss_nohit_t := 0.0
+var boss_ids := {}
 var bosses_seen := 0
 var boss_spawn_times: Array = []
 var arena_t := 0.0
@@ -75,6 +80,10 @@ var cine_frames := 0
 var last_kills := 0
 var kills_still_t := 0.0
 var ended := ""
+var ms_acc := 0.0
+var ms_n := 0
+var stat_last := -1
+var nodes_max := 0
 
 
 static func _arg_s(n: String, d: String) -> String:
@@ -209,6 +218,11 @@ func _process(delta: float) -> bool:
 	if loaded_frame < 0:
 		loaded_frame = frame
 		last_pos = m.player.position
+		if LVL > 1 and m.has_method("_gain_xp"):
+			var guard := 0
+			while m.player.level < LVL and guard < 500:
+				m._gain_xp(maxf(1.0, float(m.player.xp_next) / maxf(0.01, m._xp_mul() * float(_g(m, "XP_GAIN", 1.0)))) + 1.0)
+				guard += 1
 		print("MATRIX_LOADED frames=%d dex=%d mode=%s types=%s" % [load_frames, int(load("res://scripts/save_data.gd").run_dex), _g(m, "mode"), m.player.types])
 		return false
 	var rt: float = float(m.run_time)
@@ -225,6 +239,16 @@ func _process(delta: float) -> bool:
 		return _finish("dead" if not bool(_g(m, "timeup", false)) else "timeup")
 	_bot(delta)
 	_watch(delta, rt)
+	ms_acc += ms
+	ms_n += 1
+	if int(rt) / 30 != stat_last:
+		stat_last = int(rt) / 30
+		nodes_max = maxi(nodes_max, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
+		if VERBOSE:
+			print("STAT t=%.0f nodes=%d enemies=%d orbs=%d bullets=%d ebullets=%d fx=%d ms_avg=%.2f lvl=%d" % [rt, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+				m.enemies.size(), (_g(m, "orbs", []) as Array).size(), (_g(m, "bullets", []) as Array).size(), (_g(m, "ebullets", []) as Array).size(), m.fx.get_child_count(), ms_acc / maxf(1.0, ms_n), m.player.level])
+		ms_acc = 0.0
+		ms_n = 0
 	if rt >= SECS:
 		return _finish("secs")
 	if (Time.get_ticks_usec() - wall_t0) / 1e6 > maxf(900.0, SECS * 1.5):
@@ -248,6 +272,15 @@ func _press(v: Vector2) -> void:
 		Input.action_press("move_up", -v.y)
 	elif v.y > 0.0:
 		Input.action_press("move_down", v.y)
+
+
+func _key(k: int) -> void:
+	for down in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = k
+		ev.physical_keycode = k
+		ev.pressed = down
+		Input.parse_input_event(ev)
 
 
 func _new_seg(pp: Vector2) -> void:
@@ -302,18 +335,21 @@ func _bot(delta: float) -> void:
 		cards_open_frames += 1
 		if cards_open_frames % 9 == 4:   # «читает» ~0.3 с, потом выбирает
 			var items: Array = _g(cards, "items", [])
+			if VERBOSE and items.size() > 0:
+				print("CARDS t=%.1f '%s' cat=%s tw_phase=%s" % [float(m.run_time), _g(cards, "title", ""), (items[0] as Dictionary).get("cat", "?"), _g(m, "tw_phase")])
 			if items.size() > 0:
 				cards._pick(rng.randi() % items.size())
 				cards_picked += 1
 		_press(Vector2.ZERO)
 		return
 	cards_open_frames = 0
-	if not bool(_g(m, "choosing", false)) and rng.randf() < 0.003:
-		if "z_req" in m and m.has_method("_z_can") and m._z_can():
-			m.z_req = true
+	if not bool(_g(m, "choosing", false)) and rng.randf() < (0.02 if m._boss_alive() else 0.003):
+		# как игрок: клавиша Z (Z-движение) / C (Динамакс) через обычный _input игры
+		if m.has_method("_z_can") and m._z_can():
+			_key(KEY_Z)
 			z_used += 1
-		elif "dyn_req" in m and m.has_method("_dyn_can") and m._dyn_can():
-			m.dyn_req = true
+		elif m.has_method("_dyn_can") and m._dyn_can():
+			_key(KEY_C)
 			dyn_used += 1
 	_slot_ai(delta)
 	var pp: Vector2 = p.position
@@ -328,7 +364,7 @@ func _bot(delta: float) -> void:
 	if seg_t <= 0.0 or seg == "":
 		_new_seg(pp)
 	# Сбор: после босса (и иногда в обычном бою) идём к ближайшему орбу опыта/предмету/лечению, как игрок
-	if not m._boss_alive() and seg != "rift" and seg != "collect" and frame % 15 == 0 and (MODE == "rush" or rng.randf() < 0.15):
+	if not m._boss_alive() and seg != "rift" and seg != "collect" and frame % 15 == 0 and (MODE == "rush" or rng.randf() < 0.5):
 		var o = _nearest_orb(pp, 900.0)
 		if o != null:
 			seg = "collect"
@@ -499,11 +535,23 @@ func _watch(delta: float, rt: float) -> void:
 			boss_ref = b
 			boss_best_hp = b.hp
 			boss_hp_still_t = 0.0
-			bosses_seen += 1
-			boss_spawn_times.append(snappedf(rt, 0.1))
+			boss_prev_hp = b.hp
+			boss_nohit_t = 0.0
+			if not boss_ids.has(b.get_instance_id()):
+				boss_ids[b.get_instance_id()] = true
+				bosses_seen += 1
+				boss_spawn_times.append(snappedf(rt, 0.1))
 			if VERBOSE:
 				print("BOSS #%d t=%.1f %s hp=%.0f" % [bosses_seen, rt, b.enemy_name, b.hp])
-		elif b.hp < boss_best_hp - 0.5:
+		# ни одного попадания 90 с, хотя игрок рядом (<260) — настоящая «неуязвимость»
+		if b.hp < boss_prev_hp - 0.01:
+			boss_nohit_t = 0.0
+		elif b.position.distance_to(m.player.position) < 260.0:
+			boss_nohit_t += delta
+			if boss_nohit_t > 90.0 and int(boss_nohit_t * FPS) % int(FPS * 90) == 0:
+				_issue("BOSS_UNTOUCHABLE", "босс %s dex=%d hp=%.0f/%.0f: 90 с рядом без единого попадания: %s" % [b.enemy_name, int(_g(b, "dex", 0)), b.hp, b.max_hp, _state()])
+		boss_prev_hp = b.hp
+		if b == boss_ref and b.hp < boss_best_hp - 0.5:
 			boss_best_hp = b.hp
 			boss_hp_still_t = 0.0
 		else:
@@ -551,7 +599,8 @@ func _watch(delta: float, rt: float) -> void:
 		else:
 			tw_floor_t += delta
 			if tw_floor_t > 240.0 and int(tw_floor_t * FPS) % int(FPS * 60) == 0:
-				_issue("TOWER_STUCK", "этаж %d %.0f с: %s" % [tf, tw_floor_t, _state()])
+				# босс жив — бой просто затянулся (мягко); босса нет — этаж не идёт вовсе (софтлок)
+				_issue("TOWER_SLOW" if balive else "TOWER_STUCK", "этаж %d %.0f с: %s" % [tf, tw_floor_t, _state()])
 	# 7) биом: смена по времени (rush 150 с, иначе 240 с; башня — по этажу)
 	var bi: int = int(m.biome_idx)
 	if not biome_seen.has(bi):
@@ -607,10 +656,15 @@ func _finish(why: String) -> bool:
 		"biomes": biome_seen, "rifts": int(_g(m, "run_rifts", 0)), "rift_entered": rift_entered,
 		"cards": cards_picked, "slot_sw": slot_switches, "z": z_used, "dyn": dyn_used, "near_deaths": near_deaths,
 		"dist": roundi(dist_total), "far": roundi(max_from_origin),
-		"hitches": hitches.size(), "worst_ms": snappedf(worst_ms, 0.1), "hitch_list": hitches.slice(0, 6),
+		"nodes_max": nodes_max, "hitches": hitches.size(), "worst_ms": snappedf(worst_ms, 0.1), "hitch_list": hitches.slice(0, 6),
 		"blank_frames": blank_frames, "blank_run_max": blank_run_max,
 		"issues": issues, "issue_kinds": issue_kinds,
 	}
-	res["ok"] = issues.is_empty()
+	# мягкие (баланс/слабый бот, не поломка): видны в сводке, но прогон не валят
+	var hard := 0
+	for it in issues:
+		if not SOFT.has(String(it["kind"])):
+			hard += 1
+	res["ok"] = hard == 0
 	print("MATRIX_RESULT " + JSON.stringify(res))
 	return true

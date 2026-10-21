@@ -3,9 +3,12 @@
 #   tools/mode_matrix.sh                       # полная матрица (см. MODES/DEXES/SEEDS/METAS ниже)
 #   MODES="rush" DEXES="4 25" SEEDS="1 2" METAS="zero max" SECS=600 JOBS=8 tools/mode_matrix.sh
 #   ONE="rush 4 1 zero" tools/mode_matrix.sh   # один прогон с выводом в терминал
+#   KEYS= tools/mode_matrix.sh   # без --keys-only: путь ПК (не приставки)
 #   PROJECT=/path/to/other/checkout tools/mode_matrix.sh   # прогнать тот же бот на другой ветке (например main)
 # Каждый прогон — отдельный процесс Godot с временным HOME (сохранение и логи игрока не трогаются;
 # сам бот ещё и держит сохранение только в памяти с save_blocked). Ошибки скриптов ищутся в stderr.
+# Известный шум (есть и на main, гонка фоновой загрузки текстур в headless dummy-рендере): ERROR Parameter "t" is null
+# в texture_2d_initialize — не считается провалом.
 # Итог: таблица и $OUT/summary.txt; провал = SCRIPT ERROR/push_error/ISSUE/нет MATRIX_RESULT.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,12 +47,12 @@ run_one() {
 	local h="$TMP_HOME/$tag"
 	mkdir -p "$h"
 	cp "$TOOL" "$PROJECT/tools/mode_matrix.gd" 2>/dev/null || true
-	HOME="$h" "$GODOT_BIN" --headless --path "$PROJECT" --fixed-fps 30 --script res://tools/mode_matrix.gd -- --keys-only \
+	HOME="$h" "$GODOT_BIN" --headless --path "$PROJECT" --fixed-fps 30 --script res://tools/mode_matrix.gd -- ${KEYS---keys-only} \
 		--mode "$mode" --dex "$dex" --seed "$seed" --meta "$meta" --secs "$(secs_for "$mode")" >"$log" 2>&1
 	rm -rf "$h"
 	local res errs st
 	res="$(grep -m1 '^MATRIX_RESULT ' "$log" | cut -d' ' -f2-)"
-	errs="$(grep -E 'SCRIPT ERROR|Parse Error|^ERROR:|USER ERROR' "$log" | grep -vE 'resources still in use at exit|ret != noErr|get_system_ca_certificates' | sort | uniq -c | sort -rn | head -5)"
+	errs="$(grep -E 'SCRIPT ERROR|Parse Error|^ERROR:|USER ERROR' "$log" | grep -vE 'resources still in use at exit|ret != noErr|get_system_ca_certificates|RID allocations|Parameter "t" is null' | sort | uniq -c | sort -rn | head -5)"
 	if [[ -z "$res" ]]; then st="FAIL(no result)"
 	elif [[ -n "$errs" ]]; then st="FAIL(script error)"
 	elif echo "$res" | grep -q '"ok":false'; then st="FAIL(issue)"
@@ -67,7 +70,7 @@ export OUT TMP_HOME GODOT_BIN PROJECT TOOL SECS
 
 if [[ -n "${ONE:-}" ]]; then
 	read -r m d s me <<<"$ONE"
-	HOME="$TMP_HOME" "$GODOT_BIN" --headless --path "$PROJECT" --fixed-fps 30 --script res://tools/mode_matrix.gd -- --keys-only \
+	HOME="$TMP_HOME" "$GODOT_BIN" --headless --path "$PROJECT" --fixed-fps 30 --script res://tools/mode_matrix.gd -- ${KEYS---keys-only} \
 		--mode "$m" --dex "$d" --seed "$s" --meta "${me:-zero}" --secs "$(secs_for "$m")" --verbose ${EXTRA:-}
 	exit $?
 fi

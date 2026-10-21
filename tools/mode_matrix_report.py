@@ -15,7 +15,7 @@ for out in sys.argv[1:]:
         a = agg[(mode, meta)]
         a['runs'] += 1
         errs = [l for l in txt.splitlines() if re.search(r'SCRIPT ERROR|^ERROR:|USER ERROR', l)
-                and not re.search(r'resources still in use|ret != noErr|get_system_ca|RID allocations', l)]
+                and not re.search(r'resources still in use|ret != noErr|get_system_ca|RID allocations|Parameter "t" is null', l)]
         if errs:
             kinds[(mode, meta)]['script_error'] += 1
         if not m:
