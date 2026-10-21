@@ -88,6 +88,7 @@ func _run() -> void:
 	await _check_nav()
 	await _check_tabs()
 	await _check_chal()
+	await _check_gachapon()
 	if failures == 0:
 		print("MENU_UX_OK")
 	else:
@@ -278,5 +279,34 @@ func _check_chal() -> void:
 	await _frames(2)
 	if m.cur != "modes":
 		_fail("B из Испытаний ведёт в '%s', а не в modes" % m.cur)
+	m._show("main")
+	await _frames(3)
+
+
+# ---------- 5) TM Gachapon: монета тратится, ручка крутится, капсула даёт приём ----------
+func _check_gachapon() -> void:
+	var sv = load("res://scripts/save_data.gd")
+	var gp = load("res://scripts/gachapon.gd")
+	sv.d["gcoins"] = 2
+	var n0: int = gp.unlocked().size()
+	m._show("gachapon")
+	await _frames(3)
+	if m.gp_btn1.disabled:
+		_fail("gachapon: кнопка монеты заблокирована при gcoins=2")
+		return
+	_shot("gachapon_0")
+	m._gp_insert(false)
+	for _i in 900:
+		await _frames(1)
+		if m.gacha_result.visible:
+			break
+	if not m.gacha_result.visible:
+		_fail("gachapon: результат не появился за 900 кадров")
+	elif gp.unlocked().size() != n0 + 1:
+		_fail("gachapon: движений %d -> %d, ожидался +1" % [n0, gp.unlocked().size()])
+	if int(sv.d["gcoins"]) != 1:
+		_fail("gachapon: gcoins=%d, ожидалась 1" % int(sv.d["gcoins"]))
+	_shot("gachapon_1")
+	m.gacha_result.visible = false
 	m._show("main")
 	await _frames(3)

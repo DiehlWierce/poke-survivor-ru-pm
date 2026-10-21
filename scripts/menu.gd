@@ -15,6 +15,7 @@ const DYN = preload("res://scripts/dynamax.gd")
 const ST = preload("res://scripts/starters_data.gd")
 const IC = preload("res://scripts/icons.gd")
 const CH = preload("res://scripts/challenges.gd")
+const GP = preload("res://scripts/gachapon.gd")
 const PXF = preload("res://scripts/pxfont.gd")
 const DSP = preload("res://scripts/display.gd")
 const SLOTS = preload("res://scripts/slots.gd")
@@ -1900,6 +1901,9 @@ func _release_screen(name: String) -> void:
 		"chal":
 			_fq_cancel(chal_box, true)
 			_clear(chal_box)
+		"gachapon":
+			if gp_machine == null or not gp_machine.busy():
+				_clear(gp_info)
 		"settings":
 			_fq_cancel(settings_host, true)
 			settings_pages.clear()
@@ -2736,7 +2740,7 @@ func _build_main() -> void:
 	main_ui["mv"] = mv
 	var mbtns: Array = []
 	main_ui["btns"] = mbtns
-	var entries := [["Jugar", "play", "flag"], ["Pokémon", "dex", "ball"], ["Mejoras", "up", "up"], ["Gacha", "gacha", "ballLux"], ["Misiones y logros", "goals", "trophy"], ["Léxico", "lexicon", "book"], ["Ajustes", "settings", "gear"]]
+	var entries := [["Jugar", "play", "flag"], ["Pokémon", "dex", "ball"], ["Mejoras", "up", "up"], ["Gacha", "gacha", "ballLux"], ["TM Gachapon", "gachapon", "gcoin"], ["Misiones y logros", "goals", "trophy"], ["Léxico", "lexicon", "book"], ["Ajustes", "settings", "gear"]]
 	var first := true
 	for e in entries:
 		var key: String = String(e[1])
@@ -3158,6 +3162,150 @@ func _refresh_chal() -> void:
 		_later(chal_box, func():
 			_chal_card(cd[0], cd[1]))
 	focus_first = sel_chip
+
+
+var gp_machine
+var gp_info: VBoxContainer
+var gp_msg: Label
+var gp_btn1: Button
+var gp_btn2: Button
+var gp_focus: Control
+var gp_collection: HFlowContainer
+var gp_pending: Array = []
+
+
+func _build_gachapon() -> void:
+	var s: Control = _screen("gachapon")
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12 if compact else 18)
+	s.add_child(row)
+	var lp := PanelContainer.new()
+	lp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(lp)
+	gp_machine = GP.Machine.new()
+	gp_machine.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gp_machine.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gp_machine.sfx_cb = func(n: String): Aud.sfx(n)
+	gp_machine.finished.connect(_gp_finished)
+	lp.add_child(gp_machine)
+	var rp := PanelContainer.new()
+	rp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rp.size_flags_stretch_ratio = 1.25
+	row.add_child(rp)
+	var sc := _new_scroll()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	rp.add_child(sc)
+	gp_info = VBoxContainer.new()
+	gp_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gp_info.add_theme_constant_override("separation", 8 if compact else 10)
+	sc.add_child(gp_info)
+
+
+func _refresh_gachapon() -> void:
+	_ensure_result()
+	_clear(gp_info)
+	gacha_result.visible = false
+	var hd := _label(L.t("Máquina TM Gachapon"), 28 if compact else 36, C_GOLD)
+	hd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	gp_info.add_child(hd)
+	gp_info.add_child(_label(L.t("Inserta una Gachapon Coin y gira la palanca: te sale una cápsula con un movimiento nuevo. La moneda dorada da 2 movimientos."), 17 if compact else 21, Color("#c8d6ee")))
+	var bal := HBoxContainer.new()
+	bal.add_theme_constant_override("separation", 22)
+	bal.add_child(_coin_row(int(SV.d.get("gcoins", 0)), false, 30))
+	bal.add_child(_coin_row(int(SV.d.get("gold_coins", 0)), true, 30))
+	gp_info.add_child(bal)
+	var bb := VBoxContainer.new()
+	bb.add_theme_constant_override("separation", 8)
+	gp_info.add_child(bb)
+	gp_btn1 = _btn(L.t("Usar Gachapon Coin  (1 movimiento)"), func(): _gp_insert(false), Vector2(0, 50))
+	gp_btn1.icon = IC.tex("gcoin", IC.scale_for("gcoin", 28))
+	gp_btn1.add_theme_font_size_override("font_size", 18 if compact else 22)
+	bb.add_child(gp_btn1)
+	gp_btn2 = _btn(L.t("Usar Gachapon Coin dorada  (2 movimientos)"), func(): _gp_insert(true), Vector2(0, 50))
+	gp_btn2.icon = IC.tex("gcoin_gold", IC.scale_for("gcoin_gold", 28))
+	gp_btn2.add_theme_font_size_override("font_size", 18 if compact else 22)
+	bb.add_child(gp_btn2)
+	gp_btn1.disabled = int(SV.d.get("gcoins", 0)) <= 0
+	gp_btn2.disabled = int(SV.d.get("gold_coins", 0)) <= 0
+	gp_msg = _label("", 18, Color("#ff9a8a"))
+	gp_info.add_child(gp_msg)
+	if gp_btn1.disabled and gp_btn2.disabled:
+		gp_msg.text = L.t("No tienes monedas. Consigue Gachapon Coins superando retos.")
+	elif GP.locked_ids().is_empty():
+		gp_msg.text = L.t("¡Ya desbloqueaste todos los movimientos de la máquina!")
+	var tot: int = GP.DATA.MOVES.size()
+	gp_info.add_child(_label(L.t("Movimientos desbloqueados: %d / %d") % [GP.unlocked().size(), tot], 20 if compact else 24, C_GOLD))
+	gp_collection = HFlowContainer.new()
+	gp_collection.add_theme_constant_override("h_separation", 8)
+	gp_collection.add_theme_constant_override("v_separation", 8)
+	gp_info.add_child(gp_collection)
+	for m in GP.DATA.MOVES:
+		var d = GP.Disc.new(GP.type_color(String(m["type"])), 40.0 if compact else 46.0)
+		d.locked = not GP.is_unlocked(String(m["id"]))
+		d.tooltip_text = "" if d.locked else String(m["name"])
+		gp_collection.add_child(d)
+	gp_focus = gp_btn1 if not gp_btn1.disabled else (gp_btn2 if not gp_btn2.disabled else null)
+	focus_first = gp_focus
+
+
+func _gp_insert(gold: bool) -> void:
+	if gp_machine.busy():
+		return
+	var got: Array = GP.spend(gold)
+	if got.is_empty():
+		gp_msg.text = L.t("No se pudo usar la moneda.")
+		return
+	gp_pending = got
+	var cols: Array = []
+	for id in got:
+		cols.append(GP.type_color(String(GP.def_of(String(id))["type"])))
+	gp_btn1.disabled = true
+	gp_btn2.disabled = true
+	gp_machine.play(gold, cols)
+	_update_top()
+
+
+func _gp_finished() -> void:
+	var rows: Array = gp_pending
+	gp_pending = []
+	if cur != "gachapon":
+		return
+	_ensure_result()
+	_clear(gacha_result)
+	gacha_result.visible = true
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gacha_result.add_child(cc)
+	var pc := PanelContainer.new()
+	pc.custom_minimum_size = Vector2(minf(620.0, DSP.area(get_tree()).size.x - 40.0), 0)
+	cc.add_child(pc)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10 if compact else 14)
+	pc.add_child(v)
+	var tt := _label(L.t("¡Movimiento desbloqueado!") if rows.size() == 1 else L.t("¡Movimientos desbloqueados!"), 28 if compact else 34, C_GOLD)
+	tt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(tt)
+	for id in rows:
+		var m: Dictionary = GP.def_of(String(id))
+		var col: Color = GP.type_color(String(m["type"]))
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 16)
+		v.add_child(hb)
+		hb.add_child(GP.Disc.new(col, 64.0 if compact else 84.0))
+		var vb := VBoxContainer.new()
+		vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hb.add_child(vb)
+		vb.add_child(_label(String(m["name"]), 24 if compact else 28, col.lightened(0.25)))
+		vb.add_child(_label(L.t("Tipo: %s") % L.t(String(MD.TYPE_NAME[String(m["type"])])), 18, Color("#c8d6ee")))
+		vb.add_child(_label(String(m["desc"]), 18 if compact else 20))
+	var ok := _btn(L.t("Aceptar"), func():
+		gacha_result.visible = false
+		_refresh_gachapon()
+		_gf(gp_focus if gp_focus != null else back_btn), Vector2(220, 52))
+	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(ok)
+	gi_dirty = true
+	_gf(ok)
 
 
 func _refresh_main() -> void:
