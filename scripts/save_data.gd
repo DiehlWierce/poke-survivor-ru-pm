@@ -6,6 +6,7 @@ const BAK := "user://save.bak"
 const TMP := "user://save.tmp"
 const SAVE_SCHEMA_VERSION := 1
 const STARTERS_D = preload("res://scripts/starters_data.gd")
+const NATURES_D = preload("res://scripts/natures_data.gd")
 
 static var d: Dictionary = {}
 static var loaded := false
@@ -89,7 +90,7 @@ const GOALS := [
 static func default_data() -> Dictionary:
 	return {
 		"v": SAVE_SCHEMA_VERSION, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
-		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {},
+		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {}, "pstart2": {}, "natures": {}, "pability": {}, "ability_capsules": 0, "nature_mints": 0, "learned_tms": {},
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
 		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "fps": false, "stats_box": false, "adaptive": true, "max_fps": -1, "manual_aim": false, "mono_bonus": false, "fx_op": 1, "act_side": 0, "text_sz": 0},
 	}
@@ -204,6 +205,8 @@ static func ensure() -> void:
 			# Keep damaged/unsupported files untouched until the user explicitly resets the save.
 			save_blocked = true
 	_migrate_upgrades()
+	_migrate_natures()
+	_migrate_learned_tms()
 
 	if not save_blocked and not recovered_from_backup and not bool(d.get("gift_6h", false)):
 		d["gift_6h"] = true
@@ -243,6 +246,45 @@ static func _migrate_upgrades() -> void:
 		if not d["pup"].has(key):
 			d["pup"][key] = old.duplicate()
 		d["upgrades"] = {}
+
+
+# Older profiles receive a stable nature once; new Pokémon receive one when first acquired.
+static func _migrate_natures() -> void:
+	if not (d.get("natures", {}) is Dictionary):
+		d["natures"] = {}
+	var natures: Dictionary = d["natures"]
+	for key in d.get("owned", {}).keys():
+		var nature_id := String(natures.get(String(key), ""))
+		if not NATURES_D.valid_id(nature_id):
+			var stable_seed: int = absi(int(d.get("created", 0)) + int(key) * 7919)
+			natures[String(key)] = String(NATURES_D.IDS[stable_seed % NATURES_D.IDS.size()])
+
+
+static func _migrate_learned_tms() -> void:
+	var stored = d.get("learned_tms", {})
+	if not (stored is Dictionary):
+		d["learned_tms"] = {}
+		return
+	var MDd = load("res://scripts/moves_data.gd")
+	var GPM = load("res://scripts/gachapon.gd")
+	var clean := {}
+	for dex_key in stored:
+		var dex := int(dex_key)
+		if not dex_by.has(dex) or not (stored[dex_key] is Array):
+			continue
+		var known: Array = []
+		for value in stored[dex_key]:
+			var id := String(value)
+			if not MDd.MOVES.has(id) or not GPM.playable(id) or known.has(id):
+				continue
+			var move: Dictionary = MDd.MOVES[id]
+			var ty := String(move["type"])
+			if String(move["kind"]) == "buff" or ty == "normal" or Array(dex_by[dex]["types"]).has(ty):
+				continue
+			known.append(id)
+		if not known.is_empty():
+			clean[str(dex)] = known
+	d["learned_tms"] = clean
 
 
 # Write to a temporary file, verify it, preserve the previous primary as backup, then replace it.
@@ -347,14 +389,75 @@ static func owned_count() -> int:
 
 static func add_owned(dex: int, shiny: bool = false) -> void:
 	var key := str(dex)
+	if not (d.get("natures", {}) is Dictionary):
+		d["natures"] = {}
 	if d["owned"].has(key):
 		d["owned"][key]["n"] = int(d["owned"][key]["n"]) + 1
 		if shiny:
 			d["owned"][key]["shiny"] = true
 	else:
 		d["owned"][key] = {"n": 1, "shiny": shiny}
+	if not NATURES_D.valid_id(String(d["natures"].get(key, ""))):
+		d["natures"][key] = NATURES_D.random_id()
 	if shiny:
 		d["stats"]["shinies"] = int(d["stats"]["shinies"]) + 1
+
+
+static func nature_id(dex: int) -> String:
+	var value: String = String(d.get("natures", {}).get(str(dex), "steady"))
+	return value if NATURES_D.valid_id(value) else "steady"
+
+
+static func nature_of(dex: int) -> Dictionary:
+	return NATURES_D.definition(nature_id(dex))
+
+
+static func buy_nature_mint() -> bool:
+	const COST := 350
+	if int(d.get("coins", 0)) < COST:
+		return false
+	d["coins"] = int(d["coins"]) - COST
+	d["nature_mints"] = int(d.get("nature_mints", 0)) + 1
+	save()
+	return true
+
+
+static func use_nature_mint(dex: int) -> bool:
+	if not owns(dex) or int(d.get("nature_mints", 0)) <= 0:
+		return false
+	var old_id := nature_id(dex)
+	var next_index := (NATURES_D.IDS.find(old_id) + 1) % NATURES_D.IDS.size()
+	d["natures"][str(dex)] = String(NATURES_D.IDS[next_index])
+	d["nature_mints"] = int(d["nature_mints"]) - 1
+	save()
+	return true
+
+
+static func buy_ability_capsule() -> bool:
+	const COST := 400
+	if int(d.get("coins", 0)) < COST:
+		return false
+	d["coins"] = int(d["coins"]) - COST
+	d["ability_capsules"] = int(d.get("ability_capsules", 0)) + 1
+	save()
+	return true
+
+
+static func use_ability_capsule(dex: int) -> bool:
+	if not owns(dex) or int(d.get("ability_capsules", 0)) <= 0:
+		return false
+	var ab = load("res://scripts/abilities.gd")
+	var options: Array = ab.capsule_options(dex)
+	var current: String = ab.of(dex)
+	if options.size() < 2:
+		return false
+	var next_id: String = String(options[(options.find(current) + 1) % options.size()])
+	d["ability_capsules"] = int(d["ability_capsules"]) - 1
+	if not (d.get("pability", {}) is Dictionary):
+		d["pability"] = {}
+	d["pability"][str(dex)] = next_id
+	save()
+	return true
 
 
 # MT (mejora permanente): el movimiento inicial elegido para este Pokemon, si ya compraste la MT.
@@ -364,6 +467,40 @@ static func start_move_of(dex: int) -> String:
 		if pick != "" and tm_pool(dex).has(pick):
 			return pick
 	return natural_start_of(dex)
+
+
+static func second_start_move_of(dex: int) -> String:
+	if up_level("moves", dex) <= 0:
+		return ""
+	var pick: String = String(d.get("pstart2", {}).get(str(dex), ""))
+	return pick if pick != "" and second_start_pool(dex).has(pick) else ""
+
+
+static func second_start_pool(dex: int) -> Array:
+	var MDd = load("res://scripts/moves_data.gd")
+	var out: Array = []
+	for id in move_pool(dex):
+		if String(MDd.MOVES[String(id)]["kind"]) != "buff":
+			out.append(String(id))
+	return out
+
+
+static func set_second_start_move(dex: int, id: String) -> bool:
+	if not owns(dex) or up_level("moves", dex) <= 0:
+		return false
+	if id != "" and not second_start_pool(dex).has(id):
+		return false
+	if id == start_move_of(dex):
+		return false
+	if id == "":
+		d["pstart2"].erase(str(dex))
+	else:
+		d["pstart2"][str(dex)] = id
+		var banned: Array = ban_list(dex).duplicate()
+		banned.erase(id)
+		d["pban"][str(dex)] = banned
+	save()
+	return true
 
 
 static func natural_start_of(dex: int) -> String:
@@ -406,6 +543,10 @@ static func tm_pool(dex: int) -> Array:
 		var ty: String = String(m["type"])
 		if dex == 151 or ty == "normal" or types.has(ty):
 			out.append(String(id))
+	for id in Array(d.get("learned_tms", {}).get(str(dex), [])):
+		var move_id := String(id)
+		if MDd.MOVES.has(move_id) and not out.has(move_id):
+			out.append(move_id)
 	return out
 
 
@@ -427,8 +568,67 @@ static func move_pool(dex: int) -> Array:
 	var out: Array = []
 	for id in MDd.ORDER:
 		var ty: String = String(MDd.MOVES[id]["type"])
-		if id != start and load("res://scripts/gachapon.gd").playable(String(id)) and (ty == "normal" or types.has(ty)):
+		if id != start and load("res://scripts/gachapon.gd").playable(String(id)) and (ty == "normal" or types.has(ty) or learned_tm(dex, String(id))):
 			out.append(String(id))
+	return out
+
+
+static func learned_tm(dex: int, id: String) -> bool:
+	var stored = d.get("learned_tms", {}).get(str(dex), [])
+	return stored is Array and stored.has(id)
+
+
+static func teachable_moves(dex: int) -> Array:
+	var MDd = load("res://scripts/moves_data.gd")
+	var GPM = load("res://scripts/gachapon.gd")
+	var types: Array = dex_by[dex]["types"]
+	var out: Array = []
+	for id in MDd.ORDER:
+		var mid := String(id)
+		var move: Dictionary = MDd.MOVES[mid]
+		var ty := String(move["type"])
+		if String(move["kind"]) == "buff" or ty == "normal" or types.has(ty) or learned_tm(dex, mid) or not GPM.playable(mid):
+			continue
+		out.append(mid)
+	return out
+
+
+static func buy_and_teach_tm(dex: int, id: String, cost: int = 400) -> bool:
+	if not owns(dex) or not teachable_moves(dex).has(id) or int(d.get("coins", 0)) < cost:
+		return false
+	d["coins"] = int(d["coins"]) - cost
+	var learned: Dictionary = d.get("learned_tms", {})
+	if not learned.has(str(dex)):
+		learned[str(dex)] = []
+	learned[str(dex)].append(id)
+	d["learned_tms"] = learned
+	save()
+	return true
+
+
+static func daily_tm_stock(dex: int) -> Array:
+	var MDd = load("res://scripts/moves_data.gd")
+	var GPM = load("res://scripts/gachapon.gd")
+	var types: Array = dex_by[dex]["types"]
+	var pool: Array = []
+	for id in MDd.ORDER:
+		var mid := String(id)
+		var move: Dictionary = MDd.MOVES[mid]
+		var ty := String(move["type"])
+		if String(move["kind"]) != "buff" and ty != "normal" and not types.has(ty) and GPM.playable(mid):
+			pool.append(mid)
+	if pool.is_empty():
+		return []
+	var date: Dictionary = Time.get_date_dict_from_system()
+	var day_seed := int(date.get("year", 0)) * 10000 + int(date.get("month", 0)) * 100 + int(date.get("day", 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = day_seed * 104729 + dex * 7919
+	var out: Array = []
+	var count := mini(8, pool.size())
+	while out.size() < count:
+		var move_id: String = String(pool[rng.randi_range(0, pool.size() - 1)])
+		if not out.has(move_id):
+			out.append(move_id)
 	return out
 
 

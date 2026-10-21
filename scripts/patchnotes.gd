@@ -9,6 +9,20 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.3.0",
+		"date": "2026-10-21",
+		"title": "Poke Survivors para PortMaster 3.3.0: perfil de Pokémon",
+		"new": [
+			"Naturalezas: cada Pokémon tiene una naturaleza permanente que modifica vida, ataque y velocidad; se cambia con mentas.",
+			"Cápsulas de habilidad: cambia la habilidad de un Pokémon por otra disponible.",
+			"Enseñar movimientos con TM: aprende movimientos de otros tipos y úsalos en las partidas.",
+			"Tienda diaria con TMs que cambian cada día, mentas y cápsulas.",
+			"Elige el segundo movimiento inicial tras desbloquear Repertorio (o déjalo aleatorio).",
+		],
+		"changes": [],
+		"fixes": [],
+	},
+	{
 		"ver": "3.2.0",
 		"date": "2026-10-21",
 		"title": "Poke Survivors para PortMaster 3.2.0: contenido de la V5",

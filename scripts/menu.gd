@@ -110,6 +110,9 @@ var up_cards: Array = []             # [{id, u, pips, btn, extra}]
 var up_ui := {}                      # piezas de la cabecera
 var up_focus_id := ""
 var up_dex := 25
+var store_box: VBoxContainer
+var store_dex := -1
+var store_return := "up"
 var ban_open := false
 var tm_open := false
 var main_prev: Control   # Preview
@@ -1851,6 +1854,9 @@ func _leave() -> void :
 	if cur == "chal":
 		_show("modes")
 		return
+	if cur == "store":
+		_show(store_return if store_return != "store" else "up")
+		return
 	if is_overlay:
 		closed.emit()
 		queue_free()
@@ -1875,6 +1881,8 @@ func _ensure(name: String) -> void:
 
 
 func _show(name: String) -> void:
+	if name == "store" and cur != "store":
+		store_return = cur
 	_ensure(name)
 	if name == "up" and cur != "up":
 		up_dex = int(SV.d["selected"])
@@ -3999,9 +4007,20 @@ func _dex_detail() -> void:
 	trow.add_child(tlb)
 	dex_detail.add_child(trow)
 	dex_detail.add_child(_label(L.t("PS %d · Velocidad %d · Ataque x%.2f") % [int(p["hp"]), int(p["spd"]), float(p["atk"])], 18, Color("#c8d6ee")))
+	var nature: Dictionary = SV.nature_of(dx)
+	var nature_name: String = L.t(String(nature["name"]))
+	dex_detail.add_child(_label(L.t("Naturaleza: %s") % nature_name, 18, Color("#ffd98a")))
+	dex_detail.add_child(_label(L.t("Vida x%.2f · Ataque x%.2f · Velocidad x%.2f") % [float(nature["hp"]), float(nature["atk"]), float(nature["spd"])], 15, Color("#c8d6ee")))
+	var mint_use := _btn(L.t("Usar menta de naturaleza (%d)") % int(SV.d.get("nature_mints", 0)), func(): _use_nature_mint(dx), Vector2(0, 42))
+	mint_use.disabled = int(SV.d.get("nature_mints", 0)) <= 0
+	dex_detail.add_child(mint_use)
 	var abd: Dictionary = AB.FX[AB.of(dx)]
 	dex_detail.add_child(_label(L.t("Habilidad: %s") % L.t(String(abd["name"])), 18, Color("#ffd98a")))
 	dex_detail.add_child(_label(L.t(String(abd["desc"])), 15, Color("#c8d6ee")))
+	var capsule_use := _btn(L.t("Usar cápsula para cambiar habilidad (%d)") % int(SV.d.get("ability_capsules", 0)), func(): _use_ability_capsule(dx), Vector2(0, 44))
+	capsule_use.disabled = int(SV.d.get("ability_capsules", 0)) <= 0
+	dex_detail.add_child(capsule_use)
+	dex_detail.add_child(_btn(L.t("Abrir tienda diaria"), func(): _show("store"), Vector2(0, 44)))
 	var zl: Array = SV.zm_types(dx)
 	if zl.is_empty():
 		dex_detail.add_child(_label(L.t("Movimiento Z: bloqueado (derrota %d Pokémon de su tipo)") % ZM.NEED, 15, Color("#8a96b0")))
@@ -4016,6 +4035,20 @@ func _dex_detail() -> void:
 				_dex_detail(), Vector2(0, 46)))
 	var mv: String = SV.start_move_of(dx)
 	dex_detail.add_child(_icon_label("move:" + mv, L.t("Movimiento inicial: %s") % L.t(String(MD.MOVES[mv]["name"])), 18, Color("#c8d6ee"), 32.0, true))
+	var teachable: Array = SV.teachable_moves(dx)
+	if not teachable.is_empty():
+		dex_detail.add_child(_label(L.t("Enseñar movimiento con TM · 400 monedas"), 17, C_GOLD))
+		var tm_pick := OptionButton.new()
+		tm_pick.custom_minimum_size = Vector2(0, 44)
+		tm_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		teachable.sort_custom(func(a, b): return L.t(String(MD.MOVES[a]["name"])) < L.t(String(MD.MOVES[b]["name"])) )
+		for id in teachable:
+			tm_pick.add_item(L.t(String(MD.MOVES[id]["name"])))
+			tm_pick.set_item_metadata(tm_pick.item_count - 1, String(id))
+		dex_detail.add_child(tm_pick)
+		dex_detail.add_child(_btn(L.t("Comprar y enseñar"), func(): _buy_and_teach_tm(dx, tm_pick), Vector2(0, 44)))
+	for id in Array(SV.d.get("learned_tms", {}).get(str(dx), [])):
+		dex_detail.add_child(_icon_label("move:" + String(id), L.t("TM aprendida: %s") % L.t(String(MD.MOVES[String(id)]["name"])), 16, Color("#a8e6cf"), 28.0, true))
 	dex_detail.add_child(_label(L.t("Rareza: %s · Tenido x%d") % [L.t(SV.RARITY_NAME[clampi(int(p["rarity"]) - 1, 0, 4)]), int(SV.d["owned"][str(dx)]["n"])], 16, Color("#9fb4f0")))
 	if shiny_owned:
 		var cb := CheckButton.new()
@@ -4032,9 +4065,132 @@ func _dex_detail() -> void:
 	dex_detail.add_child(sel_b)
 
 
+func _use_ability_capsule(dex: int) -> void:
+	if SV.use_ability_capsule(dex):
+		Aud.sfx("select")
+		_dex_detail()
+	else:
+		Aud.sfx("error")
+
+
+func _use_nature_mint(dex: int) -> void:
+	if SV.use_nature_mint(dex):
+		Aud.sfx("select")
+		_dex_detail()
+	else:
+		Aud.sfx("error")
+
+
+func _buy_and_teach_tm(dex: int, picker: OptionButton) -> void:
+	if picker.item_count <= 0:
+		return
+	var move_id: String = String(picker.get_item_metadata(picker.selected))
+	if SV.buy_and_teach_tm(dex, move_id):
+		Aud.sfx("coin")
+		_dex_detail()
+	else:
+		Aud.sfx("error")
+		toast(L.t("No tienes suficientes Pokémonedas."))
+
+
 # ---------------------------------------------------------------
 # Mejoras permanentes
 # ---------------------------------------------------------------
+func _build_store() -> void:
+	var s: Control = _screen("store")
+	var pc := PanelContainer.new()
+	s.add_child(pc)
+	var v := VBoxContainer.new()
+	pc.add_child(v)
+	v.add_child(_label(L.t("Tienda diaria"), 32, C_GOLD))
+	var sc := _new_scroll()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(sc)
+	store_box = VBoxContainer.new()
+	store_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	store_box.add_theme_constant_override("separation", 10)
+	sc.add_child(store_box)
+
+
+func _refresh_store() -> void:
+	if store_box == null:
+		return
+	_clear(store_box)
+	var owned: Array = []
+	for key in SV.d.get("owned", {}).keys():
+		owned.append(int(key))
+	owned.sort()
+	if owned.is_empty():
+		store_box.add_child(_label(L.t("Consigue un Pokémon para usar la tienda."), 20))
+		return
+	if not owned.has(store_dex):
+		store_dex = int(SV.d.get("selected", owned[0]))
+		if not owned.has(store_dex):
+			store_dex = int(owned[0])
+	var picker := OptionButton.new()
+	picker.custom_minimum_size = Vector2(0, 48)
+	for dex in owned:
+		var species: Dictionary = SV.dex_by[int(dex)]
+		picker.add_item("#%d %s" % [int(dex), L.t(String(species["name"]))])
+		picker.set_item_metadata(picker.item_count - 1, int(dex))
+		if int(dex) == store_dex:
+			picker.select(picker.item_count - 1)
+	picker.item_selected.connect(func(index: int):
+		store_dex = int(picker.get_item_metadata(index))
+		_refresh_store())
+	store_box.add_child(_label(L.t("Elige un Pokémon para aprender TM"), 19, Color("#c8d6ee")))
+	store_box.add_child(picker)
+	store_box.add_child(_label(L.t("Pokémonedas: %d") % int(SV.d.get("coins", 0)), 18, C_GOLD))
+	store_box.add_child(_btn(L.t("Comprar menta de naturaleza · 350 monedas"), func(): _buy_store_mint(), Vector2(0, 44)))
+	store_box.add_child(_btn(L.t("Comprar cápsula · 400 monedas"), func(): _buy_store_capsule(), Vector2(0, 44)))
+	store_box.add_child(_label(L.t("TMs del día"), 24, C_GOLD))
+	var stock: Array = SV.daily_tm_stock(store_dex)
+	var teachable: Array = SV.teachable_moves(store_dex)
+	if stock.is_empty():
+		store_box.add_child(_label(L.t("No hay movimientos disponibles para este Pokémon."), 18))
+	else:
+		for move_id in stock:
+			var id := String(move_id)
+			var name := L.t(String(MD.MOVES[id]["name"]))
+			var button := _btn(L.t("TM: %s · 250 monedas") % name, func(): _buy_daily_tm(store_dex, id), Vector2(0, 44))
+			button.disabled = not teachable.has(id) or int(SV.d.get("coins", 0)) < 250
+			store_box.add_child(button)
+	if store_box.get_child_count() > 0:
+		focus_first = store_box.get_child(1) as Control
+		call_deferred("_gf", focus_first)
+
+
+func _buy_store_mint() -> void:
+	if SV.buy_nature_mint():
+		Aud.sfx("coin")
+		_refresh_store()
+		_update_top()
+	else:
+		Aud.sfx("error")
+		toast(L.t("No tienes suficientes Pokémonedas."))
+
+
+func _buy_store_capsule() -> void:
+	if SV.buy_ability_capsule():
+		Aud.sfx("coin")
+		_refresh_store()
+		_update_top()
+	else:
+		Aud.sfx("error")
+		toast(L.t("No tienes suficientes Pokémonedas."))
+
+
+func _buy_daily_tm(dex: int, id: String) -> void:
+	if SV.buy_and_teach_tm(dex, id, 250):
+		Aud.sfx("coin")
+		_refresh_store()
+		_update_top()
+	else:
+		Aud.sfx("error")
+		toast(L.t("No tienes suficientes Pokémonedas."))
+
+
 func _build_up() -> void:
 	var s: Control = _screen("up")
 	var pc := PanelContainer.new()
@@ -4042,6 +4198,7 @@ func _build_up() -> void:
 	var v := VBoxContainer.new()
 	pc.add_child(v)
 	v.add_child(_label("Mejoras permanentes", 32, C_GOLD))
+	v.add_child(_btn(L.t("Abrir tienda diaria"), func(): _show("store"), Vector2(0, 48)))
 	var sc := _new_scroll()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -4352,9 +4509,10 @@ func _up_button_update(bt: Button, id: String, lv: int, mx: int) -> void:
 # Paneles de debajo (MT, veto, atajos): se rehacen solo si lo que muestran cambia, por porciones.
 func _up_tail() -> void:
 	var show_tm: bool = SV.up_level("tm", up_dex) > 0 and tm_open
+	var show_second: bool = SV.up_level("moves", up_dex) > 0
 	var ban_lv: int = SV.up_level("ban", up_dex)
 	var show_ban: bool = ban_lv > 0 and ban_open
-	var key := "%d_%d_%d_%d_%d_%s_%s_%s" % [up_dex, lay_gen, int(show_tm), int(show_ban), ban_lv, SV.start_move_of(up_dex) if show_tm else "", ",".join(PackedStringArray(SV.ban_list(up_dex))) if show_ban else "", ",".join(PackedStringArray(SV.bind_list(up_dex)))]
+	var key := "%d_%d_%d_%d_%d_%s_%s_%s_%s" % [up_dex, lay_gen, int(show_tm), int(show_second), int(show_ban), SV.start_move_of(up_dex) if show_tm else "", SV.second_start_move_of(up_dex) if show_second else "", ",".join(PackedStringArray(SV.ban_list(up_dex))) if show_ban else "", ",".join(PackedStringArray(SV.bind_list(up_dex)))]
 	if key == up_tail_key:
 		return
 	up_tail_key = key
@@ -4363,9 +4521,43 @@ func _up_tail() -> void:
 		_retire(c, up_tail)
 	if show_tm:
 		_later(up_tail, func(): up_tail.add_child(_tm_panel()))
+	if show_second:
+		_later(up_tail, func(): up_tail.add_child(_second_start_panel()))
 	if show_ban:
 		_later(up_tail, func(): up_tail.add_child(_ban_panel(ban_lv)))
 	_later(up_tail, func(): _bind_panel_into(up_tail))
+
+
+# Elegir el segundo movimiento inicial tras desbloquear Repertorio; Aleatorio conserva el comportamiento anterior.
+func _second_start_panel() -> Control:
+	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", _card_sb())
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	pc.add_child(v)
+	var cur: String = SV.second_start_move_of(up_dex)
+	var sub := _label(L.t("Elige el segundo movimiento inicial. Aleatorio conserva la selección normal."), 18, Color("#c8d6ee"))
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(sub)
+	var fl := HFlowContainer.new()
+	fl.add_theme_constant_override("h_separation", 8)
+	fl.add_theme_constant_override("v_separation", 8)
+	v.add_child(fl)
+	var ids: Array = SV.second_start_pool(up_dex)
+	ids.sort_custom(func(a, b): return L.t(String(MD.MOVES[a]["name"])) < L.t(String(MD.MOVES[b]["name"])))
+	var choices: Array = [""] + ids
+	for id in choices:
+		var pick: String = String(id)
+		var label: String = L.t("Aleatorio") if pick == "" else L.t(String(MD.MOVES[pick]["name"]))
+		var b := _btn(("✔ " if pick == cur else "") + label, func():
+			if SV.set_second_start_move(up_dex, pick):
+				Aud.sfx("select")
+			_refresh_up_keep("second:" + pick), Vector2(0, 40))
+		b.set_meta("fk", "second:" + pick)
+		if pick == cur:
+			b.add_theme_stylebox_override("normal", _sb(Color("#7a5a14"), Color("#ffd23f"), 3, 10))
+		fl.add_child(b)
+	return pc
 
 
 # MT: elige el movimiento con el que empiezas cada partida (gratis cambiarlo cuando quieras).

@@ -594,7 +594,8 @@ func _boot_player() -> void:
 	player.add_child(sh_aura)
 	if SV.owns(sel_dex) and bool(SV.d["owned"][str(sel_dex)]["shiny"]) and bool(SV.d["shiny_on"]):
 		player.set_shiny()
-	player.max_hp = float(st["hp"]) + float(perks["hp"])
+	var nature: Dictionary = SV.nature_of(sel_dex)
+	player.max_hp = (float(st["hp"]) + float(perks["hp"])) * float(nature["hp"])
 	if _has_mod("frail"):
 		player.max_hp = roundf(player.max_hp * 0.5)
 	if mode == "chal" and _ch_rs("one_hp"):
@@ -602,8 +603,8 @@ func _boot_player() -> void:
 	player.hp = player.max_hp
 	nh_last = player.hp
 	nh_max = player.max_hp
-	player.spd = float(st["spd"])
-	player.atk = float(st["atk"])
+	player.spd = float(st["spd"]) * float(nature["spd"])
+	player.atk = float(st["atk"]) * float(nature["atk"])
 	player.types = st["types"]
 	base_spd = player.spd * float(perks["spd"])
 	base_atk = player.atk * float(perks["atk"])
@@ -2331,14 +2332,15 @@ func _setup_team() -> void :
 	for dx in SV.team_dex:
 		var d: int = int(dx)
 		var st2: Dictionary = _dex_by[d]
-		var b: float = float(st2["hp"]) + float(perks["hp"])
+		var nature: Dictionary = SV.nature_of(d)
+		var b: float = (float(st2["hp"]) + float(perks["hp"])) * float(nature["hp"])
 		if _has_mod("frail"):
 			b = roundf(b * 0.5)
 
 		var tm: Array = []
 		if team.size() > 0:
 			tm = _start_moves(d, st2["types"])
-		team.append({"dex": d, "name": L.t(String(st2["name"])), "base": b, "hp": b, "types": st2["types"], "spd": float(st2["spd"]), "atk": float(st2["atk"]),
+		team.append({"dex": d, "name": L.t(String(st2["name"])), "base": b, "hp": b, "types": st2["types"], "spd": float(st2["spd"]) * float(nature["spd"]), "atk": float(st2["atk"]) * float(nature["atk"]),
 			"moves": tm, "slot": 0, "bond_ids": [], "bond_first": ""})
 	team_bonus = 0.0
 
@@ -6778,7 +6780,7 @@ func _offer() -> Array:
 		for id in MD.ORDER:
 			var d: Dictionary = MD.MOVES[id]
 			var ty: String = String(d["type"])
-			if ty != "normal" and not player.types.has(ty):
+			if ty != "normal" and not player.types.has(ty) and not SV.learned_tm(_pdex(), String(id)):
 				continue
 			if not GPM.playable(String(id)):
 				continue
@@ -9378,12 +9380,15 @@ func _heal_real(amount: float) -> float:
 func _start_moves(dex: int, types: Array) -> Array:
 	var first_move: String = SV.start_move_of(dex)
 	var out: Array = [_new_move(first_move, 1)]
-	if int(perks["moves"]) >= 2:
+	if SV.up_level("moves", dex) > 0:
+		var selected_second: String = SV.second_start_move_of(dex)
+		if selected_second != "":
+			return [out[0], _new_move(selected_second, 1)]
 		var cands: Array = []
 		for mid in MD.ORDER:
 			var md: Dictionary = MD.MOVES[mid]
 			var ty: String = String(md["type"])
-			if mid != first_move and String(md["kind"]) != "buff" and GPM.playable(String(mid)) and (ty == "normal" or types.has(ty)):
+			if mid != first_move and String(md["kind"]) != "buff" and GPM.playable(String(mid)) and (ty == "normal" or types.has(ty) or SV.learned_tm(dex, String(mid))):
 				cands.append(mid)
 		if not cands.is_empty():
 			var okc: Array = []
