@@ -16,6 +16,7 @@ const ENTRIES := [
 			"Fusión: dos movimientos vinculados y evolucionados al máximo se unen en uno nuevo, con efectos propios.",
 			"Nuevos sucesos en el mundo: cuevas, laboratorio de Mewtwo, meteoritos, invasiones, rescates, Pokémon alfa y zonas secretas.",
 			"Tienda de Kecleon, Poké Balls y ciclo de día y noche.",
+			"Menú: pantalla de Desafíos y TM Gachapon (máquina de monedas y colección de movimientos), manejables con el mando.",
 		],
 		"changes": [
 			"Las bombas eliminan a todos los enemigos de la pantalla y los jefes pierden un 30 % de vida.",
