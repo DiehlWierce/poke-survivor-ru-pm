@@ -70,6 +70,8 @@ var news_scroll: ScrollContainer
 var dex_gen := 0
 var dex_page := 0
 var dex_only_owned := false
+var dex_heart: Button
+var dex_sort := 0   # 0 numero asc, 1 desc, 2 nombre, 3 rareza, 4 favoritos primero
 var dex_sel := 25
 var dex_grid: GridContainer
 var dex_page_lbl: Label
@@ -3755,6 +3757,14 @@ func _build_dex() -> void:
 	own.add_theme_font_size_override("font_size", 18)
 	own.toggled.connect(func(on: bool): dex_only_owned = on; dex_page = 0; _refresh_dex())
 	filters.add_child(own)
+	var so := OptionButton.new()
+	so.custom_minimum_size = Vector2(190, 40)
+	so.add_theme_font_size_override("font_size", 16)
+	for o in ["Número (asc.)", "Número (desc.)", "Nombre (A-Z)", "Rareza", "Favoritos primero"]:
+		so.add_item(L.t(String(o)))
+	so.select(dex_sort)
+	so.item_selected.connect(func(ix: int): dex_sort = ix; dex_page = 0; _refresh_dex())
+	filters.add_child(so)
 	dex_grid = GridContainer.new()
 	dex_grid.columns = 6   # _fit_dex lo ajusta al ancho disponible
 	dex_grid.add_theme_constant_override("h_separation", 6)
@@ -3786,7 +3796,36 @@ func _dex_filtered() -> Array:
 		if not SV.smeta.has(str(int(p["dex"]))):
 			continue
 		out.append(p)
+	match dex_sort:
+		1:
+			out.sort_custom(func(a, b): return int(a["dex"]) > int(b["dex"]))
+		2:
+			out.sort_custom(func(a, b): return L.t(String(a["name"])) < L.t(String(b["name"])))
+		3:
+			out.sort_custom(func(a, b): return int(a["rarity"]) > int(b["rarity"]) or (int(a["rarity"]) == int(b["rarity"]) and int(a["dex"]) < int(b["dex"])))
+		4:
+			out.sort_custom(func(a, b):
+				var fa: bool = _is_fav(int(a["dex"]))
+				var fb: bool = _is_fav(int(b["dex"]))
+				return (fa and not fb) or (fa == fb and int(a["dex"]) < int(b["dex"])))
 	return out
+
+
+func _is_fav(dx: int) -> bool:
+	return Dictionary(SV.d.get("dex_fav", {})).has(str(dx))
+
+
+func _fav_toggle(dx: int) -> void:
+	var fv: Dictionary = Dictionary(SV.d.get("dex_fav", {}))
+	if fv.has(str(dx)):
+		fv.erase(str(dx))
+	else:
+		fv[str(dx)] = true
+	SV.d["dex_fav"] = fv
+	SV.save()
+	_dex_detail()
+	if is_instance_valid(dex_heart):
+		dex_heart.grab_focus()
 
 
 func _refresh_dex() -> void:
@@ -3825,6 +3864,8 @@ func _refresh_dex() -> void:
 			if not owned and not dex_pick_party:
 				for k in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
 					b.add_theme_color_override(k, Color(0, 0, 0, 0.85))
+			if owned and _is_fav(dx):
+				b.add_theme_stylebox_override("normal", _sb(Color("#4a2a4a"), Color("#ff4d6d"), 2))
 			if dx == int(SV.d["selected"]):
 				b.add_theme_stylebox_override("normal", _sb(Color("#3a6a2e"), C_GOLD, 3))
 			if dex_pick_party:
@@ -3890,7 +3931,23 @@ func _dex_detail() -> void:
 		dex_detail.add_child(_label("#%d  ???" % dx, 28))
 		dex_detail.add_child(_label(L.t("Aún no lo tienes. Consíguelo en el Gacha (región %d · %s).") % [int(p["gen"]), L.t(SV.REGIONS[int(p["gen"]) - 1])], 20, Color("#c8d6ee")))
 		return
-	dex_detail.add_child(_label("#%d  %s" % [dx, L.t(String(p["name"]))], 30, C_GOLD))
+	var nrow := HBoxContainer.new()
+	nrow.add_theme_constant_override("separation", 8)
+	dex_detail.add_child(nrow)
+	var nlb := _label("#%d  %s" % [dx, L.t(String(p["name"]))], 30, C_GOLD)
+	nlb.autowrap_mode = TextServer.AUTOWRAP_OFF
+	nlb.clip_text = true
+	nlb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nrow.add_child(nlb)
+	var hb := Button.new()
+	hb.flat = true
+	hb.icon = IC.btn_tex("heart", 28.0)
+	hb.add_theme_constant_override("icon_max_width", 28)
+	hb.custom_minimum_size = Vector2(44, 40)
+	hb.modulate = Color(1, 0.3, 0.42) if _is_fav(dx) else Color(0.55, 0.6, 0.8, 0.9)
+	hb.pressed.connect(func(): _fav_toggle(dx))
+	nrow.add_child(hb)
+	dex_heart = hb
 	var trow := HBoxContainer.new()
 	trow.add_theme_constant_override("separation", 6)
 	for t in SV.dex_by[dx]["types"]:

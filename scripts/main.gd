@@ -1495,6 +1495,8 @@ func _tick_run(delta: float, pt: int) -> int:
 		if Prof.on:
 			pt = Prof.lap(Prof.S_SPAWN, pt)
 		_update_rift(delta)
+		if Prof.on:
+			pt = Prof.lap(Prof.S_SPAWN, pt)
 		poi.update(delta)
 		kec.update(delta)
 		rescue.update(delta)
@@ -1508,6 +1510,8 @@ func _tick_run(delta: float, pt: int) -> int:
 		jd.update(delta)
 		if run_time >= JDM.ARC_AT and not jd.done and pending_levels == 0 and mode != "rush" and mode != "tower":
 			jd.begin()
+		if Prof.on:
+			pt = Prof.lap(Prof.S_CHUNK, pt)
 	else:
 		_update_arena(delta)
 		if bool(ainfo.get("cave", false)):
@@ -1518,6 +1522,8 @@ func _tick_run(delta: float, pt: int) -> int:
 		if jd.active():
 			jd.update(delta)
 	dn.update(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_FX, pt)
 	_update_weather(delta)
 	if Prof.on:
 		pt = Prof.lap(Prof.S_PLAYER, pt)

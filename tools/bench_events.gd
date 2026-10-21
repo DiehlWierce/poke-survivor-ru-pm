@@ -357,6 +357,8 @@ func _main() -> void:
 			await _rift_flow(false, "")
 		"rush_chain":
 			await _rush_chain()
+		"v51":
+			await _v51_flow()
 		"sat_rift":
 			await _rift_flow(true, "")
 		"rift_biome_before", "rift_biome_same", "rift_biome_after":
@@ -561,6 +563,27 @@ func _biome_flow(sat: bool, pause: bool, boss_chain: bool) -> void:
 	res["switch_frames"] = n - int(marks["смена_биома"])
 	label = "после"
 	await _secs(10.0)
+
+
+# События V5.1: каждое запускается принудительно (spawn/force_event), бот гуляет ~25 с, кадры и ошибки пишутся по метке.
+func _v51_flow() -> void:
+	var ok := {}
+	var steps := [["cave", "spawn"], ["mew", "force_event"], ["meteor", "force_event"], ["inv", "spawn"],
+		["rescue", "spawn"], ["alpha", "spawn"], ["sec", "spawn"]]
+	for st in steps:
+		var obj = m.get(String(st[0]))
+		if obj == null:
+			ok[String(st[0])] = "нет объекта"
+			continue
+		label = String(st[0])
+		m.player.hp = m.player.max_hp   # бот не должен умереть посреди события
+		ok[String(st[0])] = bool(obj.call(String(st[1])))
+		_mark(String(st[0]))
+		await _secs(25.0)
+		if m.get("choosing") == true or m.paused:
+			m.paused = false
+	res["v51_spawn"] = ok
+	res["v51_alive"] = is_instance_valid(m.player) and m.player.hp > 0.0
 
 
 func _report() -> void:

@@ -89,6 +89,7 @@ func _run() -> void:
 	await _check_tabs()
 	await _check_chal()
 	await _check_gachapon()
+	await _check_dex()
 	if failures == 0:
 		print("MENU_UX_OK")
 	else:
@@ -308,5 +309,47 @@ func _check_gachapon() -> void:
 		_fail("gachapon: gcoins=%d, ожидалась 1" % int(sv.d["gcoins"]))
 	_shot("gachapon_1")
 	m.gacha_result.visible = false
+	m._show("main")
+	await _frames(3)
+
+
+# ---------- 6) Коллекция: сортировка и избранное ----------
+func _check_dex() -> void:
+	var sv = load("res://scripts/save_data.gd")
+	for dx in [1, 4, 7, 25]:
+		if not sv.owns(dx):
+			sv.add_owned(dx)
+	m.dex_gen = 0
+	m.dex_only_owned = true
+	m.dex_page = 0
+	m.dex_sort = 0
+	m._show("dex")
+	await _frames(3)
+	var asc: Array = m._dex_filtered()
+	if asc.size() < 2:
+		_fail("dex: мало Pokémon для проверки сортировки (%d)" % asc.size())
+		return
+	m.dex_sort = 1
+	var desc: Array = m._dex_filtered()
+	if int(desc[0]["dex"]) != int(asc[asc.size() - 1]["dex"]):
+		_fail("dex: сортировка по убыванию не работает")
+	var pick: int = int(asc[asc.size() - 1]["dex"])
+	if m._is_fav(pick):
+		_fail("dex: избранное не должно быть задано заранее")
+	m._fav_toggle(pick)
+	if not m._is_fav(pick):
+		_fail("dex: _fav_toggle не включил избранное")
+	m.dex_sort = 4
+	var fv: Array = m._dex_filtered()
+	if int(fv[0]["dex"]) != pick:
+		_fail("dex: «Избранные первыми» не ставит избранное в начало")
+	await _frames(3)
+	_shot("dex_fav")
+	m._fav_toggle(pick)
+	if m._is_fav(pick):
+		_fail("dex: _fav_toggle не выключил избранное")
+	sv.d.erase("dex_fav")
+	m.dex_sort = 0
+	m.dex_only_owned = false
 	m._show("main")
 	await _frames(3)
