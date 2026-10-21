@@ -9,6 +9,24 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.1.1",
+		"date": "2026-10-21",
+		"title": "Poke Survivors para PortMaster 3.1.1: arreglos de la prueba en consola",
+		"new": [],
+		"changes": [],
+		"fixes": [
+			"Arreglo: en los menús, arriba y abajo del mando recorren bien las listas con desplazamiento.",
+			"Arreglo: las pestañas de Ajustes ya no parpadean al cambiar.",
+			"Arreglo: vuelve el mundo animado de fondo en la pantalla de título.",
+			"Arreglo: entrar en una grieta ya no congela el juego; si la arena aún se está preparando, se muestra «Cargando…».",
+			"Arreglo: tras vencer a un legendario, las ventanas de nivel, vínculo y vuelta al mundo salen seguidas, sin esperas.",
+			"Arreglo: el cambio de bioma cambia todo el mapa a la vez, sin trozos del bioma anterior.",
+			"Arreglo: en consola, los efectos de los movimientos, los movimientos Z y los objetos que sueltan los enemigos se ven siempre.",
+			"Arreglo: en Cooperativo, el compañero dejaba de atacar a partir del nivel 30.",
+			"Arreglo: en la Torre, recoger un objeto al superar un piso podía dejar el piso sin enemigos ni jefe.",
+		],
+	},
+	{
 		"ver": "3.1.0",
 		"date": "2026-10-20",
 		"title": "Poke Survivors para PortMaster 3.1: pantalla de carga, interfaz a escala y más fluidez",
