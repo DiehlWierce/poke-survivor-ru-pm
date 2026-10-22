@@ -649,6 +649,11 @@ func _cline(font: Font, y: float, txt: String, fs: int, col: Color) -> void:
 	draw_string(font, Vector2(x0, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f, col)
 
 func _draw() -> void:
+	var _pt := Prof.dbegin()
+	_draw_body()
+	Prof.dend(Prof.D_HUD, _pt)
+
+func _draw_body() -> void:
 	var font := ThemeDB.fallback_font
 	if team.size() != _team_n:
 		_relayout()

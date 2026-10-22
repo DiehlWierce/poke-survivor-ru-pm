@@ -68,6 +68,11 @@ func _input(event: InputEvent) -> void:
 		queue_redraw()
 
 func _draw() -> void:
+	var _pt := Prof.dbegin()
+	_draw_body()
+	Prof.dend(Prof.D_STICK, _pt)
+
+func _draw_body() -> void:
 	if _id == -1:
 		if fixed:
 			var h: Vector2 = _home()

@@ -230,6 +230,11 @@ func _rect(x: float, y: float, w: float, h: float, c: Color, a: float = 1.0) -> 
 
 
 func _draw() -> void:
+	var _pt := Prof.dbegin()
+	_draw_body()
+	Prof.dend(Prof.D_PFX, _pt)
+
+func _draw_body() -> void:
 	var now: float = float(Time.get_ticks_msec()) / 1000.0
 	for b in beams:
 		_draw_beam(b, now)

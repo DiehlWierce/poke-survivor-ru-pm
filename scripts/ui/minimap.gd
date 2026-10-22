@@ -238,6 +238,11 @@ func _tile_of(wp: Vector2) -> Vector2i:
 	return Vector2i(floori(wp.x / m.ground.TS), floori(wp.y / m.ground.TS))
 
 func _draw() -> void:
+	var _pt := Prof.dbegin()
+	_draw_body()
+	Prof.dend(Prof.D_MINIMAP, _pt)
+
+func _draw_body() -> void:
 	var sz: float = BOX
 	var c := CT
 	draw_circle(c, 97.0, Color(0.03, 0.05, 0.11, 1.0))

@@ -16,7 +16,30 @@ const S_HUD := 9
 const S_CHUNK := 10
 const S_FX := 11
 const S_TOTAL := 12
-const NAMES: Array[String] = ["мир", "спавн", "враги", "опасн+вр_снаряды", "поля", "снаряды", "орбы", "очистка", "игрок", "худ", "куски", "эффекты", "всего"]
+const S_ACTOR := 13
+const NAMES: Array[String] = ["мир", "спавн", "враги", "опасн+вр_снаряды", "поля", "снаряды", "орбы", "очистка", "игрок", "худ", "куски", "эффекты", "всего", "актёры_визуал"]
+
+# _draw() по классам: GDScript-рисование выполняется внутри TIME_PROCESS, но вне кругов S_* выше — именно оно и пряталось в «скрипты» >> «всего».
+const D_ENEMY := 0
+const D_BULLET := 1
+const D_EBULLET := 2
+const D_HAZARD := 3
+const D_FX := 4
+const D_FIELD := 5
+const D_ORB := 6
+const D_FLOATER := 7
+const D_GROUND := 8
+const D_DECOR := 9
+const D_POOL := 10
+const D_PROP := 11
+const D_PFX := 12
+const D_CHUNK := 13
+const D_GRASS := 14
+const D_HUD := 15
+const D_MINIMAP := 16
+const D_SLOTS := 17
+const D_STICK := 18
+const D_NAMES: Array[String] = ["враги", "пули", "вр_пули", "опасности", "fx", "поля", "орбы", "цифры", "земля", "декор", "лужи", "пропы", "частицы", "куски_пола", "трава", "худ", "миникарта", "слоты", "стик"]
 
 static var on := false
 static var cur := PackedInt64Array()
@@ -48,6 +71,20 @@ static var pfx_max := 0
 static var pfx_n := 0
 static var pfx_parts_max := 0
 static var pfx_sprites_max := 0
+# _draw по классам: за период / за последний кадр
+static var d_sum := PackedInt64Array()
+static var d_cnt := PackedInt64Array()
+static var d_max := PackedInt64Array()
+static var d_cur := PackedInt64Array()
+static var d_last := PackedInt64Array()
+# данные для журнала событий: забег идёт / пики за забег
+static var run_active := false
+static var peak_enemies := 0
+static var peak_bullets := 0
+static var peak_orbs := 0
+static var peak_fx := 0
+static var peak_draw := 0
+static var peak_nodes := 0
 
 
 static func _init_arrays() -> void:
@@ -67,9 +104,40 @@ static func lap(i: int, t0: int) -> int:
 	return t
 
 
+static func _init_d() -> void:
+	var n: int = D_NAMES.size()
+	d_sum.resize(n)
+	d_cnt.resize(n)
+	d_max.resize(n)
+	d_cur.resize(n)
+	d_last.resize(n)
+
+
+static func dbegin() -> int:
+	return Time.get_ticks_usec() if on else 0
+
+
+static func dend(i: int, t0: int) -> void:
+	if t0 == 0:
+		return
+	if d_sum.size() != D_NAMES.size():
+		_init_d()
+	var d: int = Time.get_ticks_usec() - t0
+	d_sum[i] += d
+	d_cnt[i] += 1
+	d_cur[i] += d
+	if d > d_max[i]:
+		d_max[i] = d
+
+
 static func end_frame() -> void:
 	if cur.size() != NAMES.size():
 		_init_arrays()
+	if d_sum.size() != D_NAMES.size():
+		_init_d()
+	for j in range(D_NAMES.size()):
+		d_last[j] = d_cur[j]
+		d_cur[j] = 0
 	for i in range(NAMES.size()):
 		var v: int = cur[i]
 		sum[i] += v
@@ -86,6 +154,12 @@ static func reset_period() -> void:
 		sum[i] = 0
 		mx[i] = 0
 	frames = 0
+	if d_sum.size() != D_NAMES.size():
+		_init_d()
+	for j in range(D_NAMES.size()):
+		d_sum[j] = 0
+		d_cnt[j] = 0
+		d_max[j] = 0
 	pfx_us = 0
 	pfx_max = 0
 	pfx_n = 0
@@ -130,3 +204,28 @@ static func line_counts() -> String:
 
 static func line_chunks() -> String:
 	return "куски=%d(макс %d) пустых_видимых=%d/накоплено%d докруток=%d(%.1f мс, макс %.1f) задач=%d задача_ср=%.1f мс пауз_запекания=%d" % [ch_n, ch_n_max, ch_vis_missing, ch_vis_total, ch_sync_n, float(ch_sync_us) / 1000.0, float(ch_sync_max) / 1000.0, bk_workers, float(bk_task_us) / 1000.0 / maxf(1.0, float(bk_task_n)), bk_pauses]
+
+
+# Время _draw по классам за период: мс/кадр | вызовов/кадр | макс. мс одного вызова
+static func line_draw() -> String:
+	if d_sum.size() != D_NAMES.size():
+		_init_d()
+	var f: float = float(maxi(1, frames))
+	var s := ""
+	var tot := 0.0
+	for i in range(D_NAMES.size()):
+		if d_cnt[i] > 0:
+			s += "%s=%.1f|%d|%.1f " % [D_NAMES[i], float(d_sum[i]) / f / 1000.0, int(round(float(d_cnt[i]) / f)), float(d_max[i]) / 1000.0]
+			tot += float(d_sum[i]) / f / 1000.0
+	return "рисование_gd(мс/кадр|вызовов/кадр|макс): %s | сумма=%.1f мс" % [s.strip_edges(), tot]
+
+
+# То же для последнего закрытого кадра (для строки рывка)
+static func line_draw_cur() -> String:
+	if d_last.size() != D_NAMES.size():
+		return ""
+	var s := ""
+	for i in range(D_NAMES.size()):
+		if d_last[i] > 0:
+			s += "%s=%.1f " % [D_NAMES[i], float(d_last[i]) / 1000.0]
+	return s.strip_edges()

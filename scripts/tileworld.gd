@@ -1256,6 +1256,11 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	var _pt := Prof.dbegin()
+	_draw_body()
+	Prof.dend(Prof.D_CHUNK, _pt)
+
+func _draw_body() -> void:
 	var k: float = fade_t * fade_t * (3.0 - 2.0 * fade_t)
 	var kind: String = liquid_kind()
 	var lava: bool = kind == "lava" or kind == "poison" or kind == "spark"
@@ -1350,6 +1355,11 @@ class GrassLayer extends Node2D:
 			queue_redraw()
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_GRASS, _pt)
+
+	func _draw_body() -> void:
 		var t0: Texture2D = tw.prop_tex("grass0")
 		var t1: Texture2D = tw.prop_tex("grass1")
 		if t0 == null:

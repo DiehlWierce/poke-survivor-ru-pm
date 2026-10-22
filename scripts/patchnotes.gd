@@ -9,6 +9,20 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.3.2",
+		"date": "2026-10-22",
+		"title": "Poke Survivors para PortMaster 3.3.2: fusiones, vínculos y registros",
+		"new": [
+			"Se puede fusionar más de una vez por partida: tras cada grieta, el vínculo vuelve a poder fusionarse.",
+		],
+		"changes": [
+			"Registros de rendimiento ampliados (perf_log.txt y run_log.txt) para localizar tirones en la consola.",
+		],
+		"fixes": [
+			"Si el vínculo está completo pero no puede fusionar, al volver de la grieta se indica el motivo.",
+		],
+	},
+	{
 		"ver": "3.3.1",
 		"date": "2026-10-22",
 		"title": "Poke Survivors para PortMaster 3.3.1: ajustes de la V5.3",

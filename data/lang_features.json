@@ -1,5 +1,9 @@
 {
   "en": {
+    "Poke Survivors para PortMaster 3.3.2: fusiones, vínculos y registros": "Poke Survivors for PortMaster 3.3.2: fusions, bonds and logs",
+    "Se puede fusionar más de una vez por partida: tras cada grieta, el vínculo vuelve a poder fusionarse.": "You can fuse more than once per run: after each rift, a bond can be fused again.",
+    "Registros de rendimiento ampliados (perf_log.txt y run_log.txt) para localizar tirones en la consola.": "Expanded performance logs (perf_log.txt and run_log.txt) to pin down stutter on the handheld.",
+    "Si el vínculo está completo pero no puede fusionar, al volver de la grieta se indica el motivo.": "If the bond is full but can't fuse, the reason is shown when you leave the rift.",
     "Equilibrada": "Balanced",
     "Veloz": "Swift",
     "Fuerte": "Fierce",
@@ -300,6 +304,10 @@
     "Repositorio del proyecto en GitHub": "Repositório do projeto no GitHub"
   },
   "ru": {
+    "Poke Survivors para PortMaster 3.3.2: fusiones, vínculos y registros": "Poke Survivors для PortMaster 3.3.2: слияния, связи и журналы",
+    "Se puede fusionar más de una vez por partida: tras cada grieta, el vínculo vuelve a poder fusionarse.": "Слияние можно делать не один раз за забег: после каждого разлома связь снова можно слить.",
+    "Registros de rendimiento ampliados (perf_log.txt y run_log.txt) para localizar tirones en la consola.": "Расширены журналы производительности (perf_log.txt и run_log.txt), чтобы найти причину просадок на приставке.",
+    "Si el vínculo está completo pero no puede fusionar, al volver de la grieta se indica el motivo.": "Если связь заполнена, но слияние невозможно, после выхода из разлома показывается причина.",
     "Equilibrada": "Сбалансированная",
     "Veloz": "Быстрая",
     "Fuerte": "Сильная",

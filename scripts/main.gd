@@ -1374,6 +1374,51 @@ func _process_body(delta: float, pt: int) -> void:
 			Prof.n_orbs = orbs.size()
 			Prof.n_fx = fx.get_child_count()
 	Actor.tick_visuals(delta)
+	if Prof.on:
+		pt = Prof.lap(Prof.S_ACTOR, pt)
+
+
+# Состав сцены для perf_log (keys_only): кто именно на экране и сколько его. Вызывается редко (раз в 30 с и при просадке к/с), не в кадре.
+func _census_by(arr: Array, prop: String) -> String:
+	var d := {}
+	for o in arr:
+		if is_instance_valid(o):
+			var k: String = str(o.get(prop))
+			d[k] = int(d.get(k, 0)) + 1
+	var keys: Array = d.keys()
+	keys.sort_custom(func(a, b): return int(d[a]) > int(d[b]))
+	var out := ""
+	for i in range(mini(keys.size(), 8)):
+		out += "%s:%d " % [keys[i], int(d[keys[i]])]
+	return "{" + out.strip_edges() + "}"
+
+
+func perf_census() -> String:
+	var out: Array = []
+	var bosses := 0
+	var asleep := 0
+	for e in enemies:
+		if is_instance_valid(e):
+			if e.boss:
+				bosses += 1
+			if e.sleep_t > 0.0:
+				asleep += 1
+	out.append("враги=%d (боссов %d, спят %d) %s" % [enemies.size(), bosses, asleep, _census_by(enemies, "behavior")])
+	out.append("пули=%d %s" % [bullets.size(), _census_by(bullets, "mtype")])
+	out.append("вр_пули=%d %s" % [ebullets.size(), _census_by(ebullets, "mtype")])
+	out.append("орбы=%d %s" % [orbs.size(), _census_by(orbs, "kind")])
+	out.append("поля=%d %s" % [fields.size(), _census_by(fields, "kind")])
+	out.append("опасности=%d %s" % [hazards.size(), _census_by(hazards, "kind")])
+	out.append("fx_активных=%d %s" % [active_fx.size(), _census_by(active_fx, "kind")])
+	var other := {}
+	for ch in fx.get_children():
+		if not (ch is Fx):
+			var cn: String = ch.get_class()
+			other[cn] = int(other.get(cn, 0)) + 1
+	out.append("узел_fx: детей=%d не-Fx=%s" % [fx.get_child_count(), str(other)])
+	out.append("pfx: частиц=%d спрайтов=%d колец=%d ударов=%d лучей=%d" % [pfx.parts.size(), pfx.sprs.size(), pfx.rings.size(), pfx.slashes.size(), pfx.beams.size()])
+	out.append("потолки: враги=%d fx=%d качество=%d q_auto=%.2f" % [ENEMY_CAP, _fx_cap(), quality, q_auto])
+	return " | ".join(out)
 
 
 func _tick_pause_ui() -> void:
@@ -7744,7 +7789,11 @@ func _arena_end(won: bool, timeout: bool = false) -> void :
 		else:
 			cave.on_leave(won)
 	if won and not was_cave and bonds > 0 and _bond_options().is_empty():
-		_say(L.t("Guardas el vínculo: aprende otro movimiento para usarlo"), 3.0)
+		var fuse_why := _fuse_block_reason()
+		if fuse_why != "":
+			_say(L.t("Fusión pendiente: %s") % fuse_why, 3.5)
+		else:
+			_say(L.t("Guardas el vínculo: aprende otro movimiento para usarlo"), 3.0)
 	rift_check = 6.0 if mode == "rifts" else RIFT_EVERY
 	rift_miss = 0
 	_update_world(0.0)
@@ -8319,6 +8368,11 @@ class Enemy extends Actor:
 		return false
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_ENEMY, _pt)
+
+	func _draw_body() -> void:
 		super._draw()
 		if dead:
 			return
@@ -8371,6 +8425,11 @@ class Hazard extends Node2D:
 		set_process(false) # main actualiza el tiempo y la redibuja junto con el resto de peligros
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_HAZARD, _pt)
+
+	func _draw_body() -> void:
 		if hit:
 			return
 		var k: float = clampf(t / maxf(0.01, delay), 0.0, 1.0)
@@ -8406,6 +8465,11 @@ class EBullet extends Node2D:
 		set_process(false) # el bucle central mueve y redibuja los disparos enemigos
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_EBULLET, _pt)
+
+	func _draw_body() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
 		draw_circle(Vector2.ZERO, 6.0, Color(0, 0, 0, 0.3))
 		draw_circle(Vector2.ZERO, 9.0, Color(1.0, 0.235, 0.314, 0.35))
@@ -8436,6 +8500,11 @@ class Decor extends Node2D:
 		set_process(false)
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_DECOR, _pt)
+
+	func _draw_body() -> void:
 		for it in items:
 			var tx: Texture2D = WTex.get_t(String(it[0]))
 			if tx == null:
@@ -8479,6 +8548,11 @@ class Pool extends Node2D:
 		return img.get_pixel(x, y).a > 0.5
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_POOL, _pt)
+
+	func _draw_body() -> void:
 		if tex != null:
 			draw_texture_rect(tex, Rect2(-Vector2(tw, th) * WTex.SC * 0.5, Vector2(tw, th) * WTex.SC), false)
 			return
@@ -8566,6 +8640,11 @@ class Prop extends Node2D:
 		return true
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_PROP, _pt)
+
+	func _draw_body() -> void:
 		var shadow := true
 		if kind == "trap" or kind == "spring" or kind == "pebble" or kind == "tuft" or kind == "wall":
 			shadow = false
@@ -8852,6 +8931,11 @@ class Bullet extends Node2D:
 		set_process(false) # main mueve los proyectiles y decide cuando cambia su dibujo
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_BULLET, _pt)
+
+	func _draw_body() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.42))
 		draw_circle(Vector2.ZERO, r * 0.9, Color(0, 0, 0, 0.3))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -8886,6 +8970,11 @@ class Fx extends Node2D:
 	var p2 := Vector2.ZERO
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_FX, _pt)
+
+	func _draw_body() -> void:
 		var k: float = clampf(age / life, 0.0, 1.0)
 		var a: float = 1.0 - k
 		var c := Color(color.r, color.g, color.b, a * 0.85)
@@ -8957,6 +9046,11 @@ class Field extends Node2D:
 				draw_line(Vector2(cos(a0) * rx, sin(a0) * ry), Vector2(cos(a1) * rx, sin(a1) * ry), col, 1.5)
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_FIELD, _pt)
+
+	func _draw_body() -> void:
 		var now: float = Time.get_ticks_msec() / 1000.0
 		if kind == "patch":
 			var a: float = clampf(minf((life - t) * 2.0, t * 6.0), 0.0, 1.0)
@@ -9002,6 +9096,11 @@ class Orb extends Node2D:
 	var acc := 0.0     # delta acumulado mientras duerme (lejos y fuera de pantalla)
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_ORB, _pt)
+
+	func _draw_body() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(sc, 0.42 * sc))
 		draw_circle(Vector2.ZERO, 6.0, Color(0, 0, 0, 0.3))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(sc, sc))
@@ -9079,6 +9178,11 @@ class Floater extends Node2D:
 		modulate.a = clampf(1.0 - k * k, 0.0, 1.0)   # el texto se dibuja una vez; el desvanecido va por modulate
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_FLOATER, _pt)
+
+	func _draw_body() -> void:
 		var font := ThemeDB.fallback_font
 		var tx: String = L.t(text)
 		draw_string_outline(font, Vector2(-30.0, 0.0), tx, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, 4, Color(0, 0, 0, 1.0))
@@ -9097,6 +9201,11 @@ class Ground extends Node2D:
 		queue_redraw()
 
 	func _draw() -> void:
+		var _pt := Prof.dbegin()
+		_draw_body()
+		Prof.dend(Prof.D_GROUND, _pt)
+
+	func _draw_body() -> void:
 		var half: Vector2 = get_viewport_rect().size * 0.5 + Vector2(TILE, TILE)
 		var x0: int = int(floor((center.x - half.x) / TILE))
 		var x1: int = int(ceil((center.x + half.x) / TILE))
@@ -10670,12 +10779,10 @@ const FUSE_DMG := 2.2
 
 var fuse_asked := ""
 
-var fused_once := false
-
 var fused_away: Array = []
 
 func _fuse_pair() -> Array:
-	if fused_once or bond_ids.size() != 2:
+	if bond_ids.size() != 2:
 		return []
 	var out: Array = []
 	for id in bond_ids:
@@ -10695,8 +10802,6 @@ func _fuse_block_reason() -> String:
 		return ""
 	if mode == "tower" or _ch_rs("no_fusion"):
 		return L.t("Este modo no permite fusiones")
-	if fused_once:
-		return L.t("Ya fusionaste en esta partida")
 	for id in bond_ids:
 		for m in player.moves:
 			if String(m["id"]) == String(id):
@@ -10743,7 +10848,6 @@ func _do_fuse() -> void :
 			pm["cd"] = float(pm["cd"]) * 0.8
 	fm["name"] = "%s + %s" % [String(a["name"]), String(b["name"])]
 	fm["fused"] = true
-	fused_once = true
 	fused_away.append(String(a["id"]))
 	fused_away.append(String(b["id"]))
 	var rec: Dictionary = FUS.find(String(a["id"]), String(b["id"]))

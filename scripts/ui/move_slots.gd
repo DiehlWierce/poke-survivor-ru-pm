@@ -53,6 +53,11 @@ func _input(event: InputEvent) -> void:
 				return
 
 func _draw() -> void:
+	var _pt := Prof.dbegin()
+	_draw_body()
+	Prof.dend(Prof.D_SLOTS, _pt)
+
+func _draw_body() -> void:
 	var font := ThemeDB.fallback_font
 	var rs: Array = _rects()
 	for i in range(rs.size()):
