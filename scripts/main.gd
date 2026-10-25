@@ -1050,8 +1050,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif z_state != "":
 		pass
 	elif not choosing:
-		if confirm or cyc == 1 or (tpos.x >= 0.0 and hud.act_txt != "" and hud.act_rect().has_point(tpos)):
+		var on_act: bool = tpos.x >= 0.0 and hud.act_txt != "" and hud.act_rect().has_point(tpos)
+		if confirm or cyc == 1 or on_act:
 			act_req = true
+		if on_act:
+			tpos = Vector2(-1.0, -1.0)   # el toque era del boton de accion (anclado a la meta): no activa Z/Dynamax/pausa debajo
 		if (z_req or (tpos.x >= 0.0 and hud.z_rect().has_point(tpos))) and _z_can():
 			_z_start()
 			z_req = false
@@ -1848,7 +1851,7 @@ func _cooldowns(delta: float) -> void:
 
 
 func _z_can() -> bool:
-	return mode != "tower" and z_type != "" and not z_used and z_state == "" and run_time >= ZM.MIN_TIME and not player.dead and not down and not paused and not choosing and arena == null and not jd.active() and not timeup
+	return mode != "tower" and z_type != "" and not z_used and z_state == "" and run_time >= ZM.MIN_TIME and not player.dead and not down and not paused and not choosing and not shop_open and arena == null and not jd.active() and not timeup
 
 
 # Gatillo derecho del mando (ademas del boton configurable).
@@ -1872,7 +1875,7 @@ func _dyn_on() -> bool:
 
 
 func _dyn_can() -> bool:
-	return mode != "tower" and DYN.unlocked(SV.d["stats"]) and not dyn_used and not _dyn_on() and z_state != "cine" and run_time >= DYN.MIN_TIME and not player.dead and not down and not paused and not choosing and not jd.active() and not timeup
+	return mode != "tower" and DYN.unlocked(SV.d["stats"]) and not dyn_used and not _dyn_on() and z_state != "cine" and run_time >= DYN.MIN_TIME and not player.dead and not down and not paused and not choosing and not shop_open and not jd.active() and not timeup
 
 
 func _dyn_start() -> void:

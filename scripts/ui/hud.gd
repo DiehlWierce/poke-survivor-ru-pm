@@ -89,6 +89,7 @@ var _rz := Rect2()                   # boton Z
 var _rd := Rect2()                   # boton Dynamax
 var _rt := Rect2()                   # boton de cambio de equipo
 var _rp := Rect2()                   # boton de pausa
+var _col_top := 0.0                  # y desde la que la columna derecha esta libre (bajo pausa/lista de equipo)
 var _y_chip := 140.0                 # fila de los poderes/objeto (baja si el cartel de arriba es largo)
 var _y_dyn := 58.0                   # barra de tiempo de Dynamax
 var _y_down := 58.0                  # cartel "Espectando"
@@ -115,6 +116,7 @@ func _relayout() -> void:
 	var col_top: float = _rp.end.y + 2.0
 	if _team_n > 0:
 		col_top = 126.0 + _ins.y + 52.0 * float(_team_n - 1) + 46.0 + 2.0
+	_col_top = col_top
 	var zx: float = vp.x - 126.0 - _ins.z
 	_rt = Rect2(vp.x - 150.0 - _ins.z, b - 214.0, 120.0, 120.0)
 	if b - 442.0 >= col_top:
@@ -854,6 +856,9 @@ func _dso(f: Font, p: Vector2, t: String, a: int, w: float, sz: int, o: int, c: 
 
 var act_txt := ""
 
+# Punto de pantalla de la entidad a la que apunta el boton de accion (cofre, Kecleon, Pokemon caido...); x<-9000 = sin ancla
+var act_sp := Vector2(-9999.0, -9999.0)
+
 var poi_marks: Array = []
 
 var items_hud: Array = []
@@ -939,10 +944,30 @@ var ch_mode := false
 func act_rect() -> Rect2:
 	var vp: Vector2 = get_viewport_rect().size
 	var ins: Vector4 = DSP.insets(get_tree())
-
+	if act_sp.x > -9000.0:
+		# pegado a la entidad, pero sin salirse de la pantalla util (el Pokemon caido puede estar lejos)
+		var cx: float = clampf(act_sp.x - 50.0, ins.x, maxf(ins.x, vp.x - ins.z - 100.0))
+		var cy: float = clampf(act_sp.y - 50.0, ins.y, maxf(ins.y, vp.y - ins.w - 100.0))
+		return Rect2(cx, cy, 100.0, 100.0)
 	var left: bool = int(SV.d["settings"].get("act_side", 0)) == 1
 	var ax: float = (26.0 + ins.x) if left else (vp.x - 126.0 - ins.z)
-	return Rect2(ax, vp.y * 0.5 - 50.0, 100.0, 100.0)
+	var ay: float = vp.y * 0.5 - 50.0
+	if not left:
+		# encima de Dynamax/Z; si no cabe (pantalla baja), a la izquierda de la fila de Dynamax/Z
+		var top_y: float = minf(_rd.position.y, _rz.position.y)
+		ay = minf(ay, top_y - 114.0)
+		if ay < _col_top:
+			var lx: float = minf(_rd.position.x, _rz.position.x) - 114.0
+			return Rect2(maxf(lx, ins.x), top_y, 100.0, 100.0)
+	return Rect2(ax, ay, 100.0, 100.0)
+
+# Tamano de letra (<= mx) con el que txt cabe en w, contando la escala de texto del usuario.
+func _fit_size(font: Font, txt: String, w: float, mx: int) -> int:
+	var sz: int = mx
+	var k: float = TXS.k()
+	while sz > 11 and font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, roundi(float(sz) * k)).x > w:
+		sz -= 1
+	return sz
 
 func draw_poi(font: Font, vp: Vector2) -> void :
 	for mk in poi_marks:
@@ -964,4 +989,4 @@ func draw_poi(font: Font, vp: Vector2) -> void :
 		draw_circle(c2, 52.0 + beat * 5.0, Color(1, 0.85, 0.3, 0.22 + 0.2 * beat))
 		draw_circle(c2, 46.0, Color(0.1, 0.07, 0.02, 0.9))
 		draw_arc(c2, 46.0, 0.0, TAU, 40, Color("#ffd23f"), 4.0)
-		_ds(font, Vector2(c2.x - 44.0, c2.y + 10.0), act_txt, HORIZONTAL_ALIGNMENT_CENTER, 88.0, 26, Color.WHITE)
+		_ds(font, Vector2(c2.x - 44.0, c2.y + 10.0), act_txt, HORIZONTAL_ALIGNMENT_CENTER, 88.0, _fit_size(font, act_txt, 84.0, 26), Color.WHITE)
