@@ -8,8 +8,19 @@ var _acc := 0.0
 const THRESH := 12.0
 
 
+const BAR_W := 30.0   # barras de desplazamiento gruesas: se agarran bien con el dedo y el mando
+
+
 func _ready() -> void :
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().node_added.connect(_on_node_added)
+
+
+func _on_node_added(n: Node) -> void :
+	if n is ScrollContainer:
+		var sc := n as ScrollContainer
+		sc.get_v_scroll_bar().custom_minimum_size.x = BAR_W
+		sc.get_h_scroll_bar().custom_minimum_size.y = BAR_W * 0.7
 
 
 func _under(n: Node, pos: Vector2) -> ScrollContainer:

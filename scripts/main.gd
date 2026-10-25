@@ -1168,7 +1168,12 @@ func _finish_prepare() -> void:
 	var mv_list: Array = []
 	for mv in player.moves:
 		mv_list.append({"id": String(mv["id"]), "name": String(mv["name"]), "lvl": int(mv["lvl"]), "evo": bool(mv["evolved"]),
-			"dmg": int(run_dmg.get(String(mv["id"]), 0.0)), "kills": int(run_kills_by.get(String(mv["id"]), 0))})
+			"dmg": int(run_dmg.get(String(mv["id"]), 0.0)), "kills": int(run_kills_by.get(String(mv["id"]), 0)),
+			"desc": String(mv.get("desc", ""))})
+	var item_list: Array = []
+	for iid in [item, item2, item3]:
+		if String(iid) != "":
+			item_list.append(String(iid))
 	if mode == "party":
 		SV.last_run = {}
 		PG.off = false
@@ -1246,7 +1251,7 @@ func _finish_prepare() -> void:
 			st2["mb_" + String(md_id)] = maxi(int(st2.get("mb_" + String(md_id), 0)), rmin)
 	fin_r = {"judge": js, "time": run_time, "kills": kills, "level": player.level, "bosses": run_bosses,
 		"chests": run_chests, "coins": coins, "tickets": tickets, "tickets10": tickets10, "dex": SV.run_dex,
-		"dead": player.dead and not timeup, "moves": mv_list, "mul": mul, "extra": extra,
+		"dead": player.dead and not timeup, "moves": mv_list, "items": item_list, "mul": mul, "extra": extra,
 		"other_dmg": int(run_dmg.get("_other", 0.0)), "other_kills": int(run_kills_by.get("_other", 0)),
 		"ally_dmg": int(ally_dmg), "ally_kills": ally_kills}
 	fin_ev = {"time": run_time, "level": player.level, "coins": coins, "types": player.types, "group": false, "mode": mode, "nmods": (0 if mode == "daily" else mods.size()), "bosses": run_bosses, "rifts": run_rifts, "floor": tw_clears}
@@ -10989,30 +10994,32 @@ func _ptypes_text() -> Array:
 func pause_summary() -> Dictionary:
 	var crit_p: float = minf(0.95, float(perks["crit"]) + (0.15 if _has_item("scopelens") else 0.0) + (0.05 if _has_item("ti_normal") else 0.0) + _lens_add() + abx.crit)
 	var all_stats: Array = [
-		[L.t("Vida"), "%d / %d" % [int(player.hp), int(player.max_hp)]],
-		[L.t("Daño"), "%d%%" % roundi(_atk() / maxf(0.001, base_atk) * 100.0)],
-		[L.t("Velocidad"), "%d" % roundi(_spd())],
-		[L.t("Recarga"), "%d%%" % roundi(100.0 / maxf(0.05, _cd_mul_raw()))],
-		[L.t("Defensa"), "%d%%" % roundi(_reduction() * 100.0)],
-		[L.t("Regeneración"), "%.1f/s" % _regen()],
-		[L.t("Imán"), "%d" % roundi(_magnet())],
-		[L.t("Experiencia"), "x%.2f" % _xp_mul()],
-		[L.t("Tamaño"), "%d%%" % roundi(_size_k() * 100.0)],
-		[L.t("Prob. de crítico"), "%d%%" % roundi(crit_p * 100.0)],
-		[L.t("Daño crítico"), "x%.2f" % _edge_mul()],
-		[L.t("Robo de vida"), "%d%%" % roundi(_fang_pct() * 100.0)],
-		[L.t("Golpe doble"), "%d%%" % roundi(_dstrike_p() * 100.0)],
-		[L.t("Proyectiles extra"), "+%d" % _mult_extra()],
-		[L.t("Perforación extra"), "+%d" % _pierce_extra()],
-		[L.t("Potencia de estados"), "x%.2f" % _amp_k()],
-		[L.t("Pokémonedas finales"), "x%.2f" % _treasure_k()],
-		[L.t("Nivel"), "%d" % player.level],
-		[L.t("Derrotas"), "%d" % kills],
-		[L.t("Tipos"), "/".join(PackedStringArray(_ptypes_text()))],
-		[L.t("Habilidad"), L.t(String(AB.FX[AB.of(_pdex())]["name"]))],
+		[L.t("Vida"), "%d / %d" % [int(player.hp), int(player.max_hp)], "heart"],
+		[L.t("Daño"), "%d%%" % roundi(_atk() / maxf(0.001, base_atk) * 100.0), "fist"],
+		[L.t("Velocidad"), "%d" % roundi(_spd()), "boot"],
+		[L.t("Recarga"), "%d%%" % roundi(100.0 / maxf(0.05, _cd_mul_raw())), "clock"],
+		[L.t("Defensa"), "%d%%" % roundi(_reduction() * 100.0), "shield"],
+		[L.t("Regeneración"), "%.1f/s" % _regen(), "sprout"],
+		[L.t("Imán"), "%d" % roundi(_magnet()), "magnet"],
+		[L.t("Experiencia"), "x%.2f" % _xp_mul(), "book"],
+		[L.t("Tamaño"), "%d%%" % roundi(_size_k() * 100.0), "size"],
+		[L.t("Prob. de crítico"), "%d%%" % roundi(crit_p * 100.0), "scopelens"],
+		[L.t("Daño crítico"), "x%.2f" % _edge_mul(), "expertbelt"],
+		[L.t("Robo de vida"), "%d%%" % roundi(_fang_pct() * 100.0), "lifeorb"],
+		[L.t("Golpe doble"), "%d%%" % roundi(_dstrike_p() * 100.0), "choiceband"],
+		[L.t("Proyectiles extra"), "+%d" % _mult_extra(), "cards"],
+		[L.t("Perforación extra"), "+%d" % _pierce_extra(), "quickclaw"],
+		[L.t("Potencia de estados"), "x%.2f" % _amp_k(), "star"],
+		[L.t("Pokémonedas finales"), "x%.2f" % _treasure_k(), "amuletcoin"],
+		[L.t("Nivel"), "%d" % player.level, "star"],
+		[L.t("Derrotas"), "%d" % kills, "fist"],
+		[L.t("Tipos"), "/".join(PackedStringArray(_ptypes_text())), "star"],
+		[L.t("Habilidad"), L.t(String(AB.FX[AB.of(_pdex())]["name"])), "star"],
 	]
 	var out := {"moves": [], "stats": [], "items": [], "all": all_stats, "time": run_time, "level": player.level,
-		"hp": "%d / %d" % [int(player.hp), int(player.max_hp)], "window": DPS_WIN, "kills": kills, "pname": L.t(String(_dex_by[_pdex()]["name"])), "dex": _pdex()}
+		"hp": "%d / %d" % [int(player.hp), int(player.max_hp)], "window": DPS_WIN, "kills": kills, "pname": L.t(String(_dex_by[_pdex()]["name"])), "dex": _pdex(),
+		"ab_name": L.t(String(AB.FX[AB.of(_pdex())]["name"])), "ab_desc": L.t(String(AB.FX[AB.of(_pdex())]["desc"])), "types": _ptypes_text(),
+		"hp_ratio": clampf(float(player.hp) / maxf(1.0, float(player.max_hp)), 0.0, 1.0), "sprite": _sum_sprite()}
 	var old: Dictionary = dmg_hist[0] if not dmg_hist.is_empty() else {}
 	var span: float = float(maxi(1, dmg_hist.size() - 1)) if not dmg_hist.is_empty() else 1.0
 	for mv in player.moves:
@@ -11028,15 +11035,28 @@ func pause_summary() -> Dictionary:
 		for i in ids:
 			kills += int(run_kills_by.get(i, 0))
 		out["moves"].append({"name": L.t(String(mv["name"])), "type": L.t(String(MD.TYPE_NAME.get(String(mv["type"]), ""))), "lvl": int(mv["lvl"]),
-			"dmg": int(tot), "dps": dps, "kills": kills, "col": String(MD.TYPE_COLOR.get(String(mv["type"]), "#ffffff"))})
+			"dmg": int(tot), "dps": dps, "kills": kills, "icon": "move:" + String(ids[0]), "col": String(MD.TYPE_COLOR.get(String(mv["type"]), "#ffffff"))})
 	for sid in STATS:
 		var lv: int = _lv(String(sid))
 		if lv > 0 and String(sid) != "heal":
 			out["stats"].append({"name": L.t(String(STATS[sid]["title"])), "lv": lv, "icon": String(STAT_ICON.get(sid, "star"))})
 	for it in [item, item2, item3]:
 		if String(it) != "":
-			out["items"].append({"id": String(it), "name": _item_name_of(String(it))})
+			var idesc := ""
+			for td in TD.ITEMS:
+				if String(td["id"]) == String(it):
+					idesc = L.t(String(td["desc"]))
+			out["items"].append({"id": String(it), "name": _item_name_of(String(it)), "desc": idesc})
 	return out
+
+# Retrato del Pokemon para el resumen de pausa (region actual del sprite del jugador).
+func _sum_sprite() -> Texture2D:
+	if player.sprite == null or player.sprite.texture == null:
+		return null
+	var at := AtlasTexture.new()
+	at.atlas = player.sprite.texture
+	at.region = player.sprite.region_rect if player.sprite.region_enabled else Rect2(Vector2.ZERO, player.sprite.texture.get_size())
+	return at
 
 func _cave_begin(ci: Node2D, ty: String, owner: String = "cave") -> void :
 	ainfo = {"phase": "fight", "t": 0.0, "back": player.position, "dex": 0, "type": ty, "shiny": false,
