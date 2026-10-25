@@ -16,18 +16,18 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| alpha.gd | MAX_ALLIES, BIG_RATE_BOSS, BIG_RATE_MINI | новые константы: до 2 союзников за забег, шанс поимки босса 0.6 / гиганта 0.75 | 4 | TODO |
-| alpha.gd | allies_made | счётчик созданных союзников | 4 | TODO |
-| alpha.gd | BallFx._process/_draw | анимация шара: падение после броска, красная вспышка, покачивания с красным свечением вместо поворота | 4 | TODO |
-| alpha.gd | Down (absorb, base_pos) | поглощение побеждённого шаром: сжатие, подъём, покраснение | 4 | TODO |
-| alpha.gd | _legend_free | свободно, пока allies_made < MAX_ALLIES (раньше: нет живого legend) | 4 | TODO |
-| alpha.gd | on_down / on_big_down | on_down вызывает _begin_down; новый on_big_down для боссов и гигантов (enc open_boss/mini), нужен balls>0 и режим normal/type/daily/coop | 4 | TODO |
-| alpha.gd | _begin_down | вынесен из on_down; сообщение «Альфа» только если не big; node.base_pos | 4 | TODO |
-| alpha.gd | throw (rate, z_index) | шанс броска берётся из cur.rate (иначе RATE); fx2.z_index=20 | 4 | TODO |
-| alpha.gd | _process state throw (absorb) | в момент попадания шара запускается absorb и красный burst | 4 | TODO |
-| alpha.gd | _finish | для big-цели не сбрасывать t_next | 4 | TODO |
-| alpha.gd | _resolve | при успехе золотые эффекты вместо _vanish, ball_pos; при провале сброс absorb | 4 | TODO |
-| alpha.gd | _make_ally, _ally_tick | рост из шара (tween), второй союзник в allies_extra, баннер join_name/join_col вместо _say, лечение всех союзников | 4 | TODO |
+| alpha.gd | MAX_ALLIES, BIG_RATE_BOSS, BIG_RATE_MINI | новые константы: до 2 союзников за забег, шанс поимки босса 0.6 / гиганта 0.75 | 4 | DONE |
+| alpha.gd | allies_made | счётчик созданных союзников | 4 | DONE |
+| alpha.gd | BallFx._process/_draw | анимация шара: падение после броска, красная вспышка, покачивания с красным свечением вместо поворота | 4 | DONE |
+| alpha.gd | Down (absorb, base_pos) | поглощение побеждённого шаром: сжатие, подъём, покраснение | 4 | DONE |
+| alpha.gd | _legend_free | свободно, пока allies_made < MAX_ALLIES (раньше: нет живого legend) | 4 | DONE |
+| alpha.gd | on_down / on_big_down | on_down вызывает _begin_down; новый on_big_down для боссов и гигантов (enc open_boss/mini), нужен balls>0 и режим normal/type/daily/coop | 4 | DONE |
+| alpha.gd | _begin_down | вынесен из on_down; сообщение «Альфа» только если не big; node.base_pos | 4 | DONE |
+| alpha.gd | throw (rate, z_index) | шанс броска берётся из cur.rate (иначе RATE); fx2.z_index=20 | 4 | DONE |
+| alpha.gd | _process state throw (absorb) | в момент попадания шара запускается absorb и красный burst | 4 | DONE |
+| alpha.gd | _finish | для big-цели не сбрасывать t_next | 4 | DONE |
+| alpha.gd | _resolve | при успехе золотые эффекты вместо _vanish, ball_pos; при провале сброс absorb | 4 | DONE |
+| alpha.gd | _make_ally, _ally_tick | рост из шара (tween), второй союзник в allies_extra, баннер join_name/join_col вместо _say, лечение всех союзников | 4 | DONE |
 
 ## display.gd
 
@@ -74,7 +74,7 @@
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
 | main.gd | ORB_CAP | лимит орбов 420→300 | 2A | TODO |
-| main.gd | join_t, join_name, join_col | переменные баннера «присоединился» | 4 | TODO |
+| main.gd | join_t, join_name, join_col | переменные баннера «присоединился» | 4 | DONE |
 | main.gd | NORMAL_MOVE_W, BALL_CAP | вес Normal-приёмов 0.15; BALL_CAP 9→6 | 1A | DONE |
 | main.gd | DIR_MS, MINI_DEXES, late_warned | убрать ["eter",3600]; 12 гигантов вместо 4; флаг late_warned | 1A | DONE |
 | main.gd | perf_lv | переменная perf-уровня | 2A | TODO |
@@ -91,7 +91,7 @@
 | main.gd | _end_run: mv_list, item_list | в итог забега добавлены desc приёма и список предметов | 5B | TODO |
 | main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | TODO |
 | main.gd | apply_perf, _fx_cap | новая apply_perf (плотность ×1/0.6/0.3, ffx.lite); _fx_cap 60/24 при perf и 200/60/20 без | 2A | TODO |
-| main.gd | _process: hud.join_* | передача join_* в HUD | 4 | TODO |
+| main.gd | _process: hud.join_* | передача join_* в HUD | 4 | DONE |
 | main.gd | _process: z_btn, dyn_btn | готовность кнопок Z/MAX по run_time >= MIN_TIME | 1A | DONE |
 | main.gd | _z_can | условие run_time >= ZM.MIN_TIME вместо level | 1A | DONE |
 | main.gd | _dyn_can | условие run_time >= DYN.MIN_TIME вместо level | 1A | DONE |
@@ -105,25 +105,25 @@
 | main.gd | _scale_at | hp 1+t/150, dmg 1+t/650 | 1A | DONE |
 | main.gd | _late_x | окно позднего этапа (t-1200)/600 | 1A | DONE |
 | main.gd | _spawn_one | поздняя игра: HP ×(1+2lx), dmg ×(1+lx), spd ×(1+0.15lx), элиты 0.04+0.3lx | 1A | DONE |
-| main.gd | _update_spawner: join_t | таймер баннера присоединения | 4 | TODO |
+| main.gd | _update_spawner: join_t | таймер баннера присоединения | 4 | DONE |
 | main.gd | _update_spawner: late banner | «¡Minuto 20!…» (late_warned, shake 10, sfx boss) | 1A | DONE |
 | main.gd | _update_spawner: rate | формула темпа спавна (×0.4, ×0.15, буст в начале, ×(1+1.5lx)) | 1A | DONE |
 | main.gd | _spawn_thief | ротация воров 52/1000/1012 (thief_cycle) | 5D | TODO |
 | main.gd | _spawn_thief (say) | сообщение «Gachapon Coin» для 1012 | 5D | TODO |
-| main.gd | _hazard_hits_enemy, _ally_boss_attack, _ally_hz | атаки союзника-босса и попадание зон по врагам | 4 | TODO |
-| main.gd | _update_hazards | ally_dmg: зоны союзника бьют врагов, а не игрока | 4 | TODO |
+| main.gd | _hazard_hits_enemy, _ally_boss_attack, _ally_hz | атаки союзника-босса и попадание зон по врагам | 4 | DONE |
+| main.gd | _update_hazards | ally_dmg: зоны союзника бьют врагов, а не игрока | 4 | DONE |
 | main.gd | траву режет (grass cut) | число частиц травы [6,2,0] по perf_lv | 2A | TODO |
 | main.gd | сундук/суперкоробка (tickets) | билеты 1 + 35% ещё одного, ticket10 0.08 (дроп с главных призов) | 1A | DONE |
 | main.gd | try_ball | порог balls>=3, пауза 90 с | 1A | DONE |
 | main.gd | монетный сундук (tickets) | ticket 0.07 / ticket10 0.08 | 1A | DONE |
-| main.gd | allies_extra | список доп. союзников | 4 | TODO |
-| main.gd | _upd_legend, _upd_ally | цикл по allies_extra; тело вынесено в _upd_ally | 4 | TODO |
-| main.gd | _upd_ally: moving | гистерезис движения 28/52 | 4 | TODO |
-| main.gd | _upd_ally: attack | союзник-альфа атакует _ally_boss_attack (atk_t 1.7) | 4 | TODO |
-| main.gd | _legend_leave | уход союзника: учёт allies_extra | 4 | TODO |
+| main.gd | allies_extra | список доп. союзников | 4 | DONE |
+| main.gd | _upd_legend, _upd_ally | цикл по allies_extra; тело вынесено в _upd_ally | 4 | DONE |
+| main.gd | _upd_ally: moving | гистерезис движения 28/52 | 4 | DONE |
+| main.gd | _upd_ally: attack | союзник-альфа атакует _ally_boss_attack (atk_t 1.7) | 4 | DONE |
+| main.gd | _legend_leave | уход союзника: учёт allies_extra | 4 | DONE |
 | main.gd | bullets trail | трейлы только при perf=0, шаг 0.14 | 2A | TODO |
 | main.gd | _xp_for | множитель early = lerp(0.85,1,(L-1)/19) | 1A | DONE |
-| main.gd | _on_enemy_down: on_big_down | вызов alpha.on_big_down для open_boss/mini | 4 | TODO |
+| main.gd | _on_enemy_down: on_big_down | вызов alpha.on_big_down для open_boss/mini | 4 | DONE |
 | main.gd | _on_enemy_down: wildleg | дикий легендарный даёт 2 билета вместо 3 | 1A | DONE |
 | main.gd | loot thief (gimmi/ticket10) | Gimmighoul: gcoin/gcoin_gold; ticket10-вор: ticket10 + 1 билет без монет | 5D | TODO |
 | main.gd | boss drop ticket10 | шанс 1/3 → 0.2 | 1A | DONE |
@@ -144,8 +144,8 @@
 | main.gd | сундук (tickets 2) | ticket 2→1 | 1A | DONE |
 | main.gd | Dynamax unlock say | текст «desde el minuto 3» без %d | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | add_text | лимит Floater.alive [80,28,10] и plain | 2A | TODO |
-| main.gd | Legend: boss_moves, moving | поля союзника | 4 | TODO |
-| main.gd | Hazard.ally_dmg | поле урона союзника | 4 | TODO |
+| main.gd | Legend: boss_moves, moving | поля союзника | 4 | DONE |
+| main.gd | Hazard.ally_dmg | поле урона союзника | 4 | DONE |
 | main.gd | Orb draw: gcoin | иконка/свечение gcoin и gcoin_gold | 5D | TODO |
 | main.gd | Cards: lock_toggled, block_pressed, item_mode, lock_on, block_name | сигналы и поля Lock/блока | 5A | TODO |
 | main.gd | Cards: _toggle_lock, _do_block | обработчики | 5A | TODO |
@@ -155,14 +155,14 @@
 | main.gd | Cards._draw | кнопки «Descartar siempre»/«Bloqueo» | 5A | TODO |
 | main.gd | Floater (alive, plain) | статический счётчик и режим без обводки | 2A | TODO |
 | main.gd | Floater._draw | без L.t в отрисовке; plain пропускает обводку | 2A | TODO |
-| main.gd | HUD vars join_* | поля баннера | 4 | TODO |
+| main.gd | HUD vars join_* | поля баннера | 4 | DONE |
 | main.gd | HUD act_sp | поле якоря кнопки действия | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
-| main.gd | HUD.draw_join | баннер «¡FELICIDADES!» + имя союзника | 4 | TODO |
+| main.gd | HUD.draw_join | баннер «¡FELICIDADES!» + имя союзника | 4 | DONE |
 | main.gd | HUD.act_rect | кнопка у цели (act_sp) и новая раскладка на коротких экранах | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | HUD.draw_poi, _fit_size | подгонка шрифта текста кнопки действия | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | HUD dyn «Min 3» | подпись вместо «Nv. N» | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | HUD z «Min 3» | подпись вместо «Nv. N» | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
-| main.gd | HUD._draw: draw_join | вызов draw_join | 4 | TODO |
+| main.gd | HUD._draw: draw_join | вызов draw_join | 4 | DONE |
 
 ## menu.gd
 
@@ -178,7 +178,7 @@
 | menu.gd | _modes_select, _restore_opts_focus, _modes_select_impl | сохранение фокуса в опциях режима | 6A | TODO |
 | menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO |
 | menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | DONE |
-| menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | TODO |
+| menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | DONE |
 | menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | DONE |
 | menu.gd | _refresh_settings: Rendimiento | ряд «Rendimiento» Normal/Ahorro/Mínimo | 2A | TODO |
 | menu.gd | _refresh_settings: окно | «Modo de ventana» и «Resolución de la ventana» (только PC) | 6B | TODO |
