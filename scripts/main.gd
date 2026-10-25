@@ -5402,6 +5402,74 @@ func _hazard_inside(h: Hazard) -> bool:
 	return absf(-rel.x * d.y + rel.y * d.x) <= h.width * 0.5 + pr * 0.6
 
 
+# Попадание зоны/луча союзника по врагу (как _hazard_inside, но для врага)
+func _hazard_hits_enemy(h: Hazard, en) -> bool:
+	var er: float = en.radius
+	if h.kind == "zone":
+		return en.position.distance_squared_to(h.position) < pow(h.r + er * 0.6, 2.0)
+	var d: Vector2 = Vector2.from_angle(h.angle)
+	var rel: Vector2 = en.position - h.position
+	var along: float = rel.dot(d)
+	if along < -er or along > h.length + er:
+		return false
+	return absf(-rel.x * d.y + rel.y * d.x) <= h.width * 0.5 + er * 0.6
+
+
+# Пойманный союзник бьёт атаками босса: тот же набор, что в _boss_init (Pisotón + Embestida/Salto, 2 дальних по типу)
+func _ally_boss_attack(lg, tg) -> void:
+	if lg.boss_moves.is_empty():
+		var t: Array = [lg.ltype]
+		var pref := "volley"
+		if _has_t(t, ["fire", "ground", "poison", "rock", "grass"]):
+			pref = "rain"
+		elif _has_t(t, ["electric", "psychic", "dragon", "ice", "steel"]):
+			pref = "beam"
+		elif _has_t(t, ["fairy", "ghost", "water", "flying"]):
+			pref = "nova"
+		var others: Array = ["rain", "beam", "nova", "volley"]
+		others.erase(pref)
+		lg.boss_moves = ["slam", "dash" if MX.hsh(lg.dex, 3, 7) < 0.5 else "leap", pref, others[int(MX.hsh(lg.dex, 5, 9) * 3.0) % 3]]
+	var id: String = String(lg.boss_moves[randi() % lg.boss_moves.size()])
+	var d: float = lg.position.distance_to(tg.position)
+	if id == "slam" and d > 150.0:
+		id = "leap"
+	var col: Color = lg.col
+	var ang: float = (tg.position - lg.position).angle()
+	var dm: float = lg.dmg
+	if id == "slam":
+		_ally_hz(_hazard_zone(lg.position, 96.0 + lg.radius, 0.55, 0.0, lg.ltype, col), dm * 1.8)
+		lg.play("Charge", 1.2)
+	elif id == "dash":
+		_ally_hz(_hazard_beam(lg.position, ang, 330.0 + lg.radius, lg.radius * 2.0 + 16.0, 0.55, 0.0, lg.ltype, col), dm * 1.6)
+		lg.play("Charge", 1.3)
+	elif id == "leap":
+		_ally_hz(_hazard_zone(tg.position, 82.0, 0.65, 0.0, lg.ltype, col), dm * 1.7)
+		lg.play("Charge", 1.4)
+	elif id == "rain":
+		for i in range(4):
+			var a: float = randf() * TAU if i > 0 else 0.0
+			var dd: float = randf_range(40.0, 120.0) if i > 0 else 0.0
+			_ally_hz(_hazard_zone(tg.position + Vector2(cos(a) * dd, sin(a) * dd * 0.8), 50.0, 0.6 + float(i) * 0.12, 0.0, lg.ltype, col), dm * 1.1)
+		lg.play("Shoot", 1.0)
+	elif id == "beam":
+		for i in range(3):
+			_ally_hz(_hazard_beam(lg.position, ang + (float(i) - 1.0) * 0.5, 400.0, 26.0, 0.8, 0.0, lg.ltype, col), dm * 1.3)
+		lg.play("Charge", 1.1)
+	elif id == "nova":
+		_ally_hz(_hazard_zone(lg.position, 250.0, 0.7, 0.0, lg.ltype, col), dm * 1.2)
+		_ring(lg.position, lg.radius, 250.0, col, 0.7)
+		lg.play("Charge", 1.4)
+	else:
+		for i in range(5):
+			_ally_hz(_hazard_beam(lg.position, ang + (float(i) - 2.0) * 0.27, 420.0, 14.0, 0.5, 0.0, lg.ltype, col), dm * 0.9)
+		lg.play("Charge", 1.4)
+	Aud.sfx("boss")
+
+
+func _ally_hz(h: Hazard, dm: float) -> void:
+	h.ally_dmg = dm
+
+
 func _update_hazards(delta: float) -> void:
 	trap_slow_t = maxf(0.0, trap_slow_t - delta)
 	wp_t = maxf(0.0, wp_t - delta)
@@ -5451,7 +5519,14 @@ func _update_hazards(delta: float) -> void:
 				f.width = h.width
 				f.life = 0.3
 				fx.add_child(f)
-			if not player.dead and _hazard_inside(h):
+			if h.ally_dmg > 0.0:
+				# зона союзника: бьёт врагов, игрока не задевает
+				for en in enemies.duplicate():
+					if en.dead or bool(en.def.get("scripted", false)):
+						continue
+					if _hazard_hits_enemy(h, en):
+						_damage_enemy(en, h.ally_dmg, h.color, (en.position - h.position).normalized(), 140.0)
+			elif not player.dead and _hazard_inside(h):
 				player.invuln = 0.0
 				if h.pct > 0.0:
 					_hurt_player(maxf(h.dmg, player.max_hp * h.pct), "", h.pure)
@@ -8436,6 +8511,7 @@ class Hazard extends Node2D:
 	var pct := 0.0
 	var pure := false
 	var vis := ""
+	var ally_dmg := 0.0   # >0: зона пойманного союзника, урон врагам вместо игрока
 
 	func _init() -> void:
 		set_process(false) # main actualiza el tiempo y la redibuja junto con el resto de peligros
@@ -10763,10 +10839,14 @@ func _upd_ally(lg, delta: float) -> void :
 		lg.face_angle((tg.position - lg.position).angle())
 	lg.loop_anim("Walk" if moving and lg.has_anim("Walk") else "Idle", 1.0)
 	if tg != null and lg.atk_t <= 0.0 and lg.position.distance_to(tg.position) < 240.0:
-		lg.atk_t = 1.25
-		if lg.has_anim("Attack"):
-			lg.play_attack("Attack", 1.25)
-		_legend_strike(lg, tg)
+		if lg.alpha:
+			lg.atk_t = 1.7
+			_ally_boss_attack(lg, tg)
+		else:
+			lg.atk_t = 1.25
+			if lg.has_anim("Attack"):
+				lg.play_attack("Attack", 1.25)
+			_legend_strike(lg, tg)
 
 func _legend_strike(lg, tg) -> void :
 
