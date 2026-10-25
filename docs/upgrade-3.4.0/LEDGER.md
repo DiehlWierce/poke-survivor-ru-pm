@@ -45,18 +45,18 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| fusion_fx.gd | lite, FRONT | новые поля: lite (=SV.perf()), FRONT=64 | 2B | TODO |
-| fusion_fx.gd | cast | лимит acts 40/24/14 по lite | 2B | TODO |
-| fusion_fx.gd | _org | новая функция: игрок + aim×FRONT | 2B | TODO |
-| fusion_fx.gd | _px, _burst | пропуск частиц 0.45/0.75/0.95; burst ×0.5/0.25/0.1 по lite | 2B | TODO |
-| fusion_fx.gd | waves (cast) | старт волн от _org()+dir×8 | 2B | TODO |
-| fusion_fx.gd | seekers (cast) | старт искателей от _org() | 2B | TODO |
-| fusion_fx.gd | beam wind-up _px | частицы подготовки луча от _org() | 2B | TODO |
-| fusion_fx.gd | beam tick o | источник луча в уроне — _org() | 2B | TODO |
-| fusion_fx.gd | beam _px | частицы вдоль луча от _org() | 2B | TODO |
-| fusion_fx.gd | _d_beam o | отрисовка луча от _gp(_org()) | 2B | TODO |
-| fusion_fx.gd | _d_beam (lite) | при lite>0 не рисовать внешние слои и круги луча | 2B | TODO |
-| fusion_fx.gd | _draw_tint | при lite>=2 не рисовать тонировку | 2B | TODO |
+| fusion_fx.gd | lite, FRONT | новые поля: lite (=SV.perf()), FRONT=64 | 2B | DONE |
+| fusion_fx.gd | cast | лимит acts 40/24/14 по lite | 2B | DONE |
+| fusion_fx.gd | _org | новая функция: игрок + aim×FRONT | 2B | DONE |
+| fusion_fx.gd | _px, _burst | пропуск частиц 0.45/0.75/0.95; burst ×0.5/0.25/0.1 по lite | 2B | DONE |
+| fusion_fx.gd | waves (cast) | старт волн от _org()+dir×8 | 2B | DONE |
+| fusion_fx.gd | seekers (cast) | старт искателей от _org() | 2B | DONE |
+| fusion_fx.gd | beam wind-up _px | частицы подготовки луча от _org() | 2B | DONE |
+| fusion_fx.gd | beam tick o | источник луча в уроне — _org() | 2B | DONE |
+| fusion_fx.gd | beam _px | частицы вдоль луча от _org() | 2B | DONE |
+| fusion_fx.gd | _d_beam o | отрисовка луча от _gp(_org()) | 2B | DONE |
+| fusion_fx.gd | _d_beam (lite) | при lite>0 не рисовать внешние слои и круги луча | 2B | DONE |
+| fusion_fx.gd | _draw_tint | при lite>=2 не рисовать тонировку | 2B | DONE |
 
 ## judgment.gd
 
