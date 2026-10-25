@@ -1,0 +1,1 @@
+Hotfix y mejoras QoL | menu.gd: подпись версии в «Acerca de» (ключ из v56)

@@ -132,7 +132,7 @@
 | main.gd | _offer: выбор Normal | выборка карточек с весом NORMAL_MOVE_W (ключ u^(1/w)) | 1A | DONE |
 | main.gd | pause_summary: all_stats | к каждой статистике добавлена иконка | 5B | DONE |
 | main.gd | pause_summary: moves/items | icon у приёмов, desc у предметов, ab_name/ab_desc, hp_ratio | 5B | DONE |
-| main.gd | _fuse_hint | причина отказа слияния после вязи | 7 | TODO |
+| main.gd | _fuse_hint | причина отказа слияния после вязи | 7 | HAD (вязь уже сообщает причину через _fuse_block_reason: «Fusión pendiente: …»; лимита «una vez por partida» у нас нет) |
 | main.gd | _on_card_chosen: rarecandy | Редкая конфета сразу открывает следующие карточки | 5A | DONE |
 | main.gd | _offer_item: блок и Lock | отфильтровать item_block, игнорировать при item_lock | 5A | DONE |
 | main.gd | _offer_item: _item_ui (замена) | вызов _item_ui при выборе «оставить своё» | 5A | DONE |
@@ -169,14 +169,14 @@
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
 | menu.gd | _ready: DSP.apply_window | применение режима окна при старте меню | 6B | DONE |
-| menu.gd | ver_lbl | подпись версии + «Hotfix y mejoras QoL» | 7 | TODO |
+| menu.gd | ver_lbl | подпись версии + «Hotfix y mejoras QoL» | 7 | DONE |
 | menu.gd | _show, _modes_to_top | при открытии «Режимов» прокрутка вверх | 6A | DONE (аналог: _modes_to_top в _show, прокрутка вверх; панели mp_opts у нас нет) |
 | menu.gd | _input | Escape снимает фокус с LineEdit/TextEdit; PAD.vertical_only для плиток режимов | 6A | DONE (Esc снимает фокус с LineEdit/TextEdit, остальные клавиши — полю; vertical_only для режимов в 1 колонку) |
 | menu.gd | _grid_nav | Dex: влево к панели деталей; Modes: вверх/вниз по плиткам | 6A | DONE (Dex: влево из левой колонки на ficha/Elegir; Modes: N/A — сетка карточек уже ходит NAVG) |
 | menu.gd | нажатие «Играть» | modes_sel = первый режим | 6A | N/A (нет modes_sel: у нас карточки, «Играть» фокусирует «Partida normal», прокрутка вверх) |
 | menu.gd | _build_modes: focus_neighbor | вертикальные соседи плиток режимов | 6A | N/A (focus_neighbor не нужен: NAVG ходит по сетке карточек) |
 | menu.gd | _modes_select, _restore_opts_focus, _modes_select_impl | сохранение фокуса в опциях режима | 6A | DONE (смена типа/этажа башни на месте, без _refresh_modes: фокус остаётся на кнопке) |
-| menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO (menu.gd вне списка 5B; данные fin_r.items и desc приёма готовы) |
+| menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | DONE (SV.last_run получил items) |
 | menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | DONE |
 | menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | DONE |
 | menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | DONE |
@@ -275,7 +275,7 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| updater.gd | FALLBACK_VERSION | 5.1→5.6; обновлятор в порте отключён, версию сохраняем 3.x (синхронизация версии — этап 7) | — | N/A |
+| updater.gd | FALLBACK_VERSION | 5.1→5.6; обновлятор в порте отключён, версию сохраняем 3.x (синхронизация версии — этап 7) | — | DONE (3.4.0) |
 
 ## zmove.gd
 
