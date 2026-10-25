@@ -2012,7 +2012,7 @@ func _f(m: Dictionary, key: String, def: float = 0.0) -> float:
 	var v: float = float(m.get(key, def))
 	if key == "knock" and MD.KNOCK_LV.has(String(m.get("id", ""))):
 		var kl: int = int(m.get("lvl", 1))
-		var kv: float = v if kl < 2 else float(MD.KNOCK_LV[String(m["id"])]) * (1.0 + 0.5 * float(kl - 2)) + v
+		var kv: float = float(MD.KNOCK_BASE.get(String(m["id"]), v)) if kl < 2 else float(MD.KNOCK_LV[String(m["id"])]) * (1.0 + 0.5 * float(kl - 2)) + v
 		return kv * (1.5 if bool(m.get("evolved", false)) else 1.0)
 	if key == "radius":
 		if item == "widelens" or item2 == "widelens" or item3 == "widelens":
@@ -2124,7 +2124,7 @@ func _evo_infos(m: Dictionary) -> Array:
 	if MD.EVO.has(id) and MD.EVO_MODS.has(kind):
 		var e: Array = MD.EVO[id]
 		var needs: String = String(e[1])
-		out.append({"name": String(e[0]), "needs": needs, "need_name": String(MD.NEED_NAME[needs]), "text": String(MD.EVO_MODS[kind]["t"]),
+		out.append({"name": String(e[0]), "needs": needs, "need_name": String(MD.NEED_NAME[needs]), "text": String(MD.EVO_MODS[kind]["t"]) + (L.t(" · %d%% de probabilidad de quemar") % roundi(float(MD.EVO_EXTRA[id]["burnp"]) * 100.0) if MD.EVO_EXTRA.has(id) and MD.EVO_EXTRA[id].has("burnp") else ""),
 			"ready": true, "alt": false})
 	if MD.EVO_ALT.has(id):
 		var a: Array = MD.EVO_ALT[id]
