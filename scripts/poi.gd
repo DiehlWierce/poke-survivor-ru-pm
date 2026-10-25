@@ -457,6 +457,7 @@ func update(delta: float) -> void :
 	var pressed: bool = m.act_req
 	m.act_req = false
 	m.hud.act_txt = ""
+	m.hud.act_sp = Vector2(-9999.0, -9999.0)
 	m.hud.poi_marks = []
 	if _busy():
 		return
@@ -500,16 +501,21 @@ func update(delta: float) -> void :
 			if is_instance_valid(pr) and pr.kind == "chest" and pr.sub == "paid" and not pr.used and pr.position.distance_to(pp) < 62.0:
 				ct = pr
 				break
+	var ctr: Transform2D = m.get_viewport().get_canvas_transform()
 	if m.alpha.window_ok(pp):
 		m.hud.act_txt = m.L.t("Lanzar Poké Ball")
+		if m.alpha.cur != null:
+			m.hud.act_sp = ctr * ((m.alpha.cur["pos"] as Vector2) + Vector2(0.0, -34.0))
 		if pressed:
 			m.alpha.throw()
 	elif target != null:
 		m.hud.act_txt = m.L.t("Abrir")
+		m.hud.act_sp = ctr * (target.position + Vector2(0.0, -14.0))
 		if pressed:
 			claim(target)
 	elif ct != null:
 		m.hud.act_txt = "%d" % paid_cost()
+		m.hud.act_sp = ctr * (ct.position + Vector2(0.0, -10.0))
 		if pressed:
 			buy_chest(ct)
 	elif m.rescue.can_interact(pp):
@@ -518,6 +524,7 @@ func update(delta: float) -> void :
 			m.rescue.interact()
 	elif m.kec.near(pp):
 		m.hud.act_txt = m.L.t("Comerciar")
+		m.hud.act_sp = ctr * (m.kec.active.position + Vector2(0.0, -128.0))
 		if pressed:
 			m.kec.open_ui()
 

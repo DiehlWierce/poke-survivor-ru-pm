@@ -87,7 +87,7 @@
 | main.gd | _pad_slot | новая функция: слот 1–6 по кнопке геймпада | 6A | TODO |
 | main.gd | _unhandled_input KEY_5/KEY_6 | клавиши 5 и 6 выбирают слоты 5–6 | 6A | TODO |
 | main.gd | _unhandled_input (joypad slot) | кнопки геймпада slot1..6 | 6A | TODO |
-| main.gd | _unhandled_input act_req | act_req не ставится, пока открыта лавка (shop_open) | 3 | TODO |
+| main.gd | _unhandled_input act_req | act_req не ставится, пока открыта лавка (shop_open) | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | _end_run: mv_list, item_list | в итог забега добавлены desc приёма и список предметов | 5B | TODO |
 | main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | TODO |
 | main.gd | apply_perf, _fx_cap | новая apply_perf (плотность ×1/0.6/0.3, ffx.lite); _fx_cap 60/24 при perf и 200/60/20 без | 2A | TODO |
@@ -156,10 +156,10 @@
 | main.gd | Floater (alive, plain) | статический счётчик и режим без обводки | 2A | TODO |
 | main.gd | Floater._draw | без L.t в отрисовке; plain пропускает обводку | 2A | TODO |
 | main.gd | HUD vars join_* | поля баннера | 4 | TODO |
-| main.gd | HUD act_sp | поле якоря кнопки действия | 3 | TODO |
+| main.gd | HUD act_sp | поле якоря кнопки действия | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | HUD.draw_join | баннер «¡FELICIDADES!» + имя союзника | 4 | TODO |
-| main.gd | HUD.act_rect | кнопка у цели (act_sp) и новая раскладка на коротких экранах | 3 | TODO |
-| main.gd | HUD.draw_poi, _fit_size | подгонка шрифта текста кнопки действия | 3 | TODO |
+| main.gd | HUD.act_rect | кнопка у цели (act_sp) и новая раскладка на коротких экранах | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
+| main.gd | HUD.draw_poi, _fit_size | подгонка шрифта текста кнопки действия | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | HUD dyn «Min 3» | подпись вместо «Nv. N» | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | HUD z «Min 3» | подпись вместо «Nv. N» | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | HUD._draw: draw_join | вызов draw_join | 4 | TODO |
@@ -241,10 +241,10 @@
 | poi.gd | _pack_reward (opts) | вес ticket 5→3 и 15→10 | 1B | DONE |
 | poi.gd | _pack_reward (try_ball) | try_ball 0.15/0.1 → 0.1/0.06 | 1B | DONE |
 | poi.gd | supply claim | ticket 1, golden ticket 1, rare ball 0.25 | 1B | DONE |
-| poi.gd | Kecleon trade | give_up 0.55→0.7, tier≥3 0.5→0.3 | 3 | TODO |
-| poi.gd | _update: act_sp reset | сброс act_sp в начале | 3 | TODO |
-| poi.gd | _update: ball/open/chest act_sp | привязка кнопки к цели (-34 / -14 / -10) | 3 | TODO |
-| poi.gd | _update: Kecleon act_sp | привязка кнопки к Kecleon | 3 | TODO |
+| poi.gd | Kecleon trade | give_up 0.55→0.7, tier≥3 0.5→0.3 | 3 | HAD (взято в 1B) |
+| poi.gd | _update: act_sp reset | сброс act_sp в начале | 3 | DONE |
+| poi.gd | _update: ball/open/chest act_sp | привязка кнопки к цели (-34 / -14 / -10) | 3 | DONE |
+| poi.gd | _update: Kecleon act_sp | привязка кнопки к Kecleon | 3 | DONE (-128 по v56) |
 
 ## save_data.gd
 
