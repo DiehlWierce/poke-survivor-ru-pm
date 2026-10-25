@@ -11,10 +11,13 @@ const LITE_UPDATE_SEC := 1.0 / 40.0   # consola: paso de ~30 Hz; el umbral bajo 
 const HARD_SPRITES := 1000
 const HARD_PARTS := 1400
 
+# V5.2.2+: base de particulas recortada (-50 % aprox.) y descarte aleatorio de las cosmeticas segun la densidad.
+const BASE_CUT := 0.3
 var dens := 1.0
+var skip := 0.0
 var lite := false
-var cap_parts := 1400
-var cap_sprites := 320
+var cap_parts := 450
+var cap_sprites := 100
 const SMALL_BUDGET := 8   # consola: maximo de particulas pequenas (chispas, polvo) nuevas por fotograma
 var _bud_frame := -1
 var _bud := 0
@@ -26,10 +29,13 @@ var slashes: Array = []
 var beams: Array = []
 
 
+# quality_dens = calidad x Rendimiento (main.apply_perf). Se puede llamar en mitad de la partida.
 func setup(quality_dens: float) -> void:
-	dens = clampf(quality_dens, 0.15, 1.0)
-	cap_parts = int(1400.0 * dens)
-	cap_sprites = int(320.0 * dens)
+	dens = clampf(quality_dens * BASE_CUT, 0.1, 1.0)
+	skip = clampf(1.0 - quality_dens * 0.35, 0.5, 0.85)
+	var qk: float = clampf(quality_dens, 0.35, 1.0)
+	cap_parts = int(450.0 * qk)
+	cap_sprites = int(100.0 * qk)
 	lite = OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
 	if lite:
 		cap_parts = mini(int(cap_parts * 0.5), LITE_PART_CAP)
@@ -59,6 +65,8 @@ static func rnd(a: float, b: float) -> float:
 # ---------------- creacion ----------------
 func px(pos: Vector2, color: Color, vel: Vector2 = Vector2.ZERO, life: float = 0.4, size: float = 1.0, grav: float = 0.0, drag: float = 0.9, force: bool = false) -> void:
 	if parts.size() >= (HARD_PARTS if force else cap_parts):
+		return
+	if not force and randf() < skip:
 		return
 	if lite and size < 1.5 and not force:
 		# Presupuesto por fotograma para las pequenas; las grandes y las de golpes importantes (force) pasan siempre
@@ -91,7 +99,10 @@ func spark(pos: Vector2, color: Color, dir: Vector2, n: int = 4) -> void:
 # o.cosm = true: extra cosmetico (burbujas de veneno, etc.), sujeto a cap_sprites. Todo lo demas es el visual
 # de una habilidad / Z / golpe y se dibuja siempre (solo el tope de seguridad HARD_SPRITES).
 func sp(shape: String, pal: String, pos: Vector2, o: Dictionary = {}) -> void:
-	if sprs.size() >= (cap_sprites if bool(o.get("cosm", false)) else HARD_SPRITES):
+	var cosm: bool = bool(o.get("cosm", false))
+	if sprs.size() >= (cap_sprites if cosm else HARD_SPRITES):
+		return
+	if cosm and randf() < skip * 0.9:
 		return
 	sprs.append({"nw": true, "shape": shape, "pal": pal, "p": pos, "v": o.get("v", Vector2.ZERO), "t": 0.0, "life": float(o.get("life", 0.4)),
 		"scale": float(o.get("scale", 1.0)), "ang": float(o.get("angle", 0.0)), "spin": float(o.get("spin", 0.0)),

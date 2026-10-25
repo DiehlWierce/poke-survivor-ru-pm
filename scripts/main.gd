@@ -43,7 +43,7 @@ const PAUSEUI = preload("res://scripts/pause_ui.gd")
 var ENEMY_CAP := 64   # en la consola (PortMaster) baja a 44: menos enemigos que mover y dibujar
 const AIM_REACH := 520.0
 const MAX_MOVES := 4
-const ORB_CAP := 420
+const ORB_CAP := 300
 const ORB_MERGE := 50      # consola: con mas orbes de XP en el suelo, el nuevo se funde en el mas cercano (la suma de XP no cambia)
 const ORB_MERGE_SCAN := 48 # cuantos orbes (los mas nuevos) se miran para hallar el mas cercano
 const ORB_SC_MAX := 1.6    # tope del tamano visual de un orbe fundido
@@ -153,7 +153,7 @@ const KEEP_DIST_K := 0.82      # los de distancia se quedan al 82% de su alcance
 const CONTACT_CD := 0.55       # contacto con el jugador (combat.js): cada 0,55 s por enemigo
 const CONTACT_KNOCK := 150.0
 const BULLET_HOMING_R := 340.0
-const BULLET_TRAIL_DT := 0.04
+const BULLET_TRAIL_DT := 0.14
 const BULLET_MAX_DIST := 2000.0
 const BULLET_HITLOG_MAX := 300
 const SPAWN_NEAR_MIN := 380.0
@@ -430,6 +430,8 @@ var banned := {}
 var dmg_on := true
 var shake_on := true
 var quality := 0
+var perf_lv := 0          # Rendimiento: 0 Normal / 1 Ahorro / 2 Minimo (SV.perf(), apply_perf)
+var bullets_cut := 0      # disparos propios quitados por el tope de Rendimiento (para perf_log)
 var q_auto := 1.0
 var q_bad_t := 0.0
 var world_seed := 0
@@ -576,10 +578,9 @@ func _boot_data() -> void:
 	Actor.frozen = false
 	relocate_on = Actor.lite
 	quality = int(SV.setting("quality"))
-	var hh: bool = _hh()
-	if hh:
+	if _hh():
 		ENEMY_CAP = 44
-	pfx.setup([1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)] * (0.5 if hh else 1.0))
+	apply_perf()
 
 
 # Carga, etapa 2: el jugador y la semilla del mundo
@@ -696,6 +697,7 @@ func _boot_pause() -> void:
 	pause_ui.build()
 	pause_ui.resume.connect(func(): paused = false)
 	pause_ui.fov_changed.connect(func(_p: int): _apply_fov())
+	pause_ui.perf_changed.connect(func(_l: int): apply_perf())
 	pause_ui.stick_fixed_changed.connect(func(on: bool): stick.fixed = on; stick._relayout())
 	pause_ui.quit_run.connect(_abandon)
 	pause_ui.summary_requested.connect(func(): pause_ui.show_summary(pause_summary()))
@@ -1104,6 +1106,7 @@ func _open_settings() -> void:
 	m.closed.connect(func():
 		cl.queue_free()
 		settings_open = false
+		apply_perf()   # Rendimiento / calidad pueden haber cambiado en Ajustes
 		if paused:
 			pause_ui.open())
 
@@ -1282,18 +1285,34 @@ func _on_ban(idx: int) -> void :
 	cards.bans = bans
 
 
+# Rendimiento (perf) x calidad. Se aplica al empezar y al cambiarlo en la pausa o en Ajustes, sin reiniciar.
+# En consola ya no se multiplica x0,5 aparte: alli el valor por defecto es Ahorro y pfx mantiene sus topes lite.
+func apply_perf() -> void:
+	perf_lv = SV.perf()
+	Prof.perf_lv = perf_lv
+	Prof.n_bullets_cut = bullets_cut
+	quality = int(SV.setting("quality"))
+	var qd: float = [1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)] * [1.0, 0.6, 0.3][perf_lv]
+	pfx.setup(qd)
+	if ffx != null and "lite" in ffx:
+		ffx.lite = perf_lv
+
+
 func _fx_cap() -> int:
 	var k := 0.4 if _hh() else 1.0
 	var cap: int
+	if perf_lv > 0:
+		cap = 60 if perf_lv == 1 else 24
+		return mini(cap, 96) if _hh() else cap
 	match quality:
 		1:
-			cap = int(600.0 * k)
+			cap = int(200.0 * k)
 		2:
-			cap = int(160.0 * k)
+			cap = int(60.0 * k)
 		3:
-			cap = int(50.0 * k)
+			cap = int(20.0 * k)
 		_:
-			cap = int((600.0 * q_auto if q_auto > 0.2 else 50.0) * k)
+			cap = int((200.0 * q_auto if q_auto > 0.2 else 20.0) * k)
 	# El nivel seleccionado sigue controlando el aspecto, pero en el hardware PortMaster
 	# el límite efectivo evita que un ajuste Alto acumule cientos de nodos de efecto.
 	return mini(cap, 96) if _hh() else cap
@@ -1417,7 +1436,7 @@ func perf_census() -> String:
 			other[cn] = int(other.get(cn, 0)) + 1
 	out.append("узел_fx: детей=%d не-Fx=%s" % [fx.get_child_count(), str(other)])
 	out.append("pfx: частиц=%d спрайтов=%d колец=%d ударов=%d лучей=%d" % [pfx.parts.size(), pfx.sprs.size(), pfx.rings.size(), pfx.slashes.size(), pfx.beams.size()])
-	out.append("потолки: враги=%d fx=%d качество=%d q_auto=%.2f" % [ENEMY_CAP, _fx_cap(), quality, q_auto])
+	out.append("потолки: враги=%d fx=%d качество=%d q_auto=%.2f perf=%d пуль_срезано=%d" % [ENEMY_CAP, _fx_cap(), quality, q_auto, perf_lv, bullets_cut])
 	return " | ".join(out)
 
 
@@ -2790,7 +2809,24 @@ func _tick_move(m: Dictionary, delta: float) -> void :
 			_cone(m)
 
 
+# Tope de disparos propios en pantalla por Rendimiento: al llegar, se quita el mas viejo que no sea orbital.
+# Las orbitales (Bullet.orb) no cuentan para quitarse: son el movimiento entero, no un disparo suelto.
+func _bullet_room() -> void:
+	var cap: int = [90, 60, 36][perf_lv]
+	if bullets.size() < cap:
+		return
+	for i in range(bullets.size()):
+		var ob = bullets[i]
+		if not ob.orb:
+			ob.queue_free()
+			bullets.remove_at(i)
+			bullets_cut += 1
+			Prof.n_bullets_cut = bullets_cut
+			return
+
+
 func _make_bullet(m: Dictionary, pos: Vector2, vel: Vector2, life: float, pierce: int) -> Bullet:
+	_bullet_room()
 	var b := Bullet.new()
 	b.modulate.a = _fx_alpha()
 	b.position = pos
@@ -5949,7 +5985,7 @@ func _cut_grass(pos: Vector2, r: float) -> void :
 	Aud.sfx("grass")
 	var pal: Dictionary = ground.pal(ground.biome)
 	var gcol: Color = (pal["grass"] as Array)[1]
-	for i in range(mini(cut.size(), 6)):
+	for i in range(mini(cut.size(), [6, 2, 0][perf_lv])):
 		var f := Fx.new()
 		f.kind = "burst"
 		f.color = gcol
@@ -6466,7 +6502,7 @@ func _update_bullets(delta: float) -> void:
 			if b.leave_t <= 0.0:
 				b.leave_t = 0.13
 				_p_zone(b.position, 24.0, 1.8, 0.4, b.bm, 0.3)
-		if b.trail != "":
+		if b.trail != "" and perf_lv == 0:
 			b.trail_t -= delta
 			if b.trail_t <= 0.0:
 				b.trail_t = BULLET_TRAIL_DT
@@ -7870,17 +7906,22 @@ func _update_weather(delta: float) -> void:
 func add_text(pos: Vector2, text: String, color: Color, size: int = 18) -> void:
 	if not dmg_on and (text.is_valid_int() or (text.begins_with("-") and text.substr(1).is_valid_int())):
 		return
+	var cap: int = [80, 28, 10][perf_lv]
+	if Floater.alive >= cap and size < 24:
+		return
 	var f := Floater.new()
 	f.text = L.t(text)
 	f.size = size
 	f.color = color
 	f.position = pos
+	f.plain = perf_lv > 0
 	fx.add_child(f)
 
 
-# Numero de dano. Consola: con mas de DMG_TXT_MAX vivos, el golpe se suma en el mas cercano y fresco (solo el dibujo; el dano real no cambia).
+# Numero de dano. Consola o Rendimiento Ahorro/Minimo: con mas de DMG_TXT_MAX vivos (o el tope de Rendimiento,
+# si es menor) el golpe se suma en el mas cercano y fresco (solo el dibujo; el dano real no cambia).
 func _dmg_text(pos: Vector2, n: int, color: Color, size: int) -> void:
-	if not Actor.lite:
+	if not Actor.lite and perf_lv == 0:
 		add_text(pos, str(n), color, size)
 		return
 	if not dmg_on:
@@ -7889,7 +7930,7 @@ func _dmg_text(pos: Vector2, n: int, color: Color, size: int) -> void:
 		var q = dmg_txts[i]
 		if not is_instance_valid(q) or q.is_queued_for_deletion():
 			dmg_txts.remove_at(i)
-	if dmg_txts.size() >= DMG_TXT_MAX:
+	if dmg_txts.size() >= mini(DMG_TXT_MAX, [80, 28, 10][perf_lv]):
 		var best = null
 		var bd: float = INF
 		for q in dmg_txts:
@@ -7913,6 +7954,7 @@ func _dmg_text(pos: Vector2, n: int, color: Color, size: int) -> void:
 	f.size = size
 	f.color = color
 	f.position = pos
+	f.plain = perf_lv > 0
 	fx.add_child(f)
 	dmg_txts.append(f)
 
@@ -9171,6 +9213,8 @@ class Orb extends Node2D:
 # Numero de dano flotante
 # ---------------------------------------------------------------
 class Floater extends Node2D:
+	static var alive := 0   # vivos en el arbol (tope de Rendimiento en add_text)
+	var plain := false      # Rendimiento Ahorro/Minimo: sin contorno
 	var text := ""
 	var color := Color.WHITE
 	var life := 0.7
@@ -9178,6 +9222,12 @@ class Floater extends Node2D:
 	var size := 18
 	var sum := 0       # dano acumulado en este numero (consola: golpes fundidos)
 	var merges := 0
+
+	func _enter_tree() -> void:
+		alive += 1
+
+	func _exit_tree() -> void:
+		alive = maxi(0, alive - 1)
 
 	func _process(delta: float) -> void:
 		age += delta
@@ -9195,9 +9245,10 @@ class Floater extends Node2D:
 
 	func _draw_body() -> void:
 		var font := ThemeDB.fallback_font
-		var tx: String = L.t(text)
-		draw_string_outline(font, Vector2(-30.0, 0.0), tx, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, 4, Color(0, 0, 0, 1.0))
-		draw_string(font, Vector2(-30.0, 0.0), tx, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, Color(color.r, color.g, color.b, 1.0))
+		# text ya llega traducido (add_text) o es un numero: nada de L.t en cada dibujo
+		if not plain:
+			draw_string_outline(font, Vector2(-30.0, 0.0), text, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, 4, Color(0, 0, 0, 1.0))
+		draw_string(font, Vector2(-30.0, 0.0), text, HORIZONTAL_ALIGNMENT_CENTER, 60.0, size, Color(color.r, color.g, color.b, 1.0))
 
 
 

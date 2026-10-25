@@ -52,6 +52,8 @@ static var n_bullets := 0
 static var n_ebullets := 0
 static var n_orbs := 0
 static var n_fx := 0
+static var perf_lv := 0          # Rendimiento activo (main.apply_perf)
+static var n_bullets_cut := 0    # disparos propios quitados por el tope de Rendimiento en este juego
 # trozos de suelo (los escribe tileworld.gd)
 static var ch_vis_missing := 0   # trozos visibles sin textura ahora mismo
 static var ch_vis_total := 0     # observaciones acumuladas durante la partida
@@ -199,7 +201,7 @@ static func line_cur() -> String:
 
 static func line_counts() -> String:
 	var pfx_avg: float = float(pfx_us) / 1000.0 / maxf(1.0, float(pfx_n))
-	return "счётчики: врагов=%d снарядов=%d вражьих_снарядов=%d орбов=%d эффектов=%d | PFX=%.2f/%.2f мс частей=%d спрайтов=%d | %s" % [n_enemies, n_bullets, n_ebullets, n_orbs, n_fx, pfx_avg, float(pfx_max) / 1000.0, pfx_parts_max, pfx_sprites_max, line_chunks()]
+	return "счётчики: perf=%d врагов=%d снарядов=%d(срезано %d) вражьих_снарядов=%d орбов=%d эффектов=%d | PFX=%.2f/%.2f мс частей=%d спрайтов=%d | %s" % [perf_lv, n_enemies, n_bullets, n_bullets_cut, n_ebullets, n_orbs, n_fx, pfx_avg, float(pfx_max) / 1000.0, pfx_parts_max, pfx_sprites_max, line_chunks()]
 
 
 static func line_chunks() -> String:

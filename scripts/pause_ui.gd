@@ -17,11 +17,13 @@ signal quit_run
 signal open_settings
 signal fov_changed(pct: int)
 signal stick_fixed_changed(on: bool)
+signal perf_changed(level: int)
 
 const GOLD := Color("#ffd23f")
 var th := Theme.new()
 var cont_btn: Button
 var mute_btn: Button
+var perf_btns: Array = []
 var hint_row: HBoxContainer
 var cc: CenterContainer
 var pc: PanelContainer
@@ -132,6 +134,7 @@ func build() -> void:
 	v.add_child(_fov_row())
 	v.add_child(_stick_row())
 	v.add_child(_aim_row())
+	v.add_child(_perf_row())
 	var mrow := HBoxContainer.new()
 	mrow.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(mrow)
@@ -283,6 +286,38 @@ func _stick_row() -> HBoxContainer:
 	return row
 
 
+# Rendimiento Normal / Ahorro / Minimo: se aplica al momento (main.apply_perf via perf_changed).
+func _perf_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 10)
+	var l := _label("Rendimiento", 24)
+	l.custom_minimum_size = Vector2(190, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_child(l)
+	perf_btns.clear()
+	var cur: int = SV.perf()
+	var names: Array = ["Normal", "Ahorro", "Mínimo"]
+	for i in range(3):
+		var b := _btn(String(names[i]), i == cur, func(): pass)
+		b.custom_minimum_size = Vector2(130, 48)
+		b.add_theme_font_size_override("font_size", 22)
+		b.pressed.connect(func():
+			SV.set_perf(i)
+			for k in range(perf_btns.size()):
+				_style_toggle(perf_btns[k], k == i)
+			perf_changed.emit(i))
+		perf_btns.append(b)
+		row.add_child(b)
+	return row
+
+
+func _refresh_perf() -> void:
+	var cur: int = SV.perf()
+	for k in range(perf_btns.size()):
+		_style_toggle(perf_btns[k], k == cur)
+
+
 func _style_toggle(b: Button, on: bool) -> void:
 	var bg: Color = Color("#f6b52b") if on else Color("#2b4f9e")
 	var bgh: Color = Color("#ffcf55") if on else Color("#3a64bf")
@@ -381,6 +416,7 @@ func open() -> void:
 		var on: bool = bool(SV.d["settings"].get("manual_aim", false))
 		aim_btn.text = L.t("Sí") if on else L.t("No")
 		_style_toggle(aim_btn, on)
+	_refresh_perf()
 	_refresh_hints()
 	sc.scroll_vertical = 0
 	_fit()
