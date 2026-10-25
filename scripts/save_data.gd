@@ -91,7 +91,7 @@ const GOALS := [
 static func default_data() -> Dictionary:
 	return {
 		"v": SAVE_SCHEMA_VERSION, "created": int(Time.get_unix_time_from_system()), "title": "", "nick": "", "favs": [0, 0, 0], "coins": 600, "tickets": 10, "tickets10": 3, "pity": {}, "legends": {}, "arenas": {}, "lshiny": {}, "owned": {}, "selected": 25, "shiny_on": false,
-		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {}, "pstart2": {}, "natures": {}, "pability": {}, "ability_capsules": 0, "nature_mints": 0, "learned_tms": {},
+		"fusions": [], "upgrades": {}, "pup": {}, "claimed": {}, "pban": {}, "pbind": {}, "ptm": {}, "pz": {}, "pstart2": {}, "natures": {}, "pability": {}, "ability_capsules": 0, "nature_mints": 0, "learned_tms": {}, "item_lock": false, "item_block": [],
 		"stats": {"runs": 0, "kills": 0, "best_time": 0, "best_level": 1, "bosses": 0, "chests": 0, "pulls": 0, "shinies": 0, "total_time": 0, "coins_total": 0, "defeated_runs": 0, "rifts": 0},
 		"settings": {"master": 80, "music": 70, "sfx": 80, "dmg_numbers": true, "vibration": true, "shake": true, "stick": 1, "stick_fixed": false, "lang": "en", "view": 100, "fov": 165, "pad": 0, "padmap": {}, "mute": false, "quality": 0, "perf": _perf_default(), "fps": false, "stats_box": false, "adaptive": true, "max_fps": -1, "manual_aim": false, "mono_bonus": false, "fx_op": 1, "act_side": 0, "text_sz": 0},
 	}

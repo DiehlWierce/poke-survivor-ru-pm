@@ -731,6 +731,8 @@ func _boot_ctrl() -> void:
 	ui_layer.add_child(cards)
 	cards.chosen.connect(_on_card_chosen)
 	cards.reroll_pressed.connect(_on_reroll)
+	cards.lock_toggled.connect(_on_lock_toggled)
+	cards.block_pressed.connect(_on_block_pressed)
 	cards.ban_picked.connect(_on_ban)
 
 
@@ -7304,6 +7306,11 @@ func _on_card_chosen(idx: int) -> void :
 			Aud.sfx("levelup")
 			_ring(player.position, 8.0, 140.0, Color("#4f9cf0"), 0.7)
 			add_text(player.position + Vector2(0.0, - player.body_h - 8.0), L.t("¡Caramelo Raro! +1 nivel"), Color("#4f9cf0"), 22)
+			# Sin parpadeo: las cartas del nivel nuevo se abren al instante.
+			cards.hide_cards()
+			choosing = false
+			_open_cards()
+			return
 		elif cat == "itemtake":
 			if int(c.get("slot", 1)) == 3:
 				item3 = id
@@ -7368,7 +7375,18 @@ func _offer_item() -> void :
 	for it in TD.ITEMS:
 		if String(it["id"]) != item and not (two and String(it["id"]) == item2) and not (three and String(it["id"]) == item3) and _item_ok_for(String(it["id"])):
 			pool.append(it)
+	var blocked: Array = SV.d.get("item_block", [])
+	var pool2: Array = []
+	for it2 in pool:
+		if not blocked.has(String(it2["id"])) or String(it2["id"]) == "rarecandy":
+			pool2.append(it2)
+	if not pool2.is_empty():
+		pool = pool2
 	var nw: Dictionary = pool[randi() % pool.size()]
+	var full: bool = item != "" and (not two or item2 != "") and (not three or item3 != "")
+	if bool(SV.d.get("item_lock", false)) and full and String(nw["id"]) != "rarecandy":
+		add_text(player.position + Vector2(0.0, - player.body_h - 8.0), L.t("Objeto ignorado (bloqueo activo)"), Color("#8fa3c4"), 16)
+		return
 	var picks: Array = []
 	if String(nw["id"]) == "rarecandy":
 		# El caramelo no ocupa hueco: una sola carta, sin "sustituye" ni forma de perderlo por quedarte con tus objetos.
@@ -7376,6 +7394,7 @@ func _offer_item() -> void :
 			"title": String(nw["name"]), "desc": String(nw["desc"]), "icon": "rarecandy", "tag": L.t("No ocupa hueco"), "color": Color("#4f9cf0")})
 		choosing = true
 		cards.show_cards(picks, L.t("Has encontrado un objeto"), L.t("Has encontrado un objeto"), false)
+		_item_ui("rarecandy")
 		return
 	if not two:
 		picks.append({"cat": "itemtake", "id": String(nw["id"]), "key": "it:" + String(nw["id"]), "w": 1.0,
@@ -7389,6 +7408,7 @@ func _offer_item() -> void :
 				"title": _item_name(), "desc": cur_desc, "icon": item, "tag": "Quedarte con el tuyo", "color": Color("#8fa3c4")})
 		choosing = true
 		cards.show_cards(picks, L.t("Solo puedes llevar uno: elige con cuál quedarte"), L.t("Has encontrado un objeto"), false)
+		_item_ui(String(nw["id"]))
 		return
 
 	var slots: Array = []
@@ -7411,6 +7431,37 @@ func _offer_item() -> void :
 			"desc": L.t("Sigues con tus objetos actuales."), "icon": item, "tag": "Sin cambios", "color": Color("#8fa3c4")})
 	choosing = true
 	cards.show_cards(picks, L.t("Puedes llevar tres objetos") if three else L.t("Puedes llevar dos objetos"), L.t("Has encontrado un objeto"), false)
+	_item_ui(String(nw["id"]))
+
+
+func _item_ui(new_id: String) -> void:
+	cards.item_mode = true
+	cards.lock_on = bool(SV.d.get("item_lock", false))
+	cards.block_name = "" if new_id == "rarecandy" else new_id
+	cards._relayout()
+
+
+func _on_lock_toggled() -> void:
+	SV.d["item_lock"] = not bool(SV.d.get("item_lock", false))
+	SV.save()
+	cards.lock_on = bool(SV.d["item_lock"])
+	Aud.sfx("confirm")
+	cards.queue_redraw()
+
+
+func _on_block_pressed() -> void:
+	var bl: Array = SV.d.get("item_block", [])
+	if not bl.has(cards.block_name):
+		bl.append(cards.block_name)
+	SV.d["item_block"] = bl
+	SV.save()
+	# Equivale a quedarse con lo que ya llevas.
+	for i in range(cards.items.size()):
+		if String(cards.items[i]["cat"]) == "itemkeep":
+			cards.chosen.emit(i)
+			return
+	cards.hide_cards()
+	choosing = false
 
 
 
