@@ -1,0 +1,3 @@
+Objetos descartados | Настройки: название ряда сброса item_block
+Los objetos que descartaste con «Descartar siempre» vuelven a poder aparecer. | Настройки: описание ряда
+Restablecer | Настройки: текст кнопки сброса item_block

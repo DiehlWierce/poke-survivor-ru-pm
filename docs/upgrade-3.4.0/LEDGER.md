@@ -82,7 +82,7 @@
 | main.gd | _ready: _bind_move_devices(-1) | привязка устройств движения при старте | 6A | DONE |
 | main.gd | setup: pfx.setup → apply_perf() | вместо прямого pfx.setup вызов apply_perf() | 2A | DONE |
 | main.gd | pause_ui.perf_changed.connect | подписка на смену perf в паузе | 2A | DONE |
-| main.gd | cards.lock_toggled/block_pressed.connect | подключение сигналов Lock/«Всегда сбрасывать» | 5A | TODO |
+| main.gd | cards.lock_toggled/block_pressed.connect | подключение сигналов Lock/«Всегда сбрасывать» | 5A | DONE |
 | main.gd | _add_input_actions, _bind_move_devices | device=-1 для кнопок/осей, новая _bind_move_devices(dev) | 6A | DONE |
 | main.gd | _pad_slot | новая функция: слот 1–6 по кнопке геймпада | 6A | DONE (вместо _pad_slot — PAD.slot_of) |
 | main.gd | _unhandled_input KEY_5/KEY_6 | клавиши 5 и 6 выбирают слоты 5–6 | 6A | DONE |
@@ -133,11 +133,11 @@
 | main.gd | pause_summary: all_stats | к каждой статистике добавлена иконка | 5B | TODO |
 | main.gd | pause_summary: moves/items | icon у приёмов, desc у предметов, ab_name/ab_desc, hp_ratio | 5B | TODO |
 | main.gd | _fuse_hint | причина отказа слияния после вязи | 7 | TODO |
-| main.gd | _on_card_chosen: rarecandy | Редкая конфета сразу открывает следующие карточки | 5A | TODO |
-| main.gd | _offer_item: блок и Lock | отфильтровать item_block, игнорировать при item_lock | 5A | TODO |
-| main.gd | _offer_item: _item_ui (замена) | вызов _item_ui при выборе «оставить своё» | 5A | TODO |
-| main.gd | _offer_item: rarecandy slots | для Редкой конфеты слот только 1 | 5A | TODO |
-| main.gd | _item_ui, _on_lock_toggled, _on_block_pressed | кнопки Lock и «Всегда сбрасывать» | 5A | TODO |
+| main.gd | _on_card_chosen: rarecandy | Редкая конфета сразу открывает следующие карточки | 5A | DONE |
+| main.gd | _offer_item: блок и Lock | отфильтровать item_block, игнорировать при item_lock | 5A | DONE |
+| main.gd | _offer_item: _item_ui (замена) | вызов _item_ui при выборе «оставить своё» | 5A | DONE |
+| main.gd | _offer_item: rarecandy slots | для Редкой конфеты слот только 1 | 5A | DONE |
+| main.gd | _item_ui, _on_lock_toggled, _on_block_pressed | кнопки Lock и «Всегда сбрасывать» | 5A | DONE |
 | main.gd | _arena_bond_ready | связь доступна после победы без ожидания end<=2 | 5C | TODO |
 | main.gd | _arena_tick (won) | связь: сброс, если нечего связывать; ожидание выбора связи | 5C | TODO |
 | main.gd | босс-сундук (tickets) | ticket 3→2, ticket10 0.5→0.3 | 1A | DONE |
@@ -147,12 +147,12 @@
 | main.gd | Legend: boss_moves, moving | поля союзника | 4 | DONE |
 | main.gd | Hazard.ally_dmg | поле урона союзника | 4 | DONE |
 | main.gd | Orb draw: gcoin | иконка/свечение gcoin и gcoin_gold | 5D | TODO |
-| main.gd | Cards: lock_toggled, block_pressed, item_mode, lock_on, block_name | сигналы и поля Lock/блока | 5A | TODO |
-| main.gd | Cards: _toggle_lock, _do_block | обработчики | 5A | TODO |
-| main.gd | Cards: touch (item_mode) | нажатия по кнопкам в item_mode | 5A | TODO |
-| main.gd | Cards: KEY_R/KEY_B | R=Descartar siempre, B=Bloqueo в item_mode | 5A | TODO |
-| main.gd | Cards: joypad reroll/ban | геймпад аналогично | 5A | TODO |
-| main.gd | Cards._draw | кнопки «Descartar siempre»/«Bloqueo» | 5A | TODO |
+| main.gd | Cards: lock_toggled, block_pressed, item_mode, lock_on, block_name | сигналы и поля Lock/блока | 5A | DONE |
+| main.gd | Cards: _toggle_lock, _do_block | обработчики | 5A | DONE |
+| main.gd | Cards: touch (item_mode) | нажатия по кнопкам в item_mode | 5A | DONE |
+| main.gd | Cards: KEY_R/KEY_B | R=Descartar siempre, B=Bloqueo в item_mode | 5A | DONE |
+| main.gd | Cards: joypad reroll/ban | геймпад аналогично | 5A | DONE |
+| main.gd | Cards._draw | кнопки «Descartar siempre»/«Bloqueo» | 5A | DONE |
 | main.gd | Floater (alive, plain) | статический счётчик и режим без обводки | 2A | DONE |
 | main.gd | Floater._draw | без L.t в отрисовке; plain пропускает обводку | 2A | DONE |
 | main.gd | HUD vars join_* | поля баннера | 4 | DONE |

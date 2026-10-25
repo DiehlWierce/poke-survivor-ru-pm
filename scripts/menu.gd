@@ -7101,6 +7101,10 @@ func _set_graphics() -> void:
 	_sx(func(): _srow("Vibración", "Vibra el móvil cuando te golpean.", _toggle_set("vibration")))
 	_sx(func(): _srow("Mostrar FPS", "Cuadros por segundo, en la esquina.", _toggle_set("fps")))
 	_sx(func(): _srow("Caja de estadísticas", "Muestra tus estadísticas (daño, velocidad…) arriba a la izquierda.", _toggle_set("stats_box")))
+	_sx(func(): _srow("Objetos descartados", "Los objetos que descartaste con «Descartar siempre» vuelven a poder aparecer.", _btn("Restablecer", func():
+		SV.d["item_block"] = []
+		SV.save()
+		_refresh_settings(), Vector2(220, 46))))
 	_sx(func(): _srow("Dificultad adaptativa", "En la partida normal, el juego empieza fácil y se pone más difícil según tus mejoras: más vida y daño, más enemigos, hordas más seguidas y más experiencia por nivel.", _toggle_set("adaptive")))
 
 

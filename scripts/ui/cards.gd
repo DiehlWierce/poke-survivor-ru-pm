@@ -20,6 +20,11 @@ var rerolls := 0
 var bans := 0
 var ban_mode := false
 var extras := true
+signal lock_toggled
+signal block_pressed
+var item_mode := false     # tarjeta de objeto: botones Descartar siempre / Bloqueo
+var lock_on := false
+var block_name := ""
 # Disposicion en cache: bloque vertical (titulo, cartas, botones, pie) que cabe en la zona util.
 # Se recalcula al abrir y en size_changed (ventana o % de vista), no en cada _draw.
 var _vp := Vector2(1280.0, 720.0)
@@ -41,7 +46,7 @@ func _relayout() -> void:
 	var top_lim: float = _ins.y + 6.0
 	var bot_lim: float = _vp.y - _ins.w - 48.0          # encima del pie (iconos de 28 px)
 	var head := 78.0                                     # titulo y subtitulo antes de las cartas
-	var tail: float = (12.0 + 50.0 + 30.0) if extras else 0.0   # botones y cartel de veto
+	var tail: float = (12.0 + 50.0 + 30.0) if (extras or item_mode) else 0.0   # botones y cartel de veto
 	var avail: float = bot_lim - top_lim
 	_h = clampf(avail - head - tail, 240.0, 294.0)
 	_top = top_lim + maxf(0.0, (avail - (head + _h + tail)) * 0.6)
@@ -96,12 +101,22 @@ func _do_reroll() -> void:
 	if extras and rerolls > 0 and not ban_mode:
 		reroll_pressed.emit()
 
+func _toggle_lock() -> void:
+	if item_mode:
+		lock_toggled.emit()
+
+func _do_block() -> void:
+	if item_mode and block_name != "":
+		block_pressed.emit()
+
 func _toggle_ban() -> void:
 	if extras and bans > 0:
 		ban_mode = not ban_mode
 		queue_redraw()
 
 func show_cards(list: Array, heading: String, head: String = "¡Subes de nivel!", ex: bool = true) -> void:
+	block_name = ""
+	item_mode = false
 	items = list
 	title = heading
 	headline = head
@@ -176,6 +191,13 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventScreenTouch:
 		var brs: Array = _btn_rects()
+		if item_mode:
+			if brs[0].has_point(event.position):
+				_do_block()
+				return
+			if brs[1].has_point(event.position):
+				_toggle_lock()
+				return
 		if brs[0].has_point(event.position):
 			_do_reroll()
 			return
@@ -203,8 +225,10 @@ func _input(event: InputEvent) -> void:
 				_pick(sel)
 			KEY_R:
 				_do_reroll()
+				_do_block()
 			KEY_B:
 				_toggle_ban()
+				_toggle_lock()
 	elif event is InputEventJoypadButton:
 		var bi: int = event.button_index
 		if bi == JOY_BUTTON_DPAD_LEFT or bi == PAD.btn("prev"):
@@ -215,8 +239,10 @@ func _input(event: InputEvent) -> void:
 			_pick(sel)
 		elif bi == PAD.btn("reroll"):
 			_do_reroll()
+			_do_block()
 		elif bi == PAD.btn("ban"):
 			_toggle_ban()
+			_toggle_lock()
 
 func _draw() -> void:
 	if not open:
@@ -276,6 +302,15 @@ func _draw() -> void:
 			_draw_key_label(brs[1], L.t("Vetar (%d)  [B]") % bans, "ban")
 		if ban_mode:
 			draw_string(font, Vector2(0.0, _btn_y + 50.0 + 24.0), L.t("Elige un movimiento nuevo para vetarlo"), HORIZONTAL_ALIGNMENT_CENTER, vp.x, 22, Color("#ff9aa5"))
+	if item_mode:
+		var ibr: Array = _btn_rects()
+		if block_name != "":
+			draw_rect(ibr[0], Color("#5a1f2a"))
+			draw_rect(ibr[0], Color("#ff6b7a"), false, 2.0)
+			_draw_key_label(ibr[0], L.t("Descartar siempre  [R]"), "reroll")
+		draw_rect(ibr[1], Color("#1f5a34") if lock_on else Color("#1b2a44"))
+		draw_rect(ibr[1], Color("#7dffa0") if lock_on else Color("#8fa8cc"), false, 2.0)
+		_draw_key_label(ibr[1], (L.t("Bloqueo: SÍ  [B]") if lock_on else L.t("Bloqueo: NO  [B]")), "ban")
 	_draw_footer(vp)
 
 
