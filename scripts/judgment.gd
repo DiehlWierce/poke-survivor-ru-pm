@@ -481,7 +481,7 @@ func fight() -> void :
 	m._say(L.t("¡Arceus puede ser derrotado! Aguanta y acaba con él"), 3.4)
 	won = false
 	win_t = 0.0
-	A.max_hp = roundf(base * 30.0)
+	A.max_hp = 5000000.0
 	A.hp = A.max_hp
 	A.def["scripted"] = true
 	A.set_meta("jd_arceus", true)
