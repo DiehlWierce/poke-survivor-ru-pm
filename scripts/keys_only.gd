@@ -500,6 +500,9 @@ func _poll() -> void:
 		_ev("ПОГОДА: %s" % str(sc.get("wx_kind")))
 	if _chg("legend", sc.get("legend") != null):
 		_ev("ЛЕГЕНДА %s" % ("появилась" if sc.get("legend") != null else "ушла"))
+	var alp = sc.get("alpha")
+	if alp != null and _chg("allies", int(alp.get("allies_made"))):
+		_mark(sc, "СОЮЗНИК пойман: %s (всего %d)" % [str(sc.get("join_name")), int(alp.get("allies_made"))])
 	if pl != null and _chg("dead", bool(pl.get("dead"))) and bool(pl.get("dead")):
 		_mark(sc, "СМЕРТЬ игрока")
 	if bool(sc.get("run_saved")):

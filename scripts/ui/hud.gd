@@ -21,6 +21,9 @@ var dead := false
 var z_dim := 0.0
 var z_state := ""
 var z_t := 0.0
+var join_t := -1.0          # баннер поимки союзника (main.join_*)
+var join_name := ""
+var join_col := Color.WHITE
 var z_name := ""
 var z_type := ""
 var z_btn := 0
@@ -767,6 +770,7 @@ func _draw_body() -> void:
 		_cline(font, y_wx, L.t(weather_text), 18, Color("#cfe2ff"))
 	if banner != "":
 		_cline(font, y_ban, L.t(banner), 20, Color("#ffffff"))
+	draw_join(font, vp)
 	draw_fusion(font, vp)
 	draw_rift(font, vp)
 	draw_rift_notice(font, vp)
@@ -909,6 +913,60 @@ func draw_items(font: Font, ins: Vector4) -> void :
 		_ds(font, Vector2(x0 + 32.0, cy + 4.0), right, HORIZONTAL_ALIGNMENT_RIGHT, 176.0, 14, rcol)
 	if pages > 1:
 		_ds(font, Vector2(x0, y0 + 34.0 * float(rows) + 8.0), "%d/%d" % [page + 1, pages], HORIZONTAL_ALIGNMENT_RIGHT, 218.0, 12, Color(1, 1, 1, 0.6))
+
+# Баннер поимки: полоса цвета союзника с лучами, «¡FELICIDADES!» разъезжается по буквам, имя падает буквами с тряской (3.2 с)
+func draw_join(font: Font, vp: Vector2) -> void :
+	if join_t < 0.0:
+		return
+	var t: float = join_t
+	var cy: float = vp.y * 0.36
+	var tcol: Color = join_col
+	var open: float = _ease_out(clampf(t / 0.25, 0.0, 1.0))
+	var out: float = clampf((3.2 - t) / 0.4, 0.0, 1.0)
+	var al: float = open * out
+	var hh: float = 54.0 * open
+	var hi := Color(minf(1.0, tcol.r + 0.3), minf(1.0, tcol.g + 0.3), minf(1.0, tcol.b + 0.3), al)
+	draw_rect(Rect2(0.0, cy - hh, vp.x, hh * 2.0), Color(tcol.r * 0.22, tcol.g * 0.22, tcol.b * 0.22, 0.8 * al))
+	draw_rect(Rect2(0.0, cy - hh - 3.0, vp.x, 5.0), hi)
+	draw_rect(Rect2(0.0, cy + hh - 2.0, vp.x, 5.0), hi)
+	var c0 := Vector2(vp.x * 0.5, cy)
+	var rl: float = vp.x * 0.9
+	for i in range(14):
+		var ra: float = float(i) * TAU / 14.0 + t * 0.5
+		draw_colored_polygon(PackedVector2Array([c0, c0 + Vector2.from_angle(ra - 0.07) * rl, c0 + Vector2.from_angle(ra + 0.07) * rl]), Color(tcol.r, tcol.g, tcol.b, 0.14 * al))
+
+	var sub: String = L.t("¡FELICIDADES!")
+	var sp: float = lerpf(1.0, 12.0, _ease_out(clampf((t - 0.05) / 0.6, 0.0, 1.0)))
+	var sx: float = vp.x * 0.5 - (font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + sp * float(sub.length() - 1)) * 0.5
+	for i in range(sub.length()):
+		var chs: String = sub.substr(i, 1)
+		_ds(font, Vector2(sx, cy - 20.0), chs, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1, 1, 1, 0.85 * al))
+		sx += font.get_string_size(chs, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + sp
+
+	var txt: String = join_name
+	var fs: int = 44 if vp.x >= 900.0 else 30
+	var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var cx: float = vp.x * 0.5 - tw * 0.5
+	var n: int = txt.length()
+	for i in range(n):
+		var ch: String = txt.substr(i, 1)
+		var cw: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var ts: float = 0.2 + float(i) * (0.45 / float(maxi(n, 1)))
+		var pr: float = clampf((t - ts) / 0.26, 0.0, 1.0)
+		if pr > 0.0:
+			var scl: float = lerpf(3.0, 1.0, _ease_back(pr))
+			var ca: float = clampf(pr * 5.0, 0.0, 1.0) * out
+			var shk := Vector2.ZERO
+			if t < ts + 0.4:
+				shk = Vector2(sin(t * 90.0 + float(i)) * 3.0, cos(t * 70.0 + float(i) * 2.0) * 3.0) * clampf(1.0 - (t - ts) / 0.4, 0.0, 1.0)
+			draw_set_transform(Vector2(cx + cw * 0.5, cy + 24.0) + shk, 0.0, Vector2(scl, scl))
+			var base := Color(minf(1.0, tcol.r * 0.45 + 0.55), minf(1.0, tcol.g * 0.45 + 0.55), minf(1.0, tcol.b * 0.45 + 0.55), ca)
+			for o in [Vector2(-3, 0), Vector2(3, 0), Vector2(0, -3), Vector2(0, 3)]:
+				_ds(font, Vector2(-cw * 0.5, 0.0) + o, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(tcol.r, tcol.g, tcol.b, 0.55 * ca))
+			_ds(font, Vector2(-cw * 0.5 + 3.0, 4.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.7 * ca))
+			_ds(font, Vector2(-cw * 0.5, 0.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, base)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		cx += cw
 
 func draw_fusion(f: Font, vp: Vector2) -> void :
 	if fusion_t <= 0.0:

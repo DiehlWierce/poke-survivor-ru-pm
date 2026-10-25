@@ -385,6 +385,9 @@ var surge_t := 90.0
 var preload_t := 0.0
 var banner_text := ""
 var banner_t := 0.0
+var join_t := -1.0             # баннер «¡FELICIDADES!» после поимки союзника (3.2 с), -1 = нет
+var join_name := ""
+var join_col := Color.WHITE
 var event_id := ""
 var event_t := 0.0
 var horde_defs: Array = []
@@ -1623,6 +1626,9 @@ func _tick_hud(delta: float) -> void:
 	hud.z_dim = _z_dim()
 	hud.z_state = z_state
 	hud.z_t = z_t
+	hud.join_t = join_t
+	hud.join_name = join_name
+	hud.join_col = join_col
 	if hs:
 		hud.z_name = L.t(String(ZM.DEF[z_type]["name"])) if z_type != "" else ""
 	hud.z_type = z_type
@@ -4097,6 +4103,10 @@ func _update_spawner(delta: float) -> void :
 
 	var t: float = run_time
 	banner_t = maxf(0.0, banner_t - delta)
+	if join_t >= 0.0:
+		join_t += delta
+		if join_t > 3.2:
+			join_t = -1.0
 	fusion_t = maxf(0.0, fusion_t - delta)
 	if mode == "rush":
 		_update_rush(delta)
