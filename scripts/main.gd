@@ -451,6 +451,9 @@ var trap_sleep_t := 0.0
 var trap_conf_t := 0.0
 var tickets := 0
 var tickets10 := 0
+var gcoins_run := 0   # Gachapon Coin ganadas en la partida (se abonan al terminar)
+var gold_gcoins_run := 0
+var thief_cycle := -1   # rotación Meowth / Gholdengo / Poltchageist
 # --- grietas y arenas legendarias ---
 const ARENA_POS := Vector2(60000.0, 60000.0)
 const RIFT_START := 75.0
@@ -1272,7 +1275,7 @@ func _finish_prepare() -> void:
 		for md_id in mods:
 			st2["mb_" + String(md_id)] = maxi(int(st2.get("mb_" + String(md_id), 0)), rmin)
 	fin_r = {"judge": js, "time": run_time, "kills": kills, "level": player.level, "bosses": run_bosses,
-		"chests": run_chests, "coins": coins, "tickets": tickets, "tickets10": tickets10, "dex": SV.run_dex,
+		"chests": run_chests, "coins": coins, "tickets": tickets, "tickets10": tickets10, "gcoins": gcoins_run, "gold_gcoins": gold_gcoins_run, "dex": SV.run_dex,
 		"dead": player.dead and not timeup, "moves": mv_list, "items": item_list, "mul": mul, "extra": extra,
 		"other_dmg": int(run_dmg.get("_other", 0.0)), "other_kills": int(run_kills_by.get("_other", 0)),
 		"ally_dmg": int(ally_dmg), "ally_kills": ally_kills}
@@ -4695,16 +4698,22 @@ func _start_event(id: String) -> void:
 		_say(L.t("¡Hora dorada! Doble de experiencia"), 3.0)
 
 
-func _spawn_thief(force_coins: bool = false) -> void :
-	var gold: bool = randf() < 0.25 and not force_coins
-	var dex: int = 1000 if gold else 52
-	var gimmi := false
-
-	if not gold and not force_coins and randf() < 0.35 and _dex_by.has(1012) and _smeta.has("1012"):
-		dex = 1012
-		gimmi = true
+func _spawn_thief(force_coins: bool = false) -> void:
+	if thief_cycle < 0:
+		thief_cycle = randi() % 3
+	var kinds := [52, 1000, 1012]
+	var dex: int = 52
+	if not force_coins:
+		for k in range(3):
+			var cand: int = int(kinds[(thief_cycle + k) % 3])
+			if _dex_by.has(cand) and _smeta.has(str(cand)):
+				dex = cand
+				thief_cycle = (thief_cycle + k + 1) % 3
+				break
 	if not _dex_by.has(dex) or not _smeta.has(str(dex)):
 		return
+	var gold: bool = dex == 1000
+	var gimmi: bool = dex == 1012
 	var def := {"dex": dex, "name": String(_dex_by[dex]["name"]), "behavior": "thief",
 		"hp": roundf(60.0 * (1.0 + run_time / 95.0) * (1.5 if gold else 1.0)), "spd": 92.0, "dmg": 0.0, "xp": 10.0,
 		"loot": "ticket10" if gold else ("gimmi" if gimmi else "coins")}
@@ -4719,6 +4728,8 @@ func _spawn_thief(force_coins: bool = false) -> void :
 	_ring(pos, 4.0, 40.0, Color("#ffd23f"), 0.5)
 	if gold:
 		_say(L.t("¡Un %s con un ticket ×10! ¡Atrápalo antes de que huya!") % e.enemy_name, 3.2)
+	elif gimmi:
+		_say(L.t("¡Un %s con una Gachapon Coin! ¡Atrápalo antes de que huya!") % e.enemy_name, 3.2)
 	else:
 		_say(L.t("¡Un %s cargado de monedas! ¡Atrápalo antes de que huya!") % e.enemy_name, 3.2)
 
@@ -6814,14 +6825,10 @@ func _drop(e) -> void :
 		if String(e.def.get("loot", "coins")) == "gimmi":
 			if not e.has_meta("paid"):
 				e.set_meta("paid", true)
-				for k in range(8):
-					_spawn_orb(e.position, "coin", 5.0)
-				if randf() < 0.2:
-					_spawn_orb(e.position, "ticket", 1.0)
+				_spawn_orb(e.position + Vector2(0.0, -14.0), "gcoin_gold" if randf() < 0.03 else "gcoin", 1.0)
 		elif String(e.def.get("loot", "coins")) == "ticket10":
-			for k in range(6):
-				_spawn_orb(e.position, "coin", 5.0)
 			_spawn_orb(e.position, "ticket10", 1.0)
+			_spawn_orb(e.position + Vector2(12.0, 0.0), "ticket", 1.0)
 		else:
 			for k in range(20):
 				_spawn_orb(e.position, "coin", 5.0)
@@ -6932,6 +6939,14 @@ func _collect(kind: String, value: float) -> void:
 		tickets10 += int(value)
 		Aud.sfx("shinyGet")
 		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), L.t("+%d ×10 tickets") % int(value), Color("#c47bff"))
+	elif kind == "gcoin_gold":
+		gold_gcoins_run += int(value)
+		Aud.sfx("legend")
+		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), L.t("+%d Gachapon Coin Dorada") % int(value), Color("#ffd23f"), 22)
+	elif kind == "gcoin":
+		gcoins_run += int(value)
+		Aud.sfx("shinyGet")
+		add_text(player.position + Vector2(0.0, -player.body_h - 4.0), L.t("+%d Gachapon Coin") % int(value), Color("#ff8ad8"), 20)
 	elif kind == "ticket":
 		tickets += int(value)
 		Aud.sfx("shinyGet")
@@ -9300,6 +9315,9 @@ class Orb extends Node2D:
 			elif kind == "ticket10":
 				icn = "ticket10"
 				glow = Color("#c47bff")
+			elif kind == "gcoin" or kind == "gcoin_gold":
+				icn = kind
+				glow = Color("#ffd23f") if kind == "gcoin_gold" else Color("#ff8ad8")
 			elif kind == "magnet":
 				icn = "magnet"
 				glow = Color("#7fe0ff")
