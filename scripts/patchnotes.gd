@@ -9,6 +9,24 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.4.0",
+		"date": "2026-10-25",
+		"title": "Poke Survivors para PortMaster 3.4.0: contenido de la V5.2–V5.6",
+		"new": [
+			"Captura de jefes y gigantes: derrótalos con un Poké Ball a mano y pueden unirse a ti (hasta 2 aliados).",
+			"8 gigantes nuevos, opción Rendimiento (Normal / Ahorro / Mínimo) y vídeos de vista previa en los modos.",
+			"Pausa nueva con Resumen y Opciones, bloqueo y descarte permanente de objetos, y teclas 1–6 para elegir movimiento.",
+		],
+		"changes": [
+			"Equilibrio de la V5.6: dificultad más suave al inicio y mucho más dura tras el minuto 20; mejoras permanentes un 40 % más baratas.",
+			"Z y Dynamax se desbloquean al minuto 3.",
+			"Ladrones por turnos (Meowth, Gholdengo, Poltchageist) y monedas Gachapon durante la partida.",
+		],
+		"fixes": [
+			"El botón de acción aparece junto al objetivo y ya no tapa Dynamax ni Z.",
+		],
+	},
+	{
 		"ver": "3.3.2",
 		"date": "2026-10-22",
 		"title": "Poke Survivors para PortMaster 3.3.2: fusiones, vínculos y registros",
