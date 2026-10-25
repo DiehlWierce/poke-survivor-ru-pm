@@ -88,7 +88,7 @@
 | main.gd | _unhandled_input KEY_5/KEY_6 | клавиши 5 и 6 выбирают слоты 5–6 | 6A | DONE |
 | main.gd | _unhandled_input (joypad slot) | кнопки геймпада slot1..6 | 6A | DONE |
 | main.gd | _unhandled_input act_req | act_req не ставится, пока открыта лавка (shop_open) | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
-| main.gd | _end_run: mv_list, item_list | в итог забега добавлены desc приёма и список предметов | 5B | TODO |
+| main.gd | _end_run: mv_list, item_list | в итог забега добавлены desc приёма и список предметов | 5B | DONE |
 | main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | TODO |
 | main.gd | apply_perf, _fx_cap | новая apply_perf (плотность ×1/0.6/0.3, ffx.lite); _fx_cap 60/24 при perf и 200/60/20 без | 2A | DONE (ffx.lite ставится, если поле есть — его добавляет 2B; hh ×0.4/≤96 сохранён) |
 | main.gd | _process: hud.join_* | передача join_* в HUD | 4 | DONE |
@@ -130,8 +130,8 @@
 | main.gd | обычный дроп ticket | 1/400 → 1/600 | 1A | DONE |
 | main.gd | _collect (gcoin kinds) | подбор gcoin и gcoin_gold | 5D | TODO |
 | main.gd | _offer: выбор Normal | выборка карточек с весом NORMAL_MOVE_W (ключ u^(1/w)) | 1A | DONE |
-| main.gd | pause_summary: all_stats | к каждой статистике добавлена иконка | 5B | TODO |
-| main.gd | pause_summary: moves/items | icon у приёмов, desc у предметов, ab_name/ab_desc, hp_ratio | 5B | TODO |
+| main.gd | pause_summary: all_stats | к каждой статистике добавлена иконка | 5B | DONE |
+| main.gd | pause_summary: moves/items | icon у приёмов, desc у предметов, ab_name/ab_desc, hp_ratio | 5B | DONE |
 | main.gd | _fuse_hint | причина отказа слияния после вязи | 7 | TODO |
 | main.gd | _on_card_chosen: rarecandy | Редкая конфета сразу открывает следующие карточки | 5A | TODO |
 | main.gd | _offer_item: блок и Lock | отфильтровать item_block, игнорировать при item_lock | 5A | TODO |
@@ -176,7 +176,7 @@
 | menu.gd | нажатие «Играть» | modes_sel = первый режим | 6A | N/A (нет modes_sel: у нас карточки, «Играть» фокусирует «Partida normal», прокрутка вверх) |
 | menu.gd | _build_modes: focus_neighbor | вертикальные соседи плиток режимов | 6A | N/A (focus_neighbor не нужен: NAVG ходит по сетке карточек) |
 | menu.gd | _modes_select, _restore_opts_focus, _modes_select_impl | сохранение фокуса в опциях режима | 6A | DONE (смена типа/этажа башни на месте, без _refresh_modes: фокус остаётся на кнопке) |
-| menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO |
+| menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO (menu.gd вне списка 5B; данные fin_r.items и desc приёма готовы) |
 | menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | DONE |
 | menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | DONE |
 | menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | DONE |
@@ -217,14 +217,14 @@
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
 | pause_ui.gd | perf_changed | новый сигнал | 2A | DONE |
-| pause_ui.gd | vars opt_root, tab, tab_btns, stat_grid и др. | поля вкладок/сводки | 5B | TODO |
-| pause_ui.gd | build: cc.offset_top, opt_root | сдвиг панели опций под вкладки | 5B | TODO |
+| pause_ui.gd | vars opt_root, tab, tab_btns, stat_grid и др. | поля вкладок/сводки | 5B | DONE |
+| pause_ui.gd | build: cc.offset_top, opt_root | сдвиг панели опций под вкладки | 5B | DONE |
 | pause_ui.gd | build: _perf_row | ряд Rendimiento в опциях | 2A | DONE |
-| pause_ui.gd | build, _build_tabs, set_tab, _build_summary, hide_summary, _pokeball | вкладки Resumen/Opciones, убрана кнопка Resumen, панорамный фон, Abandonar | 5B | TODO |
-| pause_ui.gd | _proj_art, _icon_box, _stat_tile, show_summary | новые плитки статистики, иконки, шапка с портретом | 5B | TODO |
+| pause_ui.gd | build, _build_tabs, set_tab, _build_summary, hide_summary, _pokeball | вкладки Resumen/Opciones, убрана кнопка Resumen, панорамный фон, Abandonar | 5B | DONE |
+| pause_ui.gd | _proj_art, _icon_box, _stat_tile, show_summary | новые плитки статистики, иконки, шапка с портретом | 5B | DONE |
 | pause_ui.gd | _perf_row | функция выбора Normal/Ahorro/Mínimo | 2A | DONE |
-| pause_ui.gd | _input | LB/RB (PAD prev/next) и Q/E/PageUp/PageDown переключают вкладки | 5B | TODO |
-| pause_ui.gd | open | show summary и set_tab(0) при открытии | 5B | TODO |
+| pause_ui.gd | _input | LB/RB (PAD prev/next) и Q/E/PageUp/PageDown переключают вкладки | 5B | DONE |
+| pause_ui.gd | open | show summary и set_tab(0) при открытии | 5B | DONE |
 
 ## pfx.gd
 
@@ -262,7 +262,7 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| touch_scroll.gd | BAR_W, _on_node_added | широкие полосы прокрутки для всех ScrollContainer | 5B | TODO |
+| touch_scroll.gd | BAR_W, _on_node_added | широкие полосы прокрутки для всех ScrollContainer | 5B | DONE |
 
 ## types_data.gd
 
