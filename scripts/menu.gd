@@ -3603,6 +3603,39 @@ func _show_run_summary() -> void:
 		mid.add_child(_sum_tickets_box(r))
 	var mc := _sum_moves_box(r, c)
 	v.add_child(mc)
+	var info_items: Array = r.get("items", [])
+	var info_moves: Array = r.get("moves", [])
+	if not info_items.is_empty() or not info_moves.is_empty():
+		var ic2 := PanelContainer.new()
+		ic2.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.1, 0.26, 0.55), Color(0.5, 0.62, 0.9, 0.35), 2, 10))
+		var iv := VBoxContainer.new()
+		iv.add_theme_constant_override("separation", 5)
+		ic2.add_child(iv)
+		if not info_items.is_empty():
+			iv.add_child(_label("Objetos", 16, Color("#9fb4dc")))
+			for iid in info_items:
+				for it in TD.ITEMS:
+					if String(it["id"]) == String(iid):
+						var irow := HBoxContainer.new()
+						irow.add_theme_constant_override("separation", 8)
+						irow.add_child(IC.rect(String(it["id"]), 30))
+						var itx := _label("%s: %s" % [L.t(String(it["name"])), L.t(String(it["desc"]))], 15)
+						itx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+						irow.add_child(itx)
+						iv.add_child(irow)
+		if not info_moves.is_empty():
+			iv.add_child(_label("Qué hace cada movimiento", 16, Color("#9fb4dc")))
+			for m1 in info_moves:
+				if String(m1.get("desc", "")) == "":
+					continue
+				var mrow := HBoxContainer.new()
+				mrow.add_theme_constant_override("separation", 8)
+				mrow.add_child(IC.rect(("evo:" if bool(m1.get("evo", false)) else "move:") + String(m1["id"]), 26))
+				var mtx := _label("%s: %s" % [L.t(String(m1["name"])), L.t(String(m1["desc"]))], 15)
+				mtx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				mrow.add_child(mtx)
+				iv.add_child(mrow)
+		v.add_child(ic2)
 	if bool(r.get("record", false)):
 		var rl := _label("¡Nuevo récord de tiempo!", 22, C_GOLD)
 		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -7277,7 +7310,7 @@ func _set_about() -> void:
 	var pmb := _label(L.t("Un proyecto de DiehlWierce"), 26, C_GOLD)
 	pmb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_box.add_child(pmb)
-	var ver := _label(L.t("Versión") + " " + UPD.APP_VERSION + " · PortMaster", 20, Color("#c8d6ee"))
+	var ver := _label(L.t("Versión") + " " + UPD.APP_VERSION + " · PortMaster · " + L.t("Hotfix y mejoras QoL"), 20, Color("#c8d6ee"))
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_box.add_child(ver)
 	settings_box.add_child(_label("Juego de fans gratis y sin ánimo de lucro: sin anuncios ni compras. Pokémon y sus personajes pertenecen a Nintendo, Creatures y GAME FREAK; este proyecto no está afiliado con ellos.", 20, Color("#c8d6ee")))

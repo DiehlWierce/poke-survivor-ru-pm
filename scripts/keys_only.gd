@@ -200,7 +200,7 @@ func _write_header() -> void:
 	_w("# --- СИСТЕМА ---")
 	_w("# Godot %s | ОС=%s | модель=%s | ЦП=%s x%d | %s" % [Engine.get_version_info().get("string", "?"), OS.get_name(), OS.get_model_name(), OS.get_processor_name(), OS.get_processor_count(), meminfo])
 	_w("# рендер=%s | видеокарта=%s (%s) | окно=%s | vsync=%d | потолок к/с=%d (база %d) | handheld=%s | аргументы=%s" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor(), str(DisplayServer.window_get_size()), DisplayServer.window_get_vsync_mode(), Engine.max_fps, base_fps, str(OS.has_feature("handheld")), str(OS.get_cmdline_user_args())])
-	_w("# настройки: качество=%s обзор=%s fov=%s max_fps=%s адаптивность=%s тряска=%s числа_урона=%s эффекты_непрозр=%s" % [str(st.get("quality")), str(st.get("view")), str(st.get("fov")), str(st.get("max_fps")), str(st.get("adaptive")), str(st.get("shake")), str(st.get("dmg_numbers")), str(st.get("fx_op"))])
+	_w("# настройки: качество=%s обзор=%s fov=%s max_fps=%s адаптивность=%s тряска=%s числа_урона=%s эффекты_непрозр=%s perf=%d" % [str(st.get("quality")), str(st.get("view")), str(st.get("fov")), str(st.get("max_fps")), str(st.get("adaptive")), str(st.get("shake")), str(st.get("dmg_numbers")), str(st.get("fx_op")), SV.perf()])
 	_w("# железо сейчас: " + _sys_line())
 	_w("# журналы: perf_log.txt (подробно, этот запуск), perf_log.prev.txt (прошлый запуск), run_log.txt (события и итоги всех катк, дописывается)")
 	_ev("ЗАПУСК игры, версия %s" % str(ProjectSettings.get_setting("application/config/version", "?")))
@@ -564,7 +564,7 @@ func _start_run(sc: Node, pl) -> void:
 		for m in pl.get("moves"):
 			mv += "%s(ур%d%s) " % [str(m.get("id")), int(m.get("lvl", 1)), "*" if bool(m.get("evolved", false)) else ""]
 	var st: Dictionary = SV.d["settings"]
-	_ev("=== СТАРТ ЗАБЕГА === режим=%s покемон=%s ур=%d приёмы: %s| модификаторов=%d | качество=%s обзор=%s max_fps=%s потолок_врагов=%s" % [str(sc.get("mode")), str(pl.get("dex")) if pl != null else "?", int(pl.get("level")) if pl != null else 0, mv, (sc.get("mods") as Array).size() if sc.get("mods") is Array else 0, str(st.get("quality")), str(st.get("view")), str(st.get("max_fps")), str(sc.get("ENEMY_CAP"))])
+	_ev("=== СТАРТ ЗАБЕГА === режим=%s покемон=%s ур=%d приёмы: %s| модификаторов=%d | качество=%s perf=%d обзор=%s max_fps=%s потолок_врагов=%s" % [str(sc.get("mode")), str(pl.get("dex")) if pl != null else "?", int(pl.get("level")) if pl != null else 0, mv, (sc.get("mods") as Array).size() if sc.get("mods") is Array else 0, str(st.get("quality")), Prof.perf_lv, str(st.get("view")), str(st.get("max_fps")), str(sc.get("ENEMY_CAP"))])
 	_w("  железо: " + _sys_line())
 	_last_census = -999.0
 	_census("старт забега", true)
@@ -580,7 +580,7 @@ func _end_run(reason: String) -> void:
 	var sc: Node = get_tree().current_scene if is_inside_tree() else null
 	var wall: float = (Time.get_ticks_msec() - _run_t0_ms) / 1000.0
 	var fr: float = float(maxi(1, _run_frames))
-	_ev("=== ИТОГ ЗАБЕГА === причина: %s" % reason)
+	_ev("=== ИТОГ ЗАБЕГА === причина: %s perf=%d" % [reason, Prof.perf_lv])
 	if sc != null and "run_time" in sc and is_instance_valid(sc):
 		var pl = sc.get("player")
 		_ev("  результат: время=%.0fс уровень=%d убийств=%d монет=%d боссов=%d разломов=%d" % [float(sc.get("run_time")), int(pl.get("level")) if pl != null else 0, int(sc.get("kills")), int(sc.get("coins")), int(sc.get("run_bosses")), int(sc.get("run_rifts"))])
