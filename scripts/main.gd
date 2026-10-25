@@ -10662,6 +10662,7 @@ const LEG_TIME := 4.0
 const LEG_ZONE := 46.0
 
 var legend = null
+var allies_extra: Array = []   # второй пойманный союзник (alpha.MAX_ALLIES = 2); legend — первый
 
 var _alt_legend := false
 
@@ -10711,10 +10712,18 @@ func _summon_legend(p: Prop) -> void :
 	p.queue_redraw()
 
 func _upd_legend(delta: float) -> void :
+	for lx in allies_extra.duplicate():
+		if not is_instance_valid(lx) or lx.dead:
+			allies_extra.erase(lx)
+		else:
+			_upd_ally(lx, delta)
 	if not is_instance_valid(legend):
 		legend = null
 		return
-	var lg = legend
+	_upd_ally(legend, delta)
+
+
+func _upd_ally(lg, delta: float) -> void :
 	if lg.dead:
 		return
 	lg.atk_t -= delta
@@ -10740,7 +10749,13 @@ func _upd_legend(delta: float) -> void :
 		want = tg.position
 		spd = 190.0
 	var to: Vector2 = want - lg.position
-	var moving: bool = to.length() > 40.0
+	# гистерезис 28/52: у цели союзник не дёргается между Walk и Idle
+	var dist_w: float = to.length()
+	if lg.moving and dist_w < 28.0:
+		lg.moving = false
+	elif not lg.moving and dist_w > 52.0:
+		lg.moving = true
+	var moving: bool = lg.moving
 	if moving:
 		lg.position += to.normalized() * spd * delta
 		lg.face_angle(to.angle())
@@ -10775,7 +10790,10 @@ func _legend_die(lg) -> void :
 	_ring(lg.position, 8.0, 110.0, lg.col, 0.6, 4.0)
 	pfx.burst(lg.position + Vector2(0.0, -20.0), lg.col, 30, 220.0)
 	add_text(lg.position + Vector2(0.0, -50.0), L.t("%s se retira") % lg.lname, Color("#ffd23f"), 20)
-	legend = null
+	if lg == legend:
+		legend = null
+	else:
+		allies_extra.erase(lg)
 	lg.dead = true
 	lg.fade = 0.6
 
@@ -11053,6 +11071,8 @@ class Legend extends Actor:
 	var ltype := "normal"
 	var col := Color("#ffd23f")
 	var lname := ""
+	var boss_moves: Array = []   # набор атак босса у пойманного союзника (_ally_boss_attack)
+	var moving := false          # гистерезис ходьбы в _upd_ally
 	var dead := false
 	var atk_t := 1.0
 	var hit_t := 0.0

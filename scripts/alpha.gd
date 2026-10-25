@@ -303,6 +303,8 @@ func _make_ally(c: Dictionary) -> void :
 	var dex: int = int(c["dex"])
 	var lg = m.Legend.new()
 	lg.setup(dex, m._sm(dex), m.flash_shader, 1.2, false)
+	if c.has("node") and is_instance_valid(c["node"]) and is_instance_valid(c["node"].actor):
+		lg.textures = c["node"].actor.textures.duplicate()   # те же кадры, что у упавшего: без повторной загрузки
 	lg.m = m
 	lg.alpha = true
 	var ty: Array = c["types"]
@@ -317,7 +319,10 @@ func _make_ally(c: Dictionary) -> void :
 	lg.z_index = 1
 	m.world.add_child(lg)
 	allies_made += 1
-	m.legend = lg
+	if is_instance_valid(m.legend):
+		m.allies_extra.append(lg)   # второй союзник: legend уже занят (Альфа или алтарь)
+	else:
+		m.legend = lg
 	m._ring(lg.position, 8.0, 130.0, lg.col, 0.7, 5.0)
 	m.pfx.burst(lg.position + Vector2(0, -30), lg.col, 36, 240.0)
 	m.pfx.burst(lg.position + Vector2(0, -30), Color("#ffd23f"), 20, 150.0)
@@ -327,7 +332,12 @@ func _make_ally(c: Dictionary) -> void :
 
 
 func _ally_tick(delta: float) -> void :
-	var lg = m.legend
+	_regen(m.legend, delta)
+	for lg in m.allies_extra:
+		_regen(lg, delta)
+
+
+func _regen(lg, delta: float) -> void :
 	if is_instance_valid(lg) and lg.alpha and not lg.dead:
 		lg.hp = minf(lg.max_hp, lg.hp + lg.max_hp * 0.006 * delta)
 
