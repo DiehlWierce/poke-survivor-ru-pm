@@ -62,12 +62,12 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| judgment.gd | SPD_SOFT, SPD_OVER | новые константы мягкого потолка скорости (130 / 0.25) | 1C | TODO |
-| judgment.gd | A.max_hp | HP Арсеуса фиксированно 5000000.0 (раньше base×30) | 1C | TODO |
-| judgment.gd | скорость Арсеуса | k растёт после 300 с (+0.0015/с), скорость через cap_spd | 1C | TODO |
-| judgment.gd | cap_spd, touch_pct | новая static cap_spd(s) и touch_pct() — рост касания после 420 с | 1C | TODO |
-| judgment.gd | touch | урон касания max_hp×touch_pct() | 1C | TODO |
-| judgment.gd | легендарные спутники (def spd) | spd не ниже cap_spd(m._spd())×0.8 | 1C | TODO |
+| judgment.gd | SPD_SOFT, SPD_OVER | новые константы мягкого потолка скорости (130 / 0.25) | 1C | DONE |
+| judgment.gd | A.max_hp | HP Арсеуса фиксированно 5000000.0 (раньше base×30) | 1C | DONE |
+| judgment.gd | скорость Арсеуса | k растёт после 300 с (+0.0015/с), скорость через cap_spd | 1C | DONE |
+| judgment.gd | cap_spd, touch_pct | новая static cap_spd(s) и touch_pct() — рост касания после 420 с | 1C | DONE |
+| judgment.gd | touch | урон касания max_hp×touch_pct() | 1C | DONE |
+| judgment.gd | легендарные спутники (def spd) | spd не ниже cap_spd(m._spd())×0.8 | 1C | DONE |
 
 ## main.gd
 
