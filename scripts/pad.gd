@@ -5,7 +5,7 @@ const SV = preload("res://scripts/save_data.gd")
 const TL = preload("res://scripts/lang.gd")
 const NAMES := ["Xbox", "PlayStation", "Nintendo"]
 # accion -> [texto (clave de traduccion)]
-const ACTIONS := ["prev", "next", "pause", "confirm", "cancel", "reroll", "ban", "swap", "zmove", "dynamax"]
+const ACTIONS := ["prev", "next", "pause", "confirm", "cancel", "reroll", "ban", "swap", "zmove", "dynamax", "slot1", "slot2", "slot3", "slot4", "slot5", "slot6"]
 const LABELS := {
 	"prev": "Movimiento anterior",
 	"next": "Movimiento siguiente",
@@ -17,6 +17,8 @@ const LABELS := {
 	"swap": "Cambiar Pokémon (Modo Equipo)",
 	"zmove": "Movimiento Z",
 	"dynamax": "Dynamax",
+	"slot1": "Elegir movimiento 1", "slot2": "Elegir movimiento 2", "slot3": "Elegir movimiento 3",
+	"slot4": "Elegir movimiento 4", "slot5": "Elegir movimiento 5", "slot6": "Elegir movimiento 6",
 }
 const BTN_NAMES := {
 	0: ["A", "Cross", "B"], 1: ["B", "Circle", "A"], 2: ["X", "Square", "Y"], 3: ["Y", "Triangle", "X"],
@@ -38,8 +40,28 @@ static func defaults(lay: int = -1) -> Dictionary:
 		lay = layout()
 	var ok := JOY_BUTTON_B if lay == 2 else JOY_BUTTON_A
 	var no := JOY_BUTTON_A if lay == 2 else JOY_BUTTON_B
-	return {"prev": JOY_BUTTON_LEFT_SHOULDER, "next": JOY_BUTTON_RIGHT_SHOULDER, "pause": JOY_BUTTON_START,
-		"confirm": ok, "cancel": no, "reroll": JOY_BUTTON_Y, "ban": JOY_BUTTON_X, "swap": JOY_BUTTON_RIGHT_STICK, "zmove": JOY_BUTTON_LEFT_STICK, "dynamax": JOY_BUTTON_BACK}
+	var d := {"prev": JOY_BUTTON_LEFT_SHOULDER, "next": JOY_BUTTON_RIGHT_SHOULDER, "pause": JOY_BUTTON_START,
+		"confirm": ok, "cancel": no, "reroll": JOY_BUTTON_Y, "ban": JOY_BUTTON_X, "swap": JOY_BUTTON_RIGHT_STICK, "zmove": JOY_BUTTON_LEFT_STICK, "dynamax": JOY_BUTTON_BACK,
+		"slot1": JOY_BUTTON_DPAD_UP, "slot2": JOY_BUTTON_DPAD_RIGHT, "slot3": JOY_BUTTON_DPAD_DOWN, "slot4": JOY_BUTTON_DPAD_LEFT, "slot5": JOY_BUTTON_MISC1, "slot6": JOY_BUTTON_TOUCHPAD}
+	if handheld():
+		# En consola la cruceta es movimiento: los huecos arrancan sin asignar (se asignan en Ajustes > Controles)
+		for i in range(1, 7):
+			d["slot%d" % i] = -1
+	return d
+
+
+static func handheld() -> bool:
+	return OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args()
+
+
+# Hueco 0..5 asignado a este boton del mando, o -1.
+static func slot_of(b: int) -> int:
+	if b < 0:
+		return -1
+	for i in range(6):
+		if btn("slot%d" % (i + 1)) == b:
+			return i
+	return -1
 
 
 static func btn(action: String) -> int:
@@ -92,6 +114,8 @@ static func cancel_btn() -> int:
 
 static func btn_name(b: int) -> String:
 	var l := layout()
+	if b < 0:
+		return TL.t("Sin asignar")
 	if BTN_NAMES.has(b):
 		return TL.t(String(BTN_NAMES[b][l]))
 	return TL.t("Botón %d") % b
@@ -109,7 +133,7 @@ static func is_cancel(event: InputEvent) -> bool:
 	if event is InputEventJoypadButton and event.pressed:
 		return event.button_index == cancel_btn() or (event.button_index == JOY_BUTTON_BACK and not is_mapped(JOY_BUTTON_BACK))
 	if event is InputEventKey and event.pressed and not event.echo:
-		return event.keycode == KEY_ESCAPE or event.keycode == KEY_BACKSPACE
+		return event.keycode == KEY_ESCAPE
 	return false
 
 
@@ -121,6 +145,7 @@ static func _set_joy(action: String, buttons: Array) -> void:
 			InputMap.action_erase_event(action, ev)
 	for b in buttons:
 		var e := InputEventJoypadButton.new()
+		e.device = -1   # cualquier mando (Android TV: indice distinto de 0)
 		e.button_index = b
 		InputMap.action_add_event(action, e)
 
@@ -134,9 +159,11 @@ const STICK_ON := 0.6
 
 const STICK_OFF := 0.35
 
-const STICK_DELAY := 0.42
+const STICK_DELAY := 0.5
 
-const STICK_REPEAT := 0.16
+const STICK_REPEAT := 0.24
+
+static var vertical_only := false   # true: la X del stick se ignora (fichas de modos: solo arriba/abajo)
 
 static var _sdir := Vector2i.ZERO
 
@@ -145,7 +172,7 @@ static var _snext := 0.0
 static func stick_event(event: InputEvent) -> bool:
 	if not (event is InputEventJoypadMotion) or not (event.axis == JOY_AXIS_LEFT_X or event.axis == JOY_AXIS_LEFT_Y):
 		return false
-	var x: float = Input.get_joy_axis(event.device, JOY_AXIS_LEFT_X)
+	var x: float = 0.0 if vertical_only else Input.get_joy_axis(event.device, JOY_AXIS_LEFT_X)
 	var y: float = Input.get_joy_axis(event.device, JOY_AXIS_LEFT_Y)
 	var d := Vector2i.ZERO
 	var thr: float = STICK_ON if _sdir == Vector2i.ZERO else STICK_OFF

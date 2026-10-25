@@ -1913,6 +1913,19 @@ func _show(name: String) -> void:
 	call("_refresh_" + name)
 	if focus_first != null and is_instance_valid(focus_first):
 		_gf(focus_first)
+	if name == "modes":
+		_modes_to_top()
+
+
+# Al abrir "Modos" la lista empieza arriba y el foco en "Partida normal" (las tarjetas se construyen por pasos).
+func _modes_to_top() -> void:
+	for i in range(3):
+		await get_tree().process_frame
+		if cur != "modes" or modes_box == null or not is_instance_valid(modes_box):
+			return
+		var msc: Node = modes_box.get_parent()
+		if msc is ScrollContainer:
+			(msc as ScrollContainer).scroll_vertical = 0
 
 
 # Al salir de una pantalla pesada se libera su contenido (las paginas guardadas de Lexico / Gacha y la lista de Misiones):
@@ -2336,6 +2349,16 @@ func _input(event: InputEvent) -> void:
 		return
 	if not is_visible_in_tree():
 		return
+	# Escribiendo en un campo de texto: Retroceso / Supr / copiar / pegar son del campo; solo Esc lo suelta
+	var typing: Control = get_viewport().gui_get_focus_owner()
+	if (typing is LineEdit or typing is TextEdit) and event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			typing.release_focus()
+			DisplayServer.virtual_keyboard_hide()
+			get_viewport().set_input_as_handled()
+		return
+	# Fichas de modos en una sola columna: el stick solo se mueve arriba / abajo
+	PAD.vertical_only = cur == "modes" and modes_cols_now == 1 and typing != null and modes_box != null and is_instance_valid(modes_box) and modes_box.is_ancestor_of(typing)
 	if listening != "":
 		if event is InputEventJoypadButton and event.pressed:
 			PAD.set_btn(listening, event.button_index)
@@ -2506,6 +2529,27 @@ func _gi_valid() -> bool:
 func _grid_nav(event: InputEvent) -> bool:
 	if _popup_open() or listening != "":
 		return false
+	# Pokédex: "izquierda" desde la columna izquierda de la cuadrícula pasa a la ficha (botón Elegir)
+	if cur == "dex" and event.is_action_pressed("ui_left") and dex_dp != null and dex_dp.is_visible_in_tree():
+		var df: Control = get_viewport().gui_get_focus_owner()
+		var edge: float = dex_dp.get_global_rect().end.x
+		if df != null and not dex_dp.is_ancestor_of(df) and df.get_global_rect().position.x >= edge - 4.0:
+			var cy: float = df.get_global_rect().get_center().y
+			var cx: float = df.get_global_rect().get_center().x
+			var at_left := true
+			for it in _grid_items():
+				var ic := it as Control
+				if ic == df or dex_dp.is_ancestor_of(ic) or ic.get_global_rect().position.x < edge - 4.0:
+					continue
+				var ir: Rect2 = ic.get_global_rect()
+				if absf(ir.get_center().y - cy) <= 10.0 and ir.get_center().x < cx - 4.0:
+					at_left = false
+					break
+			if at_left:
+				var dfs: Array = NAVG.focusables(dex_dp)
+				if not dfs.is_empty():
+					(dfs[0] as Control).grab_focus()
+					return true
 	return NAVG.move(get_viewport(), event, _grid_items())
 
 
@@ -3098,11 +3142,13 @@ func _refresh_modes() -> void:
 			SV.d["tower_start"] = 1
 		var tsb: Button = null
 		if tstarts.size() > 1:
+			var tsh: Array = [null]
 			tsb = _mode_aux(L.t("Piso inicial: %d") % tcur, func():
 				var i: int = tstarts.find(int(SV.d.get("tower_start", 1)))
 				SV.d["tower_start"] = int(tstarts[(i + 1) % tstarts.size()])
 				SV.save()
-				_refresh_modes())
+				(tsh[0] as Button).text = L.t("Piso inicial: %d") % int(SV.d["tower_start"]))   # en su sitio: el foco no salta
+			tsh[0] = tsb
 		_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("60 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 12."), [tbest, rel]), func(): _start_mode("tower"), "m_tower", "tower"), tsb))
 	_later(modes_box, func():
 		var rbest: int = int(SV.d.get("rifts_best", 0))
@@ -3118,11 +3164,21 @@ func _refresh_modes() -> void:
 		var ty: String = String(SV.d.get("mode_type", "fire"))
 		if not TYPE_IDS.has(ty):
 			ty = "fire"
+		# El tipo se cambia en su sitio (sin reconstruir la lista): el foco se queda en el boton
+		var tcard: Button = _mode_card(L.t("Supervivencia por tipo"), L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % L.t(String(MD.TYPE_NAME[ty])), func(): _start_mode("type"), "m_type")
+		var tbh: Array = [null]
 		var tb: Button = _mode_aux(L.t("Cambiar tipo: %s") % L.t(String(MD.TYPE_NAME[ty])), func():
-			SV.d["mode_type"] = String(TYPE_IDS[(TYPE_IDS.find(ty) + 1) % TYPE_IDS.size()])
+			var cty: String = String(SV.d.get("mode_type", "fire"))
+			if not TYPE_IDS.has(cty):
+				cty = "fire"
+			var nty: String = String(TYPE_IDS[(TYPE_IDS.find(cty) + 1) % TYPE_IDS.size()])
+			SV.d["mode_type"] = nty
 			SV.save()
-			_refresh_modes())
-		_mode_cell(mg, _mode_card(L.t("Supervivencia por tipo"), L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % L.t(String(MD.TYPE_NAME[ty])), func(): _start_mode("type"), "m_type"), tb))
+			var tnm: String = L.t(String(MD.TYPE_NAME[nty]))
+			(tbh[0] as Button).text = L.t("Cambiar tipo: %s") % tnm
+			tcard.text = L.t("Supervivencia por tipo") + "\n" + L.t("Solo aparecen Pokémon de tipo %s (y sus jefes). +50%% de monedas.") % tnm)
+		tbh[0] = tb
+		_mode_cell(mg, tcard, tb))
 	_later(modes_box, func():
 		var tl: Array = SV.team_list()
 		var names: Array = []
@@ -6546,7 +6602,10 @@ func _set_title(t: String) -> void:
 # ---------------------------------------------------------------
 var set_tab := 0
 var set_tabs_row: HFlowContainer
-var listening := ""
+var listening := "":
+	set(v):
+		listening = v
+		KO.listen_joy = v != ""
 var last_act := ""
 var import_armed := false
 const SET_TABS := ["Sonido", "Gráficos", "Controles", "Cuenta", "Acerca de"]
@@ -7130,6 +7189,10 @@ func _pad_btn_look(act: String) -> void:
 	else:
 		cb.text = ""
 		_gold_on(cb, false)
+		if PAD.btn(act) < 0:
+			cb.text = L.t("Sin asignar")
+			cb.icon = null
+			return
 		cb.icon = PADI.tex(PAD.btn(act))
 		cb.expand_icon = true
 		cb.add_theme_constant_override("icon_max_width", 36)

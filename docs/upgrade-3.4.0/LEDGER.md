@@ -79,14 +79,14 @@
 | main.gd | DIR_MS, MINI_DEXES, late_warned | убрать ["eter",3600]; 12 гигантов вместо 4; флаг late_warned | 1A | DONE |
 | main.gd | perf_lv | переменная perf-уровня | 2A | DONE |
 | main.gd | gold_gcoins_run, gcoins_run | счётчики монет Gachapon в забеге | 5D | TODO |
-| main.gd | _ready: _bind_move_devices(-1) | привязка устройств движения при старте | 6A | TODO |
+| main.gd | _ready: _bind_move_devices(-1) | привязка устройств движения при старте | 6A | DONE |
 | main.gd | setup: pfx.setup → apply_perf() | вместо прямого pfx.setup вызов apply_perf() | 2A | DONE |
 | main.gd | pause_ui.perf_changed.connect | подписка на смену perf в паузе | 2A | DONE |
 | main.gd | cards.lock_toggled/block_pressed.connect | подключение сигналов Lock/«Всегда сбрасывать» | 5A | TODO |
-| main.gd | _add_input_actions, _bind_move_devices | device=-1 для кнопок/осей, новая _bind_move_devices(dev) | 6A | TODO |
-| main.gd | _pad_slot | новая функция: слот 1–6 по кнопке геймпада | 6A | TODO |
-| main.gd | _unhandled_input KEY_5/KEY_6 | клавиши 5 и 6 выбирают слоты 5–6 | 6A | TODO |
-| main.gd | _unhandled_input (joypad slot) | кнопки геймпада slot1..6 | 6A | TODO |
+| main.gd | _add_input_actions, _bind_move_devices | device=-1 для кнопок/осей, новая _bind_move_devices(dev) | 6A | DONE |
+| main.gd | _pad_slot | новая функция: слот 1–6 по кнопке геймпада | 6A | DONE (вместо _pad_slot — PAD.slot_of) |
+| main.gd | _unhandled_input KEY_5/KEY_6 | клавиши 5 и 6 выбирают слоты 5–6 | 6A | DONE |
+| main.gd | _unhandled_input (joypad slot) | кнопки геймпада slot1..6 | 6A | DONE |
 | main.gd | _unhandled_input act_req | act_req не ставится, пока открыта лавка (shop_open) | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | _end_run: mv_list, item_list | в итог забега добавлены desc приёма и список предметов | 5B | TODO |
 | main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | TODO |
@@ -99,8 +99,8 @@
 | main.gd | _evo_infos | ready=true без требования навыка (и для ALT) | 1A | DONE |
 | main.gd | _evo_infos (burnp текст) | в тексте эволюции добавляется «% шанс поджечь» из EVO_EXTRA.burnp | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | player move spd | скорость игрока в бою с Судом — JDM.cap_spd(_spd()) при jd.phase=="fight" | 1A | DONE |
-| main.gd | _setup_partner: _bind_move_devices | привязка устройств при старте напарника | 6A | TODO |
-| main.gd | _update_partner | перепривязка устройств при смене pad напарника | 6A | TODO |
+| main.gd | _setup_partner: _bind_move_devices | привязка устройств при старте напарника | 6A | DONE |
+| main.gd | _update_partner | перепривязка устройств при смене pad напарника | 6A | DONE |
 | main.gd | _fire_projectiles: _bullet_room, _make_bullet | лимит пуль [90,60,36] по perf_lv | 2A | DONE |
 | main.gd | _scale_at | hp 1+t/150, dmg 1+t/650 | 1A | DONE |
 | main.gd | _late_x | окно позднего этапа (t-1200)/600 | 1A | DONE |
@@ -170,12 +170,12 @@
 |---|---|---|---|---|
 | menu.gd | _ready: DSP.apply_window | применение режима окна при старте меню | 6B | DONE |
 | menu.gd | ver_lbl | подпись версии + «Hotfix y mejoras QoL» | 7 | TODO |
-| menu.gd | _show, _modes_to_top | при открытии «Режимов» прокрутка вверх | 6A | TODO |
-| menu.gd | _input | Escape снимает фокус с LineEdit/TextEdit; PAD.vertical_only для плиток режимов | 6A | TODO |
-| menu.gd | _grid_nav | Dex: влево к панели деталей; Modes: вверх/вниз по плиткам | 6A | TODO |
-| menu.gd | нажатие «Играть» | modes_sel = первый режим | 6A | TODO |
-| menu.gd | _build_modes: focus_neighbor | вертикальные соседи плиток режимов | 6A | TODO |
-| menu.gd | _modes_select, _restore_opts_focus, _modes_select_impl | сохранение фокуса в опциях режима | 6A | TODO |
+| menu.gd | _show, _modes_to_top | при открытии «Режимов» прокрутка вверх | 6A | DONE (аналог: _modes_to_top в _show, прокрутка вверх; панели mp_opts у нас нет) |
+| menu.gd | _input | Escape снимает фокус с LineEdit/TextEdit; PAD.vertical_only для плиток режимов | 6A | DONE (Esc снимает фокус с LineEdit/TextEdit, остальные клавиши — полю; vertical_only для режимов в 1 колонку) |
+| menu.gd | _grid_nav | Dex: влево к панели деталей; Modes: вверх/вниз по плиткам | 6A | DONE (Dex: влево из левой колонки на ficha/Elegir; Modes: N/A — сетка карточек уже ходит NAVG) |
+| menu.gd | нажатие «Играть» | modes_sel = первый режим | 6A | N/A (нет modes_sel: у нас карточки, «Играть» фокусирует «Partida normal», прокрутка вверх) |
+| menu.gd | _build_modes: focus_neighbor | вертикальные соседи плиток режимов | 6A | N/A (focus_neighbor не нужен: NAVG ходит по сетке карточек) |
+| menu.gd | _modes_select, _restore_opts_focus, _modes_select_impl | сохранение фокуса в опциях режима | 6A | DONE (смена типа/этажа башни на месте, без _refresh_modes: фокус остаётся на кнопке) |
 | menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO |
 | menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | DONE |
 | menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | TODO |
@@ -197,20 +197,20 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| navgrid.gd | move (край строки) | на краю строки — прыжок в соседнюю строку | 6A | TODO |
-| navgrid.gd | _side_jump | новая функция | 6A | TODO |
+| navgrid.gd | move (край строки) | на краю строки — прыжок в соседнюю строку | 6A | DONE |
+| navgrid.gd | _side_jump | новая функция | 6A | DONE |
 
 ## pad.gd
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| pad.gd | ACTIONS | добавлены slot1..slot6 | 6A | TODO |
-| pad.gd | LABELS | подписи «Elegir movimiento N» | 6A | TODO |
-| pad.gd | defaults | кнопки по умолчанию для слотов | 6A | TODO |
-| pad.gd | is_cancel | Backspace больше не отмена | 6A | TODO |
-| pad.gd | apply (event.device) | e.device = -1 | 6A | TODO |
-| pad.gd | STICK_DELAY, STICK_REPEAT, vertical_only | задержка 0.5, повтор 0.24, флаг vertical_only | 6A | TODO |
-| pad.gd | stick_event | X-ось игнорируется при vertical_only | 6A | TODO |
+| pad.gd | ACTIONS | добавлены slot1..slot6 | 6A | DONE |
+| pad.gd | LABELS | подписи «Elegir movimiento N» | 6A | DONE |
+| pad.gd | defaults | кнопки по умолчанию для слотов | 6A | DONE |
+| pad.gd | is_cancel | Backspace больше не отмена | 6A | DONE |
+| pad.gd | apply (event.device) | e.device = -1 | 6A | DONE |
+| pad.gd | STICK_DELAY, STICK_REPEAT, vertical_only | задержка 0.5, повтор 0.24, флаг vertical_only | 6A | DONE |
+| pad.gd | stick_event | X-ось игнорируется при vertical_only | 6A | DONE |
 
 ## pause_ui.gd
 

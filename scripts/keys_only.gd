@@ -16,6 +16,9 @@ const SPIKES_PER_REPORT := 24   # рывков в журнал за период
 const LOG_MAX_BYTES := 4000000  # файл больше — ротация в perf_log.1.txt (старый .1 затирается), запись продолжается
 
 const SV = preload("res://scripts/save_data.gd")
+const PAD = preload("res://scripts/pad.gd")
+
+static var listen_joy := false   # el menu espera un boton del mando para asignarlo: no tirar sus eventos
 
 static var base_fps := 0   # потолок до выбора в настройках (0 = без ограничения)
 
@@ -259,6 +262,10 @@ func _to_last() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		# Excepcion (D4): botones asignados a "Elegir movimiento N" (por defecto sin asignar en consola) y la
+		# asignacion en Ajustes > Controles pasan; el resto sigue llegando como teclas desde gptokeyb.
+		if event is InputEventJoypadButton and (listen_joy or PAD.slot_of(event.button_index) >= 0):
+			return
 		get_viewport().set_input_as_handled()
 
 
