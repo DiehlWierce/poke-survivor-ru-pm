@@ -33,7 +33,7 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| display.gd | WIN_RES, is_desktop, win_mode, win_res, apply_window, set_window | режим окна и разрешение для ПК | 6B | TODO |
+| display.gd | WIN_RES, is_desktop, win_mode, win_res, apply_window, set_window | режим окна и разрешение для ПК | 6B | DONE |
 
 ## dynamax.gd
 
@@ -168,7 +168,7 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| menu.gd | _ready: DSP.apply_window | применение режима окна при старте меню | 6B | TODO |
+| menu.gd | _ready: DSP.apply_window | применение режима окна при старте меню | 6B | DONE |
 | menu.gd | ver_lbl | подпись версии + «Hotfix y mejoras QoL» | 7 | TODO |
 | menu.gd | _show, _modes_to_top | при открытии «Режимов» прокрутка вверх | 6A | TODO |
 | menu.gd | _input | Escape снимает фокус с LineEdit/TextEdit; PAD.vertical_only для плиток режимов | 6A | TODO |
@@ -181,7 +181,7 @@
 | menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | TODO |
 | menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | DONE |
 | menu.gd | _refresh_settings: Rendimiento | ряд «Rendimiento» Normal/Ahorro/Mínimo | 2A | DONE |
-| menu.gd | _refresh_settings: окно | «Modo de ventana» и «Resolución de la ventana» (только PC) | 6B | TODO |
+| menu.gd | _refresh_settings: окно | «Modo de ventana» и «Resolución de la ventana» (только PC) | 6B | DONE |
 
 ## moves_data.gd
 
