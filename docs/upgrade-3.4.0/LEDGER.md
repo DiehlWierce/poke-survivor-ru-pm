@@ -138,8 +138,8 @@
 | main.gd | _offer_item: _item_ui (замена) | вызов _item_ui при выборе «оставить своё» | 5A | TODO |
 | main.gd | _offer_item: rarecandy slots | для Редкой конфеты слот только 1 | 5A | TODO |
 | main.gd | _item_ui, _on_lock_toggled, _on_block_pressed | кнопки Lock и «Всегда сбрасывать» | 5A | TODO |
-| main.gd | _arena_bond_ready | связь доступна после победы без ожидания end<=2 | 5C | TODO |
-| main.gd | _arena_tick (won) | связь: сброс, если нечего связывать; ожидание выбора связи | 5C | TODO |
+| main.gd | _arena_bond_ready | связь доступна после победы без ожидания end<=2 | 5C | DONE |
+| main.gd | _arena_tick (won) | связь: сброс, если нечего связывать; ожидание выбора связи | 5C | DONE |
 | main.gd | босс-сундук (tickets) | ticket 3→2, ticket10 0.5→0.3 | 1A | DONE |
 | main.gd | сундук (tickets 2) | ticket 2→1 | 1A | DONE |
 | main.gd | Dynamax unlock say | текст «desde el minuto 3» без %d | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |

@@ -7779,10 +7779,19 @@ func _update_arena(delta: float) -> void:
 		if float(ainfo["end"]) <= 0.0:
 			_arena_end(false)
 	elif ph == "won":
+		var is_cave: bool = bool(ainfo.get("cave", false))
+		if bonds > 0 and not choosing and not is_cave and _bond_options().is_empty() and not bool(ainfo.get("bond_drop", false)):
+			# связывать больше нечего: связь сбрасывается (один раз за арену)
+			ainfo["bond_drop"] = true
+			bonds -= 1
+			_say(L.t("No quedan movimientos que vincular: el vínculo se descarta"), 3.0)
 		if _arena_loot_done() and (bonds <= 0 or _bond_options().is_empty()):
 			# премия собрана, вязь выбрана (или её нет): обратно в мир почти сразу (раньше ждали остаток 5 с)
 			ainfo["end"] = minf(float(ainfo["end"]), ARENA_BACK_DELAY)
-		ainfo["end"] = float(ainfo["end"]) - delta
+		# таймер стоит, пока открыт выбор (или ждёт выбор связи): связывать можно и дальше
+		var bond_wait: bool = not is_cave and (choosing or (bonds > 0 and not _bond_options().is_empty() and _arena_bond_ready()))
+		if not bond_wait or float(ainfo["end"]) > 2.0:
+			ainfo["end"] = float(ainfo["end"]) - delta
 		if float(ainfo["end"]) <= 0.0:
 			_arena_end(true)
 
