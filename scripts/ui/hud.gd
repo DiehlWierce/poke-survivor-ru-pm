@@ -504,7 +504,7 @@ func draw_dyn(font: Font, vp: Vector2) -> void:
 		if dyn_btn == 3:
 			_ds(font, Vector2(c.x - 44.0, c.y + 26.0), "%d:%02d" % [int(dyn_cd) / 60, int(dyn_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 88.0, 18, Color(0.85, 0.88, 0.95))
 		elif not ready:
-			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % DYN.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
+			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Min 3"), HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 
 func draw_z(font: Font, vp: Vector2) -> void:
 	var tcol: Color = Color.html(String(MD.TYPE_COLOR.get(z_type, "#ffffff")))
@@ -595,7 +595,7 @@ func draw_z(font: Font, vp: Vector2) -> void:
 		if z_btn == 3:
 			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), "%d:%02d" % [int(z_cd) / 60, int(z_cd) % 60], HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 		elif not ready:
-			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Nv. %d") % ZM.MIN_LEVEL, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
+			_ds(font, Vector2(c.x - 50.0, c.y + 70.0), L.t("Min 3"), HORIZONTAL_ALIGNMENT_CENTER, 100.0, 16, Color(0.75, 0.78, 0.85))
 
 func pause_rects() -> Array:
 	var vp: Vector2 = _vp

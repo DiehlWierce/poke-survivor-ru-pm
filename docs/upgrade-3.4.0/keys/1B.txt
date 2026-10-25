@@ -1,0 +1,1 @@
+Se recargan cada 4 minutos, desde el minuto 3. Se desbloquean derrotando %d Pokémon de ese tipo. | menu.gd, лексикон, вкладка Z (в v56 этой строки нет)
