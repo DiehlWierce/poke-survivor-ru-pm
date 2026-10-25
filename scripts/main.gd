@@ -487,6 +487,7 @@ func _ready() -> void:
 	Aud.setup(self)
 	Aud.music("forest")
 	_add_input_actions()
+	_bind_move_devices(-1)
 	flash_shader = Shader.new()
 	flash_shader.code = FLASH_SHADER
 
@@ -962,12 +963,24 @@ func _add_input_actions() -> void:
 			ev.physical_keycode = k
 			InputMap.action_add_event(action, ev)
 		var b := InputEventJoypadButton.new()
+		b.device = -1
 		b.button_index = dpad[action]
 		InputMap.action_add_event(action, b)
 		var m := InputEventJoypadMotion.new()
+		m.device = -1
 		m.axis = sticks[action][0]
 		m.axis_value = sticks[action][1]
 		InputMap.action_add_event(action, m)
+
+
+# Con dos mandos (cooperativo) el movimiento del jugador 1 se ata al primero; con uno, a cualquiera (-1).
+func _bind_move_devices(dev: int) -> void:
+	for action in ["move_left", "move_right", "move_up", "move_down"]:
+		if not InputMap.has_action(action):
+			continue
+		for ev in InputMap.action_get_events(action):
+			if ev is InputEventJoypadButton or ev is InputEventJoypadMotion:
+				ev.device = dev
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -993,6 +1006,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				slot = 2
 			KEY_4:
 				slot = 3
+			KEY_5:
+				slot = 4
+			KEY_6:
+				slot = 5
 			KEY_Q:
 				cyc = -1
 			KEY_E:
@@ -1029,6 +1046,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			z_req = true
 		elif bi == PAD.btn("dynamax"):
 			dyn_req = true
+		elif PAD.slot_of(bi) >= 0:
+			slot = PAD.slot_of(bi)
 		elif bi == JOY_BUTTON_Y:   # en partida: Y / Triángulo = Movimiento Z (con cartas en pantalla sigue siendo relanzar)
 			z_req = true
 			go = true
@@ -2323,6 +2342,7 @@ func _setup_partner() -> void:
 	partner_lvl = 0
 	var pads: Array = Input.get_connected_joypads()
 	partner_pad = int(pads[1]) if pads.size() >= 2 else -1
+	_bind_move_devices(int(pads[0]) if pads.size() >= 2 else -1)
 
 
 func _update_partner(delta: float) -> void:
@@ -2332,7 +2352,10 @@ func _update_partner(delta: float) -> void:
 	if arena != null or player.dead:
 		return
 	var pads: Array = Input.get_connected_joypads()
-	partner_pad = int(pads[1]) if pads.size() >= 2 else -1
+	var np: int = int(pads[1]) if pads.size() >= 2 else -1
+	if np != partner_pad:
+		_bind_move_devices(int(pads[0]) if pads.size() >= 2 else -1)
+	partner_pad = np
 	var v := Vector2.ZERO
 	if partner_pad >= 0:
 		v = Vector2(Input.get_joy_axis(partner_pad, JOY_AXIS_LEFT_X), Input.get_joy_axis(partner_pad, JOY_AXIS_LEFT_Y))

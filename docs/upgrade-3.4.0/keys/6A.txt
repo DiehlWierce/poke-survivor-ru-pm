@@ -1,0 +1,2 @@
+Elegir movimiento 1 | pad.gd LABELS: «Elegir movimiento 1»…«6» (ключи дословно по v56)
+Sin asignar | pad.gd btn_name, menu.gd экран кнопок: слот без кнопки (по умолчанию на хендхелде); в v56 нет
