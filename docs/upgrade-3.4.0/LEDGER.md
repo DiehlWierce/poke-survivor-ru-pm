@@ -75,8 +75,8 @@
 |---|---|---|---|---|
 | main.gd | ORB_CAP | лимит орбов 420→300 | 2A | TODO |
 | main.gd | join_t, join_name, join_col | переменные баннера «присоединился» | 4 | TODO |
-| main.gd | NORMAL_MOVE_W, BALL_CAP | вес Normal-приёмов 0.15; BALL_CAP 9→6 | 1A | TODO |
-| main.gd | DIR_MS, MINI_DEXES, late_warned | убрать ["eter",3600]; 12 гигантов вместо 4; флаг late_warned | 1A | TODO |
+| main.gd | NORMAL_MOVE_W, BALL_CAP | вес Normal-приёмов 0.15; BALL_CAP 9→6 | 1A | DONE |
+| main.gd | DIR_MS, MINI_DEXES, late_warned | убрать ["eter",3600]; 12 гигантов вместо 4; флаг late_warned | 1A | DONE |
 | main.gd | perf_lv | переменная perf-уровня | 2A | TODO |
 | main.gd | gold_gcoins_run, gcoins_run | счётчики монет Gachapon в забеге | 5D | TODO |
 | main.gd | _ready: _bind_move_devices(-1) | привязка устройств движения при старте | 6A | TODO |
@@ -92,44 +92,44 @@
 | main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | TODO |
 | main.gd | apply_perf, _fx_cap | новая apply_perf (плотность ×1/0.6/0.3, ffx.lite); _fx_cap 60/24 при perf и 200/60/20 без | 2A | TODO |
 | main.gd | _process: hud.join_* | передача join_* в HUD | 4 | TODO |
-| main.gd | _process: z_btn, dyn_btn | готовность кнопок Z/MAX по run_time >= MIN_TIME | 1A | TODO |
-| main.gd | _z_can | условие run_time >= ZM.MIN_TIME вместо level | 1A | TODO |
-| main.gd | _dyn_can | условие run_time >= DYN.MIN_TIME вместо level | 1A | TODO |
+| main.gd | _process: z_btn, dyn_btn | готовность кнопок Z/MAX по run_time >= MIN_TIME | 1A | DONE |
+| main.gd | _z_can | условие run_time >= ZM.MIN_TIME вместо level | 1A | DONE |
+| main.gd | _dyn_can | условие run_time >= DYN.MIN_TIME вместо level | 1A | DONE |
 | main.gd | _f (burnp, KNOCK_BASE) | burn с вероятностью burnp; база отдачи KNOCK_BASE на 1-м уровне | 1B | TODO |
-| main.gd | _evo_infos | ready=true без требования навыка (и для ALT) | 1A | TODO |
+| main.gd | _evo_infos | ready=true без требования навыка (и для ALT) | 1A | DONE |
 | main.gd | _evo_infos (burnp текст) | в тексте эволюции добавляется «% шанс поджечь» из EVO_EXTRA.burnp | 1B | TODO |
-| main.gd | player move spd | скорость игрока в бою с Судом — JDM.cap_spd(_spd()) при jd.phase=="fight" | 1A | TODO |
+| main.gd | player move spd | скорость игрока в бою с Судом — JDM.cap_spd(_spd()) при jd.phase=="fight" | 1A | DONE |
 | main.gd | _setup_partner: _bind_move_devices | привязка устройств при старте напарника | 6A | TODO |
 | main.gd | _update_partner | перепривязка устройств при смене pad напарника | 6A | TODO |
 | main.gd | _fire_projectiles: _bullet_room, _make_bullet | лимит пуль [90,60,36] по perf_lv | 2A | TODO |
-| main.gd | _scale_at | hp 1+t/150, dmg 1+t/650 | 1A | TODO |
-| main.gd | _late_x | окно позднего этапа (t-1200)/600 | 1A | TODO |
-| main.gd | _spawn_one | поздняя игра: HP ×(1+2lx), dmg ×(1+lx), spd ×(1+0.15lx), элиты 0.04+0.3lx | 1A | TODO |
+| main.gd | _scale_at | hp 1+t/150, dmg 1+t/650 | 1A | DONE |
+| main.gd | _late_x | окно позднего этапа (t-1200)/600 | 1A | DONE |
+| main.gd | _spawn_one | поздняя игра: HP ×(1+2lx), dmg ×(1+lx), spd ×(1+0.15lx), элиты 0.04+0.3lx | 1A | DONE |
 | main.gd | _update_spawner: join_t | таймер баннера присоединения | 4 | TODO |
-| main.gd | _update_spawner: late banner | «¡Minuto 20!…» (late_warned, shake 10, sfx boss) | 1A | TODO |
-| main.gd | _update_spawner: rate | формула темпа спавна (×0.4, ×0.15, буст в начале, ×(1+1.5lx)) | 1A | TODO |
+| main.gd | _update_spawner: late banner | «¡Minuto 20!…» (late_warned, shake 10, sfx boss) | 1A | DONE |
+| main.gd | _update_spawner: rate | формула темпа спавна (×0.4, ×0.15, буст в начале, ×(1+1.5lx)) | 1A | DONE |
 | main.gd | _spawn_thief | ротация воров 52/1000/1012 (thief_cycle) | 5D | TODO |
 | main.gd | _spawn_thief (say) | сообщение «Gachapon Coin» для 1012 | 5D | TODO |
 | main.gd | _hazard_hits_enemy, _ally_boss_attack, _ally_hz | атаки союзника-босса и попадание зон по врагам | 4 | TODO |
 | main.gd | _update_hazards | ally_dmg: зоны союзника бьют врагов, а не игрока | 4 | TODO |
 | main.gd | траву режет (grass cut) | число частиц травы [6,2,0] по perf_lv | 2A | TODO |
-| main.gd | сундук/суперкоробка (tickets) | билеты 1 + 35% ещё одного, ticket10 0.08 (дроп с главных призов) | 1A | TODO |
-| main.gd | try_ball | порог balls>=3, пауза 90 с | 1A | TODO |
-| main.gd | монетный сундук (tickets) | ticket 0.07 / ticket10 0.08 | 1A | TODO |
+| main.gd | сундук/суперкоробка (tickets) | билеты 1 + 35% ещё одного, ticket10 0.08 (дроп с главных призов) | 1A | DONE |
+| main.gd | try_ball | порог balls>=3, пауза 90 с | 1A | DONE |
+| main.gd | монетный сундук (tickets) | ticket 0.07 / ticket10 0.08 | 1A | DONE |
 | main.gd | allies_extra | список доп. союзников | 4 | TODO |
 | main.gd | _upd_legend, _upd_ally | цикл по allies_extra; тело вынесено в _upd_ally | 4 | TODO |
 | main.gd | _upd_ally: moving | гистерезис движения 28/52 | 4 | TODO |
 | main.gd | _upd_ally: attack | союзник-альфа атакует _ally_boss_attack (atk_t 1.7) | 4 | TODO |
 | main.gd | _legend_leave | уход союзника: учёт allies_extra | 4 | TODO |
 | main.gd | bullets trail | трейлы только при perf=0, шаг 0.14 | 2A | TODO |
-| main.gd | _xp_for | множитель early = lerp(0.85,1,(L-1)/19) | 1A | TODO |
+| main.gd | _xp_for | множитель early = lerp(0.85,1,(L-1)/19) | 1A | DONE |
 | main.gd | _on_enemy_down: on_big_down | вызов alpha.on_big_down для open_boss/mini | 4 | TODO |
-| main.gd | _on_enemy_down: wildleg | дикий легендарный даёт 2 билета вместо 3 | 1A | TODO |
+| main.gd | _on_enemy_down: wildleg | дикий легендарный даёт 2 билета вместо 3 | 1A | DONE |
 | main.gd | loot thief (gimmi/ticket10) | Gimmighoul: gcoin/gcoin_gold; ticket10-вор: ticket10 + 1 билет без монет | 5D | TODO |
-| main.gd | boss drop ticket10 | шанс 1/3 → 0.2 | 1A | TODO |
-| main.gd | обычный дроп ticket | 1/400 → 1/600 | 1A | TODO |
+| main.gd | boss drop ticket10 | шанс 1/3 → 0.2 | 1A | DONE |
+| main.gd | обычный дроп ticket | 1/400 → 1/600 | 1A | DONE |
 | main.gd | _collect (gcoin kinds) | подбор gcoin и gcoin_gold | 5D | TODO |
-| main.gd | _offer: выбор Normal | выборка карточек с весом NORMAL_MOVE_W (ключ u^(1/w)) | 1A | TODO |
+| main.gd | _offer: выбор Normal | выборка карточек с весом NORMAL_MOVE_W (ключ u^(1/w)) | 1A | DONE |
 | main.gd | pause_summary: all_stats | к каждой статистике добавлена иконка | 5B | TODO |
 | main.gd | pause_summary: moves/items | icon у приёмов, desc у предметов, ab_name/ab_desc, hp_ratio | 5B | TODO |
 | main.gd | _fuse_hint | причина отказа слияния после вязи | 7 | TODO |
@@ -140,8 +140,8 @@
 | main.gd | _item_ui, _on_lock_toggled, _on_block_pressed | кнопки Lock и «Всегда сбрасывать» | 5A | TODO |
 | main.gd | _arena_bond_ready | связь доступна после победы без ожидания end<=2 | 5C | TODO |
 | main.gd | _arena_tick (won) | связь: сброс, если нечего связывать; ожидание выбора связи | 5C | TODO |
-| main.gd | босс-сундук (tickets) | ticket 3→2, ticket10 0.5→0.3 | 1A | TODO |
-| main.gd | сундук (tickets 2) | ticket 2→1 | 1A | TODO |
+| main.gd | босс-сундук (tickets) | ticket 3→2, ticket10 0.5→0.3 | 1A | DONE |
+| main.gd | сундук (tickets 2) | ticket 2→1 | 1A | DONE |
 | main.gd | Dynamax unlock say | текст «desde el minuto 3» без %d | 1B | TODO |
 | main.gd | add_text | лимит Floater.alive [80,28,10] и plain | 2A | TODO |
 | main.gd | Legend: boss_moves, moving | поля союзника | 4 | TODO |
@@ -177,7 +177,7 @@
 | menu.gd | _build_modes: focus_neighbor | вертикальные соседи плиток режимов | 6A | TODO |
 | menu.gd | _modes_select, _restore_opts_focus, _modes_select_impl | сохранение фокуса в опциях режима | 6A | TODO |
 | menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO |
-| menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | TODO |
+| menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | DONE |
 | menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | TODO |
 | menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | TODO |
 | menu.gd | _refresh_settings: Rendimiento | ряд «Rendimiento» Normal/Ahorro/Mínimo | 2A | TODO |

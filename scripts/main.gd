@@ -1623,13 +1623,13 @@ func _tick_hud(delta: float) -> void:
 	if hs:
 		hud.z_name = L.t(String(ZM.DEF[z_type]["name"])) if z_type != "" else ""
 	hud.z_type = z_type
-	hud.z_btn = 0 if (mode == "tower" or z_type == "" or z_state != "") else (3 if z_used else (2 if player.level >= ZM.MIN_LEVEL else 0))
+	hud.z_btn = 0 if (mode == "tower" or z_type == "" or z_state != "") else (3 if z_used else (2 if run_time >= ZM.MIN_TIME else 0))
 	hud.z_cd = z_cd
 	hud.adapt_pct = roundi(adapt_k * 100.0) if _adapt_on() else 0
 	hud.dyn_left = maxf(0.0, dyn.t) if _dyn_on() else -1.0
 	hud.dyn_flash = dyn_flash if dyn != null else 99.0
 	hud.dyn_type = String(player.types[0])
-	hud.dyn_btn = 0 if (mode == "tower" or not DYN.unlocked(SV.d["stats"]) or _dyn_on()) else (3 if dyn_used else (2 if player.level >= DYN.MIN_LEVEL else 0))
+	hud.dyn_btn = 0 if (mode == "tower" or not DYN.unlocked(SV.d["stats"]) or _dyn_on()) else (3 if dyn_used else (2 if run_time >= DYN.MIN_TIME else 0))
 	hud.dyn_cd = dyn_cd
 	if hs:
 		hud.ab_name = L.t(String(AB.FX[AB.of(_pdex())]["name"]))
@@ -1848,7 +1848,7 @@ func _cooldowns(delta: float) -> void:
 
 
 func _z_can() -> bool:
-	return mode != "tower" and z_type != "" and not z_used and z_state == "" and player.level >= ZM.MIN_LEVEL and not player.dead and not down and not paused and not choosing and arena == null and not jd.active() and not timeup
+	return mode != "tower" and z_type != "" and not z_used and z_state == "" and run_time >= ZM.MIN_TIME and not player.dead and not down and not paused and not choosing and arena == null and not jd.active() and not timeup
 
 
 # Gatillo derecho del mando (ademas del boton configurable).
@@ -1872,7 +1872,7 @@ func _dyn_on() -> bool:
 
 
 func _dyn_can() -> bool:
-	return mode != "tower" and DYN.unlocked(SV.d["stats"]) and not dyn_used and not _dyn_on() and z_state != "cine" and player.level >= DYN.MIN_LEVEL and not player.dead and not down and not paused and not choosing and not jd.active() and not timeup
+	return mode != "tower" and DYN.unlocked(SV.d["stats"]) and not dyn_used and not _dyn_on() and z_state != "cine" and run_time >= DYN.MIN_TIME and not player.dead and not down and not paused and not choosing and not jd.active() and not timeup
 
 
 func _dyn_start() -> void:
@@ -2125,11 +2125,11 @@ func _evo_infos(m: Dictionary) -> Array:
 		var e: Array = MD.EVO[id]
 		var needs: String = String(e[1])
 		out.append({"name": String(e[0]), "needs": needs, "need_name": String(MD.NEED_NAME[needs]), "text": String(MD.EVO_MODS[kind]["t"]),
-			"ready": _lv(needs) > 0, "alt": false})
+			"ready": true, "alt": false})
 	if MD.EVO_ALT.has(id):
 		var a: Array = MD.EVO_ALT[id]
 		var n2: String = String(a[1])
-		out.append({"name": String(a[0]), "needs": n2, "need_name": String(MD.NEED_NAME[n2]), "text": String(a[2]), "ready": (_has_item(n2) if n2 == "bigorb" else _lv(n2) > 0), "alt": true})
+		out.append({"name": String(a[0]), "needs": n2, "need_name": String(MD.NEED_NAME[n2]), "text": String(a[2]), "ready": true, "alt": true})
 	return out
 
 
@@ -2192,7 +2192,7 @@ func _update_player(delta: float) -> void :
 	if v.length() > 1.0:
 		v = v.normalized()
 	var moving: bool = v.length() > 0.05
-	var spd: float = _spd() * _player_terrain(delta) * (0.55 if trap_slow_t > 0.0 else 1.0)
+	var spd: float = (JDM.cap_spd(_spd()) if jd.phase == "fight" else _spd()) * _player_terrain(delta) * (0.55 if trap_slow_t > 0.0 else 1.0)
 	if root_t > 0.0:
 		root_t -= delta
 		spd = 0.0
@@ -3929,7 +3929,7 @@ func _hp_k(t: float) -> float:
 
 
 func _scale_at(t: float) -> Dictionary:
-	return {"hp": (1.0 + t / 95.0) * _adapt_k(), "dmg": (1.0 + t / 420.0) * pow(_adapt_k(), 0.7), "spd": 1.0 + minf(0.35, t / 1400.0)}
+	return {"hp": (1.0 + t / 150.0) * _adapt_k(), "dmg": (1.0 + t / 650.0) * pow(_adapt_k(), 0.7), "spd": 1.0 + minf(0.35, t / 1400.0)}
 
 
 func _boss_scale_k(dex: int) -> float:
@@ -4043,10 +4043,10 @@ func _spawn_one(angle: float = -999.0, near: bool = false) -> Enemy:
 	pos = _free_spot(pos, SPAWN_FREE_R)
 	var base: Dictionary = _scale_at(_dt())
 	var lx: float = _late_x(_dt())
-	var sc: = {"hp": float(base["hp"]) * _hp_k(_dt()) * (1.0 + 1.0 * lx), "dmg": float(base["dmg"]) * (1.0 + 0.45 * lx), "spd": float(base["spd"]) * (1.0 + 0.08 * lx)}
+	var sc: = {"hp": float(base["hp"]) * _hp_k(_dt()) * (1.0 + 2.0 * lx), "dmg": float(base["dmg"]) * (1.0 + 1.0 * lx), "spd": float(base["spd"]) * (1.0 + 0.15 * lx)}
 	var e: Enemy = _make_enemy(def, pos, sc)
 	e.dmg *= DMG_K
-	if lx > 0.0 and randf() < 0.04 + 0.12 * lx:
+	if lx > 0.0 and randf() < 0.04 + 0.3 * lx:
 		e.max_hp = roundf(e.max_hp * 2.2)
 		e.hp = e.max_hp
 		e.dmg *= 1.3
@@ -4109,10 +4109,15 @@ func _update_spawner(delta: float) -> void :
 	if boss_idx < boss_run.size() and t >= float(boss_run[boss_idx]["at"]) and (mode != "normal" or (boss_idx > 0 and arena == null and not dir_finale)):
 		_spawn_boss(boss_run[boss_idx])
 		boss_idx += 1
+	if t >= 1200.0 and not late_warned and _late_x(t) > 0.0 and arena == null:
+		late_warned = true
+		_say(L.t("¡Minuto 20! Los Pokémon se vuelven mucho más peligrosos…"), 4.0)
+		shake = 10.0
+		Aud.sfx("boss")
 	var fight: bool = _boss_alive()
 	if enemies.size() < ENEMY_CAP:
-		var rate: float = (1.6 + t * 0.028 + pow(t / 60.0, 1.6) * 0.5) * 0.17 * (1.8 if _has_mod("horde") else 1.0) * (2.5 if _has_mod("plague") else 1.0) * (0.75 if _has_item("pureincense") else 1.0)
-		spawn_acc += rate * (1.0 - 0.25 * _late_x(t)) * _adapt_k() * (0.25 if fight else 1.0) * delta
+		var rate: float = (1.6 + t * 0.028 + pow(t / 60.0, 1.6) * 0.4) * 0.15 * (1.0 + 0.7 * clampf(1.0 - t / 240.0, 0.0, 1.0)) * (1.8 if _has_mod("horde") else 1.0) * (2.5 if _has_mod("plague") else 1.0) * (0.75 if _has_item("pureincense") else 1.0)
+		spawn_acc += rate * (1.0 + 1.5 * _late_x(t)) * _adapt_k() * (0.25 if fight else 1.0) * delta
 		while spawn_acc >= 1.0:
 			spawn_acc -= 1.0
 			if enemies.size() < ENEMY_CAP:
@@ -6332,9 +6337,9 @@ func _open_chest(p: Prop) -> void:
 		# Botin grande: monedas, tickets, objeto y experiencia para subir un nivel
 		for i in range(9):
 			_spawn_orb(pos + Vector2(randf_range(-22.0, 22.0), randf_range(-14.0, 14.0)), "coin", 4.0)
-		for i in range(1 + randi() % 2):
+		for i in range(1 + (1 if randf() < 0.35 else 0)):
 			_spawn_orb(pos + Vector2(randf_range(-16.0, 16.0), randf_range(-10.0, 10.0)), "ticket", 1.0)
-		if randf() < 0.1:
+		if randf() < 0.08:
 			_spawn_orb(pos + Vector2(0.0, -10.0), "ticket10", 1.0)
 		if randf() < 0.5:
 			_spawn_orb(pos + Vector2(14.0, -14.0), "item", 0.0)
@@ -6353,9 +6358,9 @@ func _chest_roll(pos: Vector2, off: Vector2) -> void :
 	if r < 0.4:
 		for i in range(10):
 			_spawn_orb(pos, "coin", 5.0)
-		if randf() < 0.08:
+		if randf() < 0.07:
 			_spawn_orb(pos, "ticket", float(1 + randi() % 2))
-			if randf() < 0.1:
+			if randf() < 0.08:
 				_spawn_orb(pos, "ticket10", 1.0)
 		add_text(pos + Vector2(0.0, -30.0), L.t("¡Monedas!"), Color("#ffd23f"), 22)
 	elif r < 0.72:
@@ -6542,7 +6547,8 @@ func _bullet_visual_tick(b: Bullet) -> void:
 # ---------------------------------------------------------------
 func _xp_for(level: int) -> int:
 	var l: float = float(level)
-	return int(floor((8.0 + l * 6.0 + pow(l, 1.75) * 1.6) * 4.0))
+	var early: float = lerpf(0.85, 1.0, clampf((l - 1.0) / 19.0, 0.0, 1.0))
+	return int(floor((8.0 + l * 6.0 + pow(l, 1.75) * 1.6) * 4.0 * early))
 
 
 func _gain_xp(amount: float) -> void:
@@ -6631,7 +6637,7 @@ func _drop(e) -> void :
 		alpha.on_down(e)
 	if e.has_meta("enc") and String(e.get_meta("enc")) == "wildleg" and not e.has_meta("wl_paid"):
 		e.set_meta("wl_paid", true)
-		for k in range(3):
+		for k in range(2):
 			_spawn_orb(e.position, "ticket", 1.0)
 		for k in range(20):
 			_spawn_orb(e.position, "coin", 10.0)
@@ -6676,7 +6682,7 @@ func _drop(e) -> void :
 		if not e.judge:
 			_spawn_orb(e.position + Vector2(24.0, 0.0), "heal", 0.0)
 			_spawn_orb(e.position + Vector2(-24.0, 0.0), "magnet", 0.0)
-			if randf() < 0.25:
+			if randf() < 0.2:
 				_spawn_orb(e.position + Vector2(0.0, -20.0), "ticket10", 1.0)
 			for k in range(10):
 				_spawn_orb(e.position + Vector2(randf_range(-40.0, 40.0), randf_range(-30.0, 30.0)), "coin", 5.0)
@@ -6688,7 +6694,7 @@ func _drop(e) -> void :
 	if e.xp_val >= XP_ENEMY:
 		kind = "xpBig"
 	_spawn_orb(e.position, kind, e.xp_val)
-	if randf() < 1.0 / 400.0:
+	if randf() < 1.0 / 600.0:
 		_spawn_orb(e.position + Vector2(10.0, 0.0), "ticket", 1.0)
 	var r: float = randf()
 	var off: Vector2 = Vector2.from_angle(randf() * TAU) * 14.0
@@ -6834,7 +6840,12 @@ func _offer() -> Array:
 			if buffs >= 2 and String(d["kind"]) == "buff":
 				continue
 			cand.append(id)
-		cand.shuffle()
+		var keyed: Array = []
+		for id in cand:
+			var wgt: float = NORMAL_MOVE_W if String(MD.MOVES[id]["type"]) == "normal" else 1.0
+			keyed.append([pow(maxf(0.0001, randf()), 1.0 / wgt), id])
+		keyed.sort_custom( func(a, b): return a[0] > b[0])
+		cand = keyed.map( func(x): return x[1])
 		for i in range(mini(6, cand.size())):
 			var nid: String = String(cand[i])
 			var nd: Dictionary = MD.MOVES[nid]
@@ -7687,8 +7698,8 @@ func _legend_down(e) -> void:
 	for k in range(n):
 		made.append(_spawn_orb(pos, "xpBig", per))
 	made.append(_spawn_orb(pos + Vector2(24.0, 0.0), "item", 0.0))
-	made.append(_spawn_orb(pos + Vector2(-24.0, 0.0), "ticket", 3.0))
-	if randf() < 0.5:
+	made.append(_spawn_orb(pos + Vector2(-24.0, 0.0), "ticket", 2.0))
+	if randf() < 0.3:
 		made.append(_spawn_orb(pos + Vector2(0.0, 24.0), "ticket10", 1.0))
 	for k in range(10):
 		made.append(_spawn_orb(pos, "coin", 10.0))
@@ -7722,7 +7733,7 @@ func _den_down(e) -> void:
 		made.append(_spawn_orb(pos, "xpBig", per))
 	made.append(_spawn_orb(pos + Vector2(24.0, 0.0), "item", 0.0))
 	made.append(_spawn_orb(pos + Vector2(-24.0, 0.0), "item", 0.0))
-	made.append(_spawn_orb(pos + Vector2(0.0, 24.0), "ticket", 2.0))
+	made.append(_spawn_orb(pos + Vector2(0.0, 24.0), "ticket", 1.0))
 	for k in range(12):
 		made.append(_spawn_orb(pos, "coin", 10.0))
 	made.append(_spawn_orb(pos + Vector2(0.0, -24.0), "heal", 0.0))
@@ -7733,7 +7744,7 @@ func _den_down(e) -> void:
 	dyn_cd = 0.0
 	Aud.sfx("bossDown")
 	if first:
-		_say(L.t("¡Has desbloqueado el Dynamax! Botón MAX, tecla C o gatillo izquierdo (desde el nivel %d)") % DYN.MIN_LEVEL, 4.2)
+		_say(L.t("¡Has desbloqueado el Dynamax! Botón MAX, tecla C o gatillo izquierdo (desde el minuto 3)"), 4.2)
 	else:
 		_say(L.t("¡Guarida superada! Caramelo Dynamax: puedes usar el Dynamax otra vez"), 3.6)
 	add_text(player.position + Vector2(0.0, -player.body_h - 10.0), "DYNAMAX", Color("#ff3d6e"), 26)
@@ -9322,7 +9333,8 @@ var dn = null
 
 var balls := 0
 
-const BALL_CAP := 9
+const NORMAL_MOVE_W := 0.15
+const BALL_CAP := 6
 
 var shop_open := false
 
@@ -9330,11 +9342,11 @@ var act_req := false
 
 var item3 := ""
 
-const DIR_MS := [["wave", 30.0], ["rift", 60.0], ["meowth", 120.0], ["boss", 180.0], ["map", 240.0], ["eter", 3600.0]]
+const DIR_MS := [["wave", 30.0], ["rift", 60.0], ["meowth", 120.0], ["boss", 180.0], ["map", 240.0]]
 
 const ETERNATUS_DEX := 890
 
-const MINI_DEXES := [248, 321, 95, 208]
+const MINI_DEXES := [248, 321, 95, 208, 143, 130, 464, 306, 376, 76, 131, 149]
 
 var dir_done := {}
 
@@ -9343,6 +9355,7 @@ var dir_gap := 0.0
 var dir_warned := false
 
 var dir_finale := false
+var late_warned := false
 
 var dir_map := false
 
@@ -10315,7 +10328,7 @@ func _ch_finish(ok: bool) -> void :
 func _late_x(t: float) -> float:
 	if mode == "tower" or mode == "rush" or mode == "chal":
 		return 0.0
-	return clampf((t - 1200.0) / 2400.0, 0.0, 1.0)
+	return clampf((t - 1200.0) / 600.0, 0.0, 1.0)
 
 func _legend_busy() -> bool:
 	return legend != null and not (is_instance_valid(legend) and legend.alpha)
@@ -10630,7 +10643,7 @@ var ball_last := -999.0
 
 func try_ball(pos: Vector2, chance: float, force: bool = false) -> bool:
 	if not force:
-		if balls >= 4 or run_time - ball_last < 60.0 or randf() > chance:
+		if balls >= 3 or run_time - ball_last < 90.0 or randf() > chance:
 			return false
 		for o in orbs:
 			if is_instance_valid(o) and o.kind == "ball":
