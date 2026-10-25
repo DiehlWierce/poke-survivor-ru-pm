@@ -976,8 +976,12 @@ static func finish_run(r: Dictionary) -> Dictionary:
 	d["tickets"] = int(d["tickets"]) + tickets
 	var tickets10: int = int(r.get("tickets10", 0))
 	d["tickets10"] = int(d.get("tickets10", 0)) + tickets10
+	var gc: int = int(r.get("gcoins", 0))
+	var ggc: int = int(r.get("gold_gcoins", 0))
+	d["gcoins"] = int(d.get("gcoins", 0)) + gc
+	d["gold_coins"] = int(d.get("gold_coins", 0)) + ggc
 	_add_top({"time": int(r["time"]), "kills": int(r["kills"]), "level": int(r["level"]), "dex": int(r.get("dex", 25)), "judge": int(r.get("judge", {}).get("time", 0)) if r.get("judge", {}) is Dictionary else 0, "date": Time.get_date_string_from_system()})
-	last_run = {"judge": r.get("judge", {}), "time": int(r["time"]), "kills": int(r["kills"]), "level": int(r["level"]), "coins": coins, "tickets": tickets, "tickets10": tickets10, "bosses": int(r["bosses"]), "dex": int(r.get("dex", 25)),
+	last_run = {"judge": r.get("judge", {}), "time": int(r["time"]), "kills": int(r["kills"]), "level": int(r["level"]), "coins": coins, "tickets": tickets, "tickets10": tickets10, "gcoins": gc, "gold_gcoins": ggc, "bosses": int(r["bosses"]), "dex": int(r.get("dex", 25)),
 		"dead": bool(r.get("dead", true)), "record": record, "moves": r.get("moves", []), "other_dmg": int(r.get("other_dmg", 0)), "other_kills": int(r.get("other_kills", 0)), "ally_dmg": int(r.get("ally_dmg", 0)), "ally_kills": int(r.get("ally_kills", 0)),
 		"breakdown": "Recogidas %d · Tiempo +%d · Derrotados +%d" % [picked, int(float(r["time"]) / 6.0), int(float(r["kills"]) / 10.0)] + String(r.get("extra", ""))}
 	save()

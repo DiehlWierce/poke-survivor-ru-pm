@@ -78,7 +78,7 @@
 | main.gd | NORMAL_MOVE_W, BALL_CAP | вес Normal-приёмов 0.15; BALL_CAP 9→6 | 1A | DONE |
 | main.gd | DIR_MS, MINI_DEXES, late_warned | убрать ["eter",3600]; 12 гигантов вместо 4; флаг late_warned | 1A | DONE |
 | main.gd | perf_lv | переменная perf-уровня | 2A | DONE |
-| main.gd | gold_gcoins_run, gcoins_run | счётчики монет Gachapon в забеге | 5D | TODO |
+| main.gd | gold_gcoins_run, gcoins_run | счётчики монет Gachapon в забеге | 5D | DONE |
 | main.gd | _ready: _bind_move_devices(-1) | привязка устройств движения при старте | 6A | DONE |
 | main.gd | setup: pfx.setup → apply_perf() | вместо прямого pfx.setup вызов apply_perf() | 2A | DONE |
 | main.gd | pause_ui.perf_changed.connect | подписка на смену perf в паузе | 2A | DONE |
@@ -89,7 +89,7 @@
 | main.gd | _unhandled_input (joypad slot) | кнопки геймпада slot1..6 | 6A | DONE |
 | main.gd | _unhandled_input act_req | act_req не ставится, пока открыта лавка (shop_open) | 3 | DONE (hud.gd; main.gd: тап по кнопке не задевает Z/Dynamax, shop_open в _z_can/_dyn_can) |
 | main.gd | _end_run: mv_list, item_list | в итог забега добавлены desc приёма и список предметов | 5B | DONE |
-| main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | TODO |
+| main.gd | _end_run: SV.finish_run | передаются gcoins, gold_gcoins, items | 5D | DONE |
 | main.gd | apply_perf, _fx_cap | новая apply_perf (плотность ×1/0.6/0.3, ffx.lite); _fx_cap 60/24 при perf и 200/60/20 без | 2A | DONE (ffx.lite ставится, если поле есть — его добавляет 2B; hh ×0.4/≤96 сохранён) |
 | main.gd | _process: hud.join_* | передача join_* в HUD | 4 | DONE |
 | main.gd | _process: z_btn, dyn_btn | готовность кнопок Z/MAX по run_time >= MIN_TIME | 1A | DONE |
@@ -108,8 +108,8 @@
 | main.gd | _update_spawner: join_t | таймер баннера присоединения | 4 | DONE |
 | main.gd | _update_spawner: late banner | «¡Minuto 20!…» (late_warned, shake 10, sfx boss) | 1A | DONE |
 | main.gd | _update_spawner: rate | формула темпа спавна (×0.4, ×0.15, буст в начале, ×(1+1.5lx)) | 1A | DONE |
-| main.gd | _spawn_thief | ротация воров 52/1000/1012 (thief_cycle) | 5D | TODO |
-| main.gd | _spawn_thief (say) | сообщение «Gachapon Coin» для 1012 | 5D | TODO |
+| main.gd | _spawn_thief | ротация воров 52/1000/1012 (thief_cycle) | 5D | DONE |
+| main.gd | _spawn_thief (say) | сообщение «Gachapon Coin» для 1012 | 5D | DONE |
 | main.gd | _hazard_hits_enemy, _ally_boss_attack, _ally_hz | атаки союзника-босса и попадание зон по врагам | 4 | DONE |
 | main.gd | _update_hazards | ally_dmg: зоны союзника бьют врагов, а не игрока | 4 | DONE |
 | main.gd | траву режет (grass cut) | число частиц травы [6,2,0] по perf_lv | 2A | DONE |
@@ -125,10 +125,10 @@
 | main.gd | _xp_for | множитель early = lerp(0.85,1,(L-1)/19) | 1A | DONE |
 | main.gd | _on_enemy_down: on_big_down | вызов alpha.on_big_down для open_boss/mini | 4 | DONE |
 | main.gd | _on_enemy_down: wildleg | дикий легендарный даёт 2 билета вместо 3 | 1A | DONE |
-| main.gd | loot thief (gimmi/ticket10) | Gimmighoul: gcoin/gcoin_gold; ticket10-вор: ticket10 + 1 билет без монет | 5D | TODO |
+| main.gd | loot thief (gimmi/ticket10) | Gimmighoul: gcoin/gcoin_gold; ticket10-вор: ticket10 + 1 билет без монет | 5D | DONE |
 | main.gd | boss drop ticket10 | шанс 1/3 → 0.2 | 1A | DONE |
 | main.gd | обычный дроп ticket | 1/400 → 1/600 | 1A | DONE |
-| main.gd | _collect (gcoin kinds) | подбор gcoin и gcoin_gold | 5D | TODO |
+| main.gd | _collect (gcoin kinds) | подбор gcoin и gcoin_gold | 5D | DONE |
 | main.gd | _offer: выбор Normal | выборка карточек с весом NORMAL_MOVE_W (ключ u^(1/w)) | 1A | DONE |
 | main.gd | pause_summary: all_stats | к каждой статистике добавлена иконка | 5B | DONE |
 | main.gd | pause_summary: moves/items | icon у приёмов, desc у предметов, ab_name/ab_desc, hp_ratio | 5B | DONE |
@@ -146,7 +146,7 @@
 | main.gd | add_text | лимит Floater.alive [80,28,10] и plain | 2A | DONE (+ ветка склейки _dmg_text включается и при perf>0) |
 | main.gd | Legend: boss_moves, moving | поля союзника | 4 | DONE |
 | main.gd | Hazard.ally_dmg | поле урона союзника | 4 | DONE |
-| main.gd | Orb draw: gcoin | иконка/свечение gcoin и gcoin_gold | 5D | TODO |
+| main.gd | Orb draw: gcoin | иконка/свечение gcoin и gcoin_gold | 5D | DONE |
 | main.gd | Cards: lock_toggled, block_pressed, item_mode, lock_on, block_name | сигналы и поля Lock/блока | 5A | DONE |
 | main.gd | Cards: _toggle_lock, _do_block | обработчики | 5A | DONE |
 | main.gd | Cards: touch (item_mode) | нажатия по кнопкам в item_mode | 5A | DONE |
@@ -256,7 +256,7 @@
 | save_data.gd | default settings.perf | ключ perf в настройках по умолчанию | 2A | DONE |
 | save_data.gd | up_cost | множитель UP_COST_MUL в стоимости | 1B | DONE |
 | save_data.gd | PURPLE_LEGEND_P | 0.3→0.12 (у нас 0.2) | 1B | DONE |
-| save_data.gd | finish_run | учёт gcoins/gold_coins и gcoins в last_run | 5D | TODO |
+| save_data.gd | finish_run | учёт gcoins/gold_coins и gcoins в last_run | 5D | DONE |
 
 ## touch_scroll.gd
 
