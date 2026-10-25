@@ -385,6 +385,9 @@ var surge_t := 90.0
 var preload_t := 0.0
 var banner_text := ""
 var banner_t := 0.0
+var join_t := -1.0             # баннер «¡FELICIDADES!» после поимки союзника (3.2 с), -1 = нет
+var join_name := ""
+var join_col := Color.WHITE
 var event_id := ""
 var event_t := 0.0
 var horde_defs: Array = []
@@ -1661,6 +1664,9 @@ func _tick_hud(delta: float) -> void:
 	hud.z_dim = _z_dim()
 	hud.z_state = z_state
 	hud.z_t = z_t
+	hud.join_t = join_t
+	hud.join_name = join_name
+	hud.join_col = join_col
 	if hs:
 		hud.z_name = L.t(String(ZM.DEF[z_type]["name"])) if z_type != "" else ""
 	hud.z_type = z_type
@@ -4156,6 +4162,10 @@ func _update_spawner(delta: float) -> void :
 
 	var t: float = run_time
 	banner_t = maxf(0.0, banner_t - delta)
+	if join_t >= 0.0:
+		join_t += delta
+		if join_t > 3.2:
+			join_t = -1.0
 	fusion_t = maxf(0.0, fusion_t - delta)
 	if mode == "rush":
 		_update_rush(delta)
@@ -5461,6 +5471,74 @@ func _hazard_inside(h: Hazard) -> bool:
 	return absf(-rel.x * d.y + rel.y * d.x) <= h.width * 0.5 + pr * 0.6
 
 
+# Попадание зоны/луча союзника по врагу (как _hazard_inside, но для врага)
+func _hazard_hits_enemy(h: Hazard, en) -> bool:
+	var er: float = en.radius
+	if h.kind == "zone":
+		return en.position.distance_squared_to(h.position) < pow(h.r + er * 0.6, 2.0)
+	var d: Vector2 = Vector2.from_angle(h.angle)
+	var rel: Vector2 = en.position - h.position
+	var along: float = rel.dot(d)
+	if along < -er or along > h.length + er:
+		return false
+	return absf(-rel.x * d.y + rel.y * d.x) <= h.width * 0.5 + er * 0.6
+
+
+# Пойманный союзник бьёт атаками босса: тот же набор, что в _boss_init (Pisotón + Embestida/Salto, 2 дальних по типу)
+func _ally_boss_attack(lg, tg) -> void:
+	if lg.boss_moves.is_empty():
+		var t: Array = [lg.ltype]
+		var pref := "volley"
+		if _has_t(t, ["fire", "ground", "poison", "rock", "grass"]):
+			pref = "rain"
+		elif _has_t(t, ["electric", "psychic", "dragon", "ice", "steel"]):
+			pref = "beam"
+		elif _has_t(t, ["fairy", "ghost", "water", "flying"]):
+			pref = "nova"
+		var others: Array = ["rain", "beam", "nova", "volley"]
+		others.erase(pref)
+		lg.boss_moves = ["slam", "dash" if MX.hsh(lg.dex, 3, 7) < 0.5 else "leap", pref, others[int(MX.hsh(lg.dex, 5, 9) * 3.0) % 3]]
+	var id: String = String(lg.boss_moves[randi() % lg.boss_moves.size()])
+	var d: float = lg.position.distance_to(tg.position)
+	if id == "slam" and d > 150.0:
+		id = "leap"
+	var col: Color = lg.col
+	var ang: float = (tg.position - lg.position).angle()
+	var dm: float = lg.dmg
+	if id == "slam":
+		_ally_hz(_hazard_zone(lg.position, 96.0 + lg.radius, 0.55, 0.0, lg.ltype, col), dm * 1.8)
+		lg.play("Charge", 1.2)
+	elif id == "dash":
+		_ally_hz(_hazard_beam(lg.position, ang, 330.0 + lg.radius, lg.radius * 2.0 + 16.0, 0.55, 0.0, lg.ltype, col), dm * 1.6)
+		lg.play("Charge", 1.3)
+	elif id == "leap":
+		_ally_hz(_hazard_zone(tg.position, 82.0, 0.65, 0.0, lg.ltype, col), dm * 1.7)
+		lg.play("Charge", 1.4)
+	elif id == "rain":
+		for i in range(4):
+			var a: float = randf() * TAU if i > 0 else 0.0
+			var dd: float = randf_range(40.0, 120.0) if i > 0 else 0.0
+			_ally_hz(_hazard_zone(tg.position + Vector2(cos(a) * dd, sin(a) * dd * 0.8), 50.0, 0.6 + float(i) * 0.12, 0.0, lg.ltype, col), dm * 1.1)
+		lg.play("Shoot", 1.0)
+	elif id == "beam":
+		for i in range(3):
+			_ally_hz(_hazard_beam(lg.position, ang + (float(i) - 1.0) * 0.5, 400.0, 26.0, 0.8, 0.0, lg.ltype, col), dm * 1.3)
+		lg.play("Charge", 1.1)
+	elif id == "nova":
+		_ally_hz(_hazard_zone(lg.position, 250.0, 0.7, 0.0, lg.ltype, col), dm * 1.2)
+		_ring(lg.position, lg.radius, 250.0, col, 0.7)
+		lg.play("Charge", 1.4)
+	else:
+		for i in range(5):
+			_ally_hz(_hazard_beam(lg.position, ang + (float(i) - 2.0) * 0.27, 420.0, 14.0, 0.5, 0.0, lg.ltype, col), dm * 0.9)
+		lg.play("Charge", 1.4)
+	Aud.sfx("boss")
+
+
+func _ally_hz(h: Hazard, dm: float) -> void:
+	h.ally_dmg = dm
+
+
 func _update_hazards(delta: float) -> void:
 	trap_slow_t = maxf(0.0, trap_slow_t - delta)
 	wp_t = maxf(0.0, wp_t - delta)
@@ -5510,7 +5588,14 @@ func _update_hazards(delta: float) -> void:
 				f.width = h.width
 				f.life = 0.3
 				fx.add_child(f)
-			if not player.dead and _hazard_inside(h):
+			if h.ally_dmg > 0.0:
+				# зона союзника: бьёт врагов, игрока не задевает
+				for en in enemies.duplicate():
+					if en.dead or bool(en.def.get("scripted", false)):
+						continue
+					if _hazard_hits_enemy(h, en):
+						_damage_enemy(en, h.ally_dmg, h.color, (en.position - h.position).normalized(), 140.0)
+			elif not player.dead and _hazard_inside(h):
 				player.invuln = 0.0
 				if h.pct > 0.0:
 					_hurt_player(maxf(h.dmg, player.max_hp * h.pct), "", h.pure)
@@ -6697,6 +6782,8 @@ func _drop(e) -> void :
 		call_deferred("_eternatus_win")
 	if e.has_meta("enc") and String(e.get_meta("enc")) == "alpha":
 		alpha.on_down(e)
+	elif e.has_meta("enc") and (String(e.get_meta("enc")) == "open_boss" or String(e.get_meta("enc")) == "mini"):
+		alpha.on_big_down(e, String(e.get_meta("enc")))   # обычный босс или гигант: окно поимки
 	if e.has_meta("enc") and String(e.get_meta("enc")) == "wildleg" and not e.has_meta("wl_paid"):
 		e.set_meta("wl_paid", true)
 		for k in range(2):
@@ -8499,6 +8586,7 @@ class Hazard extends Node2D:
 	var pct := 0.0
 	var pure := false
 	var vis := ""
+	var ally_dmg := 0.0   # >0: зона пойманного союзника, урон врагам вместо игрока
 
 	func _init() -> void:
 		set_process(false) # main actualiza el tiempo y la redibuja junto con el resto de peligros
@@ -10734,6 +10822,7 @@ const LEG_TIME := 4.0
 const LEG_ZONE := 46.0
 
 var legend = null
+var allies_extra: Array = []   # второй пойманный союзник (alpha.MAX_ALLIES = 2); legend — первый
 
 var _alt_legend := false
 
@@ -10783,10 +10872,18 @@ func _summon_legend(p: Prop) -> void :
 	p.queue_redraw()
 
 func _upd_legend(delta: float) -> void :
+	for lx in allies_extra.duplicate():
+		if not is_instance_valid(lx) or lx.dead:
+			allies_extra.erase(lx)
+		else:
+			_upd_ally(lx, delta)
 	if not is_instance_valid(legend):
 		legend = null
 		return
-	var lg = legend
+	_upd_ally(legend, delta)
+
+
+func _upd_ally(lg, delta: float) -> void :
 	if lg.dead:
 		return
 	lg.atk_t -= delta
@@ -10812,7 +10909,13 @@ func _upd_legend(delta: float) -> void :
 		want = tg.position
 		spd = 190.0
 	var to: Vector2 = want - lg.position
-	var moving: bool = to.length() > 40.0
+	# гистерезис 28/52: у цели союзник не дёргается между Walk и Idle
+	var dist_w: float = to.length()
+	if lg.moving and dist_w < 28.0:
+		lg.moving = false
+	elif not lg.moving and dist_w > 52.0:
+		lg.moving = true
+	var moving: bool = lg.moving
 	if moving:
 		lg.position += to.normalized() * spd * delta
 		lg.face_angle(to.angle())
@@ -10820,10 +10923,14 @@ func _upd_legend(delta: float) -> void :
 		lg.face_angle((tg.position - lg.position).angle())
 	lg.loop_anim("Walk" if moving and lg.has_anim("Walk") else "Idle", 1.0)
 	if tg != null and lg.atk_t <= 0.0 and lg.position.distance_to(tg.position) < 240.0:
-		lg.atk_t = 1.25
-		if lg.has_anim("Attack"):
-			lg.play_attack("Attack", 1.25)
-		_legend_strike(lg, tg)
+		if lg.alpha:
+			lg.atk_t = 1.7
+			_ally_boss_attack(lg, tg)
+		else:
+			lg.atk_t = 1.25
+			if lg.has_anim("Attack"):
+				lg.play_attack("Attack", 1.25)
+			_legend_strike(lg, tg)
 
 func _legend_strike(lg, tg) -> void :
 
@@ -10847,7 +10954,10 @@ func _legend_die(lg) -> void :
 	_ring(lg.position, 8.0, 110.0, lg.col, 0.6, 4.0)
 	pfx.burst(lg.position + Vector2(0.0, -20.0), lg.col, 30, 220.0)
 	add_text(lg.position + Vector2(0.0, -50.0), L.t("%s se retira") % lg.lname, Color("#ffd23f"), 20)
-	legend = null
+	if lg == legend:
+		legend = null
+	else:
+		allies_extra.erase(lg)
 	lg.dead = true
 	lg.fade = 0.6
 
@@ -11125,6 +11235,8 @@ class Legend extends Actor:
 	var ltype := "normal"
 	var col := Color("#ffd23f")
 	var lname := ""
+	var boss_moves: Array = []   # набор атак босса у пойманного союзника (_ally_boss_attack)
+	var moving := false          # гистерезис ходьбы в _upd_ally
 	var dead := false
 	var atk_t := 1.0
 	var hit_t := 0.0

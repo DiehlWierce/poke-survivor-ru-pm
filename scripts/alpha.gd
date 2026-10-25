@@ -5,6 +5,9 @@ extends RefCounted
 
 
 const MAX_PER_RUN := 2
+const MAX_ALLIES := 2          # союзников за забег (Альфа + боссы/гиганты вместе)
+const BIG_RATE_BOSS := 0.6     # шанс поимки обычного босса
+const BIG_RATE_MINI := 0.75    # шанс поимки гиганта
 const FIRST_AT := 360.0
 const GAP_MIN := 480.0
 const GAP_MAX := 720.0
@@ -22,6 +25,7 @@ var poi = null
 var cur = null
 var next_id := 1
 var spawned := 0
+var allies_made := 0
 var t_next := FIRST_AT
 var throw_cd := 0.0
 var done := {}
@@ -35,6 +39,7 @@ static func ball_tex() -> Texture2D:
 
 
 class BallFx extends Node2D:
+	static var _tx: Texture2D = null
 	var from := Vector2.ZERO
 	var to := Vector2.ZERO
 	var t := 0.0
@@ -49,11 +54,29 @@ class BallFx extends Node2D:
 			position = from.lerp(to, k) + Vector2(0.0, - sin(k * PI) * 60.0)
 			rotation = t * 14.0
 		else:
-			position = to
-			rotation = sin((t - flight) * 18.0) * 0.5 * clampf(shake, 0.0, 1.0)
+			# падает на землю после попадания, затем покачивания
+			var tt: float = t - flight
+			var kd: float = clampf(tt / 0.3, 0.0, 1.0)
+			position = to + Vector2(0.0, 22.0 * kd - sin(kd * PI) * 16.0)
+			rotation = 0.0
+			if shake > 0.0 and tt > 0.3:
+				var u: float = fmod(tt - 0.3, 0.45)
+				if u < 0.3:
+					rotation = sin(u / 0.3 * TAU) * 0.55 * clampf(shake, 0.0, 1.0)
 		queue_redraw()
 	func _draw() -> void :
-		var tx: Texture2D = load("res://assets/world/ball.png")
+		if _tx == null:
+			_tx = load("res://assets/world/ball.png")   # один раз на все шары, не в каждом кадре
+		var tx: Texture2D = _tx
+		var tt: float = t - flight
+		if tt >= 0.0 and tt < 0.3:
+			var fk: float = 1.0 - tt / 0.3
+			draw_circle(Vector2.ZERO, 34.0 * (1.0 - fk * 0.5), Color(1, 0.35, 0.3, 0.55 * fk))
+			draw_circle(Vector2.ZERO, 18.0, Color(1, 1, 1, 0.7 * fk))
+		elif tt >= 0.3 and shake > 0.0:
+			var u: float = fmod(tt - 0.3, 0.45)
+			if u < 0.3:
+				draw_circle(Vector2.ZERO, 14.0, Color(1, 0.3, 0.25, 0.35))
 		if tx == null:
 			draw_circle(Vector2.ZERO, 8.0, Color.RED)
 			return
@@ -66,8 +89,17 @@ class Down extends Node2D:
 	var t := 0.0
 	var actor = null
 	var vanish := -1.0
+	var absorb := -1.0          # >=0: шар втягивает упавшего (0.35 с, подъём на 22 px, краснеет)
+	var base_pos := Vector2.ZERO
 	func _process(delta: float) -> void :
 		t += delta
+		if absorb >= 0.0:
+			absorb += delta
+			var k: float = clampf(absorb / 0.35, 0.0, 1.0)
+			scale = Vector2.ONE * maxf(0.02, 1.0 - k)
+			position = base_pos + Vector2(0.0, -22.0 * k)
+			if is_instance_valid(actor):
+				actor.modulate = Color(1.0, 0.8 - 0.5 * k, 0.8 - 0.5 * k, 1.0 - 0.3 * k)
 		if vanish >= 0.0:
 			vanish -= delta
 			modulate.a = clampf(vanish / 0.5, 0.0, 1.0)
@@ -80,7 +112,7 @@ class Down extends Node2D:
 
 
 func _legend_free() -> bool:
-	return not is_instance_valid(m.legend)
+	return allies_made < MAX_ALLIES
 
 
 func _spawn_ok() -> bool:
@@ -133,22 +165,44 @@ func spawn() -> bool:
 func on_down(e) -> void :
 	if cur == null or cur["state"] != "hostile" or cur["enemy"] != e:
 		return
+	_begin_down(e)
+
+
+# Ослабленный обычный босс (enc open_boss) или гигант (enc mini): то же окно броска, свой шанс.
+func on_big_down(e, kind: String) -> void :
+	if cur != null or allies_made >= MAX_ALLIES or m.balls <= 0 or not ["normal", "type", "daily", "coop"].has(m.mode):
+		return
+	var dx: int = int(e.dex)
+	if not m._smeta.has(str(dx)):
+		return
+	cur = {"id": next_id, "state": "hostile", "enemy": e, "dex": dx, "name": String(e.enemy_name), "ttl": WINDOW, "pos": e.position, "types": (e.types as Array).duplicate(),
+		"big": true, "rate": BIG_RATE_BOSS if kind == "open_boss" else BIG_RATE_MINI}
+	next_id += 1
+	_begin_down(e)
+	m._say(m.L.t("¡%s debilitado! Lanza una Poké Ball (8 s).") % String(cur["name"]), 3.0)
+
+
+func _begin_down(e) -> void :
 	cur["state"] = "down"
 	cur["ttl"] = WINDOW
 	cur["pos"] = e.position
 	var node := Down.new()
 	node.position = e.position
+	node.base_pos = e.position
 	node.z_index = 1
 	m.world.add_child(node)
 	var a = m.Actor.new()
 	a.setup(int(cur["dex"]), m._sm(int(cur["dex"])), m.flash_shader, 1.35)
+	if is_instance_valid(e) and int(e.dex) == int(cur["dex"]) and not e.shiny:
+		a.textures = e.textures.duplicate()   # кадры уже загружены у врага: без повторной загрузки
 	a.modulate = Color(1, 0.8, 0.8)
 	node.add_child(a)
 	if a.has_anim("Faint"):
 		a.play("Faint", 1.0, true)
 	node.actor = a
 	cur["node"] = node
-	m._say(m.L.t("¡Alfa derrotado! Lanza una Poké Ball (8 s)."), 3.0)
+	if not cur.has("big"):
+		m._say(m.L.t("¡Alfa derrotado! Lanza una Poké Ball (8 s)."), 3.0)
 	m.pfx.burst(e.position + Vector2(0, -20), Color("#ffd23f"), 22, 160.0)
 	log.append(["down", cur["dex"]])
 
@@ -183,13 +237,14 @@ func throw() -> void :
 
 	cur["state"] = "throw"
 	m.balls -= 1
-	var ok: bool = randf() < RATE
+	var ok: bool = randf() < float(cur.get("rate", RATE))
 	cur["roll"] = ok
 	var fx2 := BallFx.new()
 	fx2.from = pp
 	fx2.to = tp
 	fx2.flight = FLIGHT
 	fx2.shake = 1.0
+	fx2.z_index = 20
 	m.world.add_child(fx2)
 	cur["fx"] = fx2
 	cur["t"] = 0.0
@@ -234,6 +289,10 @@ func update(delta: float) -> void :
 				_finish(false)
 		"throw":
 			cur["t"] = float(cur["t"]) + delta
+			if float(cur["t"]) >= FLIGHT and not bool(cur.get("absorbed", false)) and cur.has("node") and is_instance_valid(cur["node"]):
+				cur["absorbed"] = true
+				cur["node"].absorb = 0.0
+				m.pfx.burst((cur["pos"] as Vector2) + Vector2(0, -20), Color("#ff6b6b"), 16, 140.0)
 			var total: float = FLIGHT + float(SHAKES) * 0.45
 			if float(cur["t"]) >= total:
 				_resolve()
@@ -246,8 +305,10 @@ func _vanish() -> void :
 
 
 func _finish(_ok: bool) -> void :
+	var was_big: bool = cur != null and cur.has("big")
 	cur = null
-	t_next = randf_range(GAP_MIN, GAP_MAX)
+	if not was_big:   # поимка босса/гиганта не сдвигает таймер Альфы
+		t_next = randf_range(GAP_MIN, GAP_MAX)
 
 
 func _resolve() -> void :
@@ -256,14 +317,30 @@ func _resolve() -> void :
 	done[cur["id"]] = true
 	var ok: bool = bool(cur["roll"])
 	var fx = cur.get("fx")
+	var fxp := Vector2.ZERO
 	if is_instance_valid(fx):
+		fxp = fx.position
 		fx.queue_free()
 	var pos: Vector2 = cur["pos"]
 	if ok and _legend_free():
-		_vanish()
+		# шар раскрывается золотом, из него выходит союзник
+		m._ring(fxp, 6.0, 70.0, Color("#ffd23f"), 0.45, 4.0)
+		m.pfx.burst(fxp, Color("#ffd23f"), 26, 210.0)
+		m.pfx.burst(fxp, Color("#ffffff"), 14, 120.0)
+		cur["ball_pos"] = fxp
 		_make_ally(cur)
+		if cur.has("node") and is_instance_valid(cur["node"]):
+			cur["node"].queue_free()
 		log.append(["ally", cur["dex"]])
 	else:
+		# промах: упавший возвращается на место из шара
+		if cur.has("node") and is_instance_valid(cur["node"]):
+			var nd = cur["node"]
+			nd.absorb = -1.0
+			nd.scale = Vector2.ONE
+			nd.position = nd.base_pos
+			if is_instance_valid(nd.actor):
+				nd.actor.modulate = Color(1, 0.8, 0.8)
 		_vanish()
 		m.pfx.burst(pos + Vector2(0, -20), Color("#ff6b6b"), 24, 180.0)
 		m._say(m.L.t("¡Se ha escapado!"), 2.2)
@@ -276,6 +353,8 @@ func _make_ally(c: Dictionary) -> void :
 	var dex: int = int(c["dex"])
 	var lg = m.Legend.new()
 	lg.setup(dex, m._sm(dex), m.flash_shader, 1.2, false)
+	if c.has("node") and is_instance_valid(c["node"]) and is_instance_valid(c["node"].actor):
+		lg.textures = c["node"].actor.textures.duplicate()   # те же кадры, что у упавшего: без повторной загрузки
 	lg.m = m
 	lg.alpha = true
 	var ty: Array = c["types"]
@@ -288,18 +367,37 @@ func _make_ally(c: Dictionary) -> void :
 	lg.dmg = 22.0 + float(m.player.level) * 4.0 + tm * 1.8
 	lg.position = c["pos"]
 	lg.z_index = 1
+	lg.atk_t = 1.0
 	m.world.add_child(lg)
-	m.legend = lg
+	# вырастает из шара
+	lg.scale = Vector2(0.08, 0.08)
+	lg.modulate = Color(2.2, 2.2, 2.2, 1.0)
+	var tw: Tween = lg.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(lg, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lg, "modulate", Color(1, 1, 1, 1), 0.45)
+	allies_made += 1
+	if is_instance_valid(m.legend):
+		m.allies_extra.append(lg)   # второй союзник: legend уже занят (Альфа или алтарь)
+	else:
+		m.legend = lg
 	m._ring(lg.position, 8.0, 130.0, lg.col, 0.7, 5.0)
 	m.pfx.burst(lg.position + Vector2(0, -30), lg.col, 36, 240.0)
 	m.pfx.burst(lg.position + Vector2(0, -30), Color("#ffd23f"), 20, 150.0)
 	m.Aud.sfx("legend")
-	m._say(m.L.t("¡Atrapado! %s se une a ti.") % lg.lname, 3.2)
+	m.join_name = m.L.t("%s se ha unido a ti") % lg.lname
+	m.join_col = lg.col
+	m.join_t = 0.0
 
 
 
 func _ally_tick(delta: float) -> void :
-	var lg = m.legend
+	_regen(m.legend, delta)
+	for lg in m.allies_extra:
+		_regen(lg, delta)
+
+
+func _regen(lg, delta: float) -> void :
 	if is_instance_valid(lg) and lg.alpha and not lg.dead:
 		lg.hp = minf(lg.max_hp, lg.hp + lg.max_hp * 0.006 * delta)
 
