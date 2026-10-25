@@ -38,6 +38,7 @@ const PITY_5 := 90
 const REFUND := [15, 30, 60, 120, 300]
 
 # Mejoras permanentes (upgrades.js)
+const UP_COST_MUL := 0.6
 const UPGRADES := [
 	{"id": "hp", "name": "Vitalidad", "unit": "+8 vida", "max": 10, "base": 100.0, "grow": 1.39},
 	{"id": "atk", "name": "Fuerza", "unit": "+4% daño", "max": 10, "base": 130.0, "grow": 1.42},
@@ -53,7 +54,7 @@ const UPGRADES := [
 	{"id": "size", "name": "Calibre", "unit": "+8% de tamaño de proyectiles, orbes y áreas", "max": 6, "base": 130.0, "grow": 1.44},
 	{"id": "reroll", "name": "Cambio de cartas", "unit": "+1 cambio de cartas por partida", "max": 5, "base": 240.0, "grow": 1.64},
 	{"id": "tm", "name": "MT", "unit": "Elige tu movimiento inicial (de tus tipos)", "max": 1, "base": 3200.0, "grow": 1.0},
-	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 6, "base": 480.0, "grow": 1.6},
+	{"id": "ban", "name": "Veto", "unit": "Bloquea 1 movimiento: no te sale en las cartas", "max": 6, "base": 480.0, "grow": 1.7},
 	{"id": "revive", "name": "Segunda oportunidad", "unit": "+1 corazón: al caer, revives con la vida completa", "max": 2, "base": 4000.0, "grow": 2.04},
 	{"id": "wslot", "name": "Huecos de arma", "unit": "4 huecos base: +1 por nivel (máximo 6)", "max": 2, "base": 9000.0, "grow": 2.2},
 	{"id": "bag", "name": "Mochila", "unit": "Llevas 2 objetos a la vez por partida", "max": 1, "base": 12000.0, "grow": 1.0},
@@ -694,7 +695,7 @@ static func up_def(id: String) -> Dictionary:
 
 static func up_cost(id: String, lvl: int) -> int:
 	var u: Dictionary = up_def(id)
-	return int(roundf(float(u["base"]) * pow(float(u["grow"]), float(lvl)) / 10.0)) * 10
+	return int(roundf(float(u["base"]) * pow(float(u["grow"]), float(lvl)) * UP_COST_MUL / 10.0)) * 10
 
 
 static func buy_upgrade(id: String, dex: int = -1) -> bool:
@@ -943,4 +944,4 @@ static var run_chal: Dictionary = {}
 
 const Z_CRYSTAL_P_PURPLE := 0.06
 
-const PURPLE_LEGEND_P := 0.2
+const PURPLE_LEGEND_P := 0.12

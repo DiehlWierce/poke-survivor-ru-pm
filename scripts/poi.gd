@@ -286,9 +286,9 @@ func _elixir() -> void :
 
 
 func _pack_reward(p: Vector2, rare: bool = false) -> void :
-	var opts: Array = [["gold", 40.0], ["xp", 20.0], ["cons", 10.0], ["ticket", 5.0]]
+	var opts: Array = [["gold", 40.0], ["xp", 20.0], ["cons", 10.0], ["ticket", 3.0]]
 	if rare:
-		opts = [["gold", 30.0], ["xp", 25.0], ["cons", 20.0], ["ticket", 15.0]]
+		opts = [["gold", 30.0], ["xp", 25.0], ["cons", 20.0], ["ticket", 10.0]]
 	if m.player.hp < m.player.max_hp:
 		opts.append(["heal", 25.0 if not rare else 15.0])
 	var tot := 0.0
@@ -313,7 +313,7 @@ func _pack_reward(p: Vector2, rare: bool = false) -> void :
 			m._spawn_orb(p, "magnet" if randf() < 0.5 else "bomb", 0.0)
 		"ticket":
 			m._spawn_orb(p, "ticket", 1.0)
-	m.try_ball(p + Vector2(16, 0), 0.15 if rare else 0.1)
+	m.try_ball(p + Vector2(16, 0), 0.1 if rare else 0.06)
 	m.add_text(p + Vector2(0, -40), m.L.t("¡Paquete abierto!"), Color("#ffd23f"), 22)
 	log.append(["pack", pick])
 
@@ -329,20 +329,20 @@ func _crate_reward(it: Item) -> void :
 				m._spawn_orb(p, "coin", 5.0)
 			m._collect("xpBig", float(m._xp_for(m.player.level)) * 0.25)
 		"rare":
-			m._spawn_orb(p, "ticket", float(1 + randi() % 2))
+			m._spawn_orb(p, "ticket", 1.0)
 			for i in range(8):
 				m._spawn_orb(p, "coin", 5.0)
 			m._spawn_orb(p, "item", 0.0)
 		"golden":
 			m._spawn_orb(p, "item", 0.0)
-			m._spawn_orb(p + Vector2(14, 0), "ticket", 2.0)
+			m._spawn_orb(p + Vector2(14, 0), "ticket", 1.0)
 			for i in range(14):
 				m._spawn_orb(p, "coin", 5.0)
 			m._collect("xpBig", float(m._xp_for(m.player.level)) * 0.4)
 	if it.sub == "golden":
 		m.try_ball(p + Vector2(20, 0), 1.0, true)
 	elif it.sub == "rare":
-		m.try_ball(p + Vector2(20, 0), 0.35)
+		m.try_ball(p + Vector2(20, 0), 0.25)
 	m._say(m.L.t("¡SUMINISTRO RECLAMADO!"), 2.2)
 	_release(it)
 
@@ -407,9 +407,9 @@ func buy_chest(p) -> bool:
 	var pos: Vector2 = p.position
 
 	var tier: int = clampi(paid_n - 1, 0, 5)
-	var give_up: bool = randf() < 0.55
+	var give_up: bool = randf() < 0.7
 	var give_ball: bool = not give_up
-	if tier >= 3 and randf() < 0.5:
+	if tier >= 3 and randf() < 0.3:
 		give_up = true
 		give_ball = true
 	if give_ball and m.balls >= m.BALL_CAP:

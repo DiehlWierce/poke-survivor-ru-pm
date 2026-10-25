@@ -5459,13 +5459,13 @@ func _lex_fill(page: VBoxContainer, tab: String) -> void:
 					(gh[0] as Control).add_child(_lex_card(IC.rect("move:" + String(mid), 36), L.t(String(m["name"])), L.t(String(MD.TYPE_NAME[ty])), tcol, desc)))
 	elif tab == "z":
 		page.add_child(_label(L.t("Movimientos Z: %d") % ZM.ORDER.size(), 24, C_GOLD))
-		page.add_child(_label(L.t("Se recargan cada 4 minutos, desde el nivel %d. Se desbloquean derrotando %d Pokémon de ese tipo.") % [ZM.MIN_LEVEL, ZM.NEED], 16, Color("#c8d6ee")))
+		page.add_child(_label(L.t("Se recargan cada 4 minutos, desde el minuto 3. Se desbloquean derrotando %d Pokémon de ese tipo.") % ZM.NEED, 16, Color("#c8d6ee")))
 		var dn: int = int(SV.d["stats"].get("dens", 0))
 		var dok: bool = dn >= 1
 		var gd := _lex_grid(page, cols)
 		_later(page, func():
 			gd.add_child(_lex_card(null, "Dynamax", L.t("Desbloqueado") if dok else L.t("Vence una guarida Dynamax: %d/1") % dn, Color("#ff7a9a"),
-				_fmt_d(L.t("Cada 4 minutos (desde el nivel %d): tu Pokémon se vuelve gigante %d s con +30% a todos sus atributos y lanza ondas Max de su tipo. Cada guarida Dynamax vencida lo recarga al instante."), [DYN.MIN_LEVEL, int(DYN.DUR)]), not dok)))
+				L.t("Cada 4 minutos (desde el minuto 3): tu Pokémon se vuelve gigante %d s con +30%% a todos sus atributos y lanza ondas Max de su tipo. Cada guarida Dynamax vencida lo recarga al instante.") % [int(DYN.DUR)], not dok)))
 		var gz := _lex_grid(page, cols)
 		for zt in ZM.ORDER:
 			_later(page, func():

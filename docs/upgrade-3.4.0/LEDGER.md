@@ -39,7 +39,7 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| dynamax.gd | MIN_LEVEL, MIN_TIME | MIN_LEVEL 20→1, новая MIN_TIME=180.0 | 1B | TODO |
+| dynamax.gd | MIN_LEVEL, MIN_TIME | MIN_LEVEL 20→1, новая MIN_TIME=180.0 | 1B | DONE |
 
 ## fusion_fx.gd
 
@@ -95,9 +95,9 @@
 | main.gd | _process: z_btn, dyn_btn | готовность кнопок Z/MAX по run_time >= MIN_TIME | 1A | DONE |
 | main.gd | _z_can | условие run_time >= ZM.MIN_TIME вместо level | 1A | DONE |
 | main.gd | _dyn_can | условие run_time >= DYN.MIN_TIME вместо level | 1A | DONE |
-| main.gd | _f (burnp, KNOCK_BASE) | burn с вероятностью burnp; база отдачи KNOCK_BASE на 1-м уровне | 1B | TODO |
+| main.gd | _f (burnp, KNOCK_BASE) | burn с вероятностью burnp; база отдачи KNOCK_BASE на 1-м уровне | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | _evo_infos | ready=true без требования навыка (и для ALT) | 1A | DONE |
-| main.gd | _evo_infos (burnp текст) | в тексте эволюции добавляется «% шанс поджечь» из EVO_EXTRA.burnp | 1B | TODO |
+| main.gd | _evo_infos (burnp текст) | в тексте эволюции добавляется «% шанс поджечь» из EVO_EXTRA.burnp | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | player move spd | скорость игрока в бою с Судом — JDM.cap_spd(_spd()) при jd.phase=="fight" | 1A | DONE |
 | main.gd | _setup_partner: _bind_move_devices | привязка устройств при старте напарника | 6A | TODO |
 | main.gd | _update_partner | перепривязка устройств при смене pad напарника | 6A | TODO |
@@ -142,7 +142,7 @@
 | main.gd | _arena_tick (won) | связь: сброс, если нечего связывать; ожидание выбора связи | 5C | TODO |
 | main.gd | босс-сундук (tickets) | ticket 3→2, ticket10 0.5→0.3 | 1A | DONE |
 | main.gd | сундук (tickets 2) | ticket 2→1 | 1A | DONE |
-| main.gd | Dynamax unlock say | текст «desde el minuto 3» без %d | 1B | TODO |
+| main.gd | Dynamax unlock say | текст «desde el minuto 3» без %d | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | add_text | лимит Floater.alive [80,28,10] и plain | 2A | TODO |
 | main.gd | Legend: boss_moves, moving | поля союзника | 4 | TODO |
 | main.gd | Hazard.ally_dmg | поле урона союзника | 4 | TODO |
@@ -160,8 +160,8 @@
 | main.gd | HUD.draw_join | баннер «¡FELICIDADES!» + имя союзника | 4 | TODO |
 | main.gd | HUD.act_rect | кнопка у цели (act_sp) и новая раскладка на коротких экранах | 3 | TODO |
 | main.gd | HUD.draw_poi, _fit_size | подгонка шрифта текста кнопки действия | 3 | TODO |
-| main.gd | HUD dyn «Min 3» | подпись вместо «Nv. N» | 1B | TODO |
-| main.gd | HUD z «Min 3» | подпись вместо «Nv. N» | 1B | TODO |
+| main.gd | HUD dyn «Min 3» | подпись вместо «Nv. N» | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
+| main.gd | HUD z «Min 3» | подпись вместо «Nv. N» | 1B | TODO (main.gd — не в моём списке; передать 1A: KNOCK_BASE/burnp/Min 3/say) |
 | main.gd | HUD._draw: draw_join | вызов draw_join | 4 | TODO |
 
 ## menu.gd
@@ -179,7 +179,7 @@
 | menu.gd | итог забега (info) | блоки «Objetos» и «Qué hace cada movimiento» | 5B | TODO |
 | menu.gd | справка: Normal | «Partida Normal: Sentencia de Arceus» (30 мин) | 1A | DONE |
 | menu.gd | справка: капча | новая запись «Capturar jefes y gigantes» | 4 | TODO |
-| menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | TODO |
+| menu.gd | лексикон Dynamax | текст «desde el minuto 3» (без DYN.MIN_LEVEL) | 1B | DONE |
 | menu.gd | _refresh_settings: Rendimiento | ряд «Rendimiento» Normal/Ahorro/Mínimo | 2A | TODO |
 | menu.gd | _refresh_settings: окно | «Modo de ventana» и «Resolución de la ventana» (только PC) | 6B | TODO |
 
@@ -187,11 +187,11 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| moves_data.gd | flamethrower | desc, arc 0.9→1.45, count 7→8 (у нас arc 1.1, knock 70 — привести к цели) | 1B | TODO |
-| moves_data.gd | aura-sphere, fairy-wind, dazzling-gleam | aura: dmg 24, pierce 1; fairy-wind 13/0.4; gleam 11/0.4 | 1B | TODO |
-| moves_data.gd | fleur-cannon, play-rough | fleur 57/ccp 0.4; play-rough 31/ccp 0.4 | 1B | TODO |
-| moves_data.gd | KNOCK_BASE | новая константа {"flamethrower": 45} | 1B | TODO |
-| moves_data.gd | EVO_EXTRA["water-gun"] | burn:1, burnp:0.3 для эволюции Water Gun | 1B | TODO |
+| moves_data.gd | flamethrower | desc, arc 0.9→1.45, count 7→8 (у нас arc 1.1, knock 70 — привести к цели) | 1B | DONE |
+| moves_data.gd | aura-sphere, fairy-wind, dazzling-gleam | aura: dmg 24, pierce 1; fairy-wind 13/0.4; gleam 11/0.4 | 1B | DONE |
+| moves_data.gd | fleur-cannon, play-rough | fleur 57/ccp 0.4; play-rough 31/ccp 0.4 | 1B | DONE |
+| moves_data.gd | KNOCK_BASE | новая константа {"flamethrower": 45} | 1B | DONE |
+| moves_data.gd | EVO_EXTRA["water-gun"] | burn:1, burnp:0.3 для эволюции Water Gun | 1B | DONE |
 
 ## navgrid.gd
 
@@ -238,9 +238,9 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| poi.gd | _pack_reward (opts) | вес ticket 5→3 и 15→10 | 1B | TODO |
-| poi.gd | _pack_reward (try_ball) | try_ball 0.15/0.1 → 0.1/0.06 | 1B | TODO |
-| poi.gd | supply claim | ticket 1, golden ticket 1, rare ball 0.25 | 1B | TODO |
+| poi.gd | _pack_reward (opts) | вес ticket 5→3 и 15→10 | 1B | DONE |
+| poi.gd | _pack_reward (try_ball) | try_ball 0.15/0.1 → 0.1/0.06 | 1B | DONE |
+| poi.gd | supply claim | ticket 1, golden ticket 1, rare ball 0.25 | 1B | DONE |
 | poi.gd | Kecleon trade | give_up 0.55→0.7, tier≥3 0.5→0.3 | 3 | TODO |
 | poi.gd | _update: act_sp reset | сброс act_sp в начале | 3 | TODO |
 | poi.gd | _update: ball/open/chest act_sp | привязка кнопки к цели (-34 / -14 / -10) | 3 | TODO |
@@ -251,11 +251,11 @@
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
 | save_data.gd | PITY_5 | гарантия 90 | — | HAD |
-| save_data.gd | UP_COST_MUL | новая константа 0.6 | 1B | TODO |
-| save_data.gd | UPGRADES ban | Veto: max 6 у нас есть; grow 1.7 (у нас 1.6) | 1B | TODO |
+| save_data.gd | UP_COST_MUL | новая константа 0.6 | 1B | DONE |
+| save_data.gd | UPGRADES ban | Veto: max 6 у нас есть; grow 1.7 (у нас 1.6) | 1B | DONE |
 | save_data.gd | default settings.perf | ключ perf в настройках по умолчанию | 2A | TODO |
-| save_data.gd | up_cost | множитель UP_COST_MUL в стоимости | 1B | TODO |
-| save_data.gd | PURPLE_LEGEND_P | 0.3→0.12 (у нас 0.2) | 1B | TODO |
+| save_data.gd | up_cost | множитель UP_COST_MUL в стоимости | 1B | DONE |
+| save_data.gd | PURPLE_LEGEND_P | 0.3→0.12 (у нас 0.2) | 1B | DONE |
 | save_data.gd | finish_run | учёт gcoins/gold_coins и gcoins в last_run | 5D | TODO |
 
 ## touch_scroll.gd
@@ -268,8 +268,8 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| types_data.gd | ITEMS (choiceband, shellbell, lifeorb, rockyhelmet) | новые описания и механика | 1B | TODO |
-| types_data.gd | ITEMS (safetygoggles, pureincense) | новые описания и механика | 1B | TODO |
+| types_data.gd | ITEMS (choiceband, shellbell, lifeorb, rockyhelmet) | новые описания и механика | 1B | DONE (описания; механика в main.gd — 1A) |
+| types_data.gd | ITEMS (safetygoggles, pureincense) | новые описания и механика | 1B | DONE (описания; механика в main.gd — 1A) |
 
 ## updater.gd
 
@@ -281,4 +281,4 @@
 
 | файл | функция/константа | суть | этап | статус |
 |---|---|---|---|---|
-| zmove.gd | MIN_LEVEL, MIN_TIME | MIN_LEVEL 15→1, MIN_TIME=180.0 | 1B | TODO |
+| zmove.gd | MIN_LEVEL, MIN_TIME | MIN_LEVEL 15→1, MIN_TIME=180.0 | 1B | DONE |
