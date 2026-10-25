@@ -6,10 +6,13 @@ extends Node2D
 const V0 := Vector2(0.0, -9.0)
 const Aud = preload("res://scripts/audio.gd")
 const L = preload("res://scripts/lang.gd")
+const SV = preload("res://scripts/save_data.gd")
 var main = null
 var acts: Array = []
 var T := 0.0
 var tint: Dictionary = {}
+var lite := 0
+const FRONT := 64.0
 
 
 
@@ -78,6 +81,7 @@ func _ready() -> void :
 
 
 func tick(m: Dictionary, delta: float) -> void :
+	lite = SV.perf()
 	m["sig_t"] = float(m.get("sig_t", 1.0)) - delta
 	if float(m["sig_t"]) > 0.0:
 		return
@@ -92,6 +96,9 @@ func tick(m: Dictionary, delta: float) -> void :
 
 
 func cast(m: Dictionary, spec: Dictionary) -> void :
+	lite = SV.perf()
+	if acts.size() > (40 if lite == 0 else (24 if lite == 1 else 14)):
+		return
 	var parts: Array = m["parts"]
 	var d0: float = float(parts[0].get("dmg", 10.0))
 	var d1: float = float(parts[1].get("dmg", 10.0))
@@ -155,6 +162,10 @@ func step(delta: float) -> void :
 
 func _pp() -> Vector2:
 	return main.player.position
+
+
+func _org() -> Vector2:
+	return main.player.position + _aim_dir() * FRONT
 
 
 func _foes(reach: float) -> Array:
@@ -226,13 +237,13 @@ func _pick_targets(a: Dictionary, n: int, mode: String, reach: float = 480.0) ->
 
 
 func _px(pos: Vector2, col: Color, vel: Vector2, life: float, size: float = 1.0, grav: float = 0.0) -> void :
-	if randf() < 0.45:
+	if randf() < (0.45 if lite == 0 else (0.75 if lite == 1 else 0.95)):
 		return
 	main.pfx.px(pos + V0, col, vel, life, size, grav, 0.92)
 
 
 func _burst(pos: Vector2, col: Color, n: int = 10, power: float = 140.0) -> void :
-	main.pfx.burst(pos + V0, col, maxi(2, int(n * 0.5)), power)
+	main.pfx.burst(pos + V0, col, maxi(2, int(float(n) * (0.5 if lite == 0 else (0.25 if lite == 1 else 0.1)))), power)
 
 
 func _ringfx(pos: Vector2, r1: float, col: Color, life: float = 0.4, w: float = 4.0) -> void :
@@ -341,7 +352,7 @@ func _start(a: Dictionary) -> void :
 			for i in n5:
 				var off: float = 0.0 if n5 == 1 else (float(i) / float(n5 - 1) - 0.5) * spr
 				var dvv: Vector2 = base.rotated(off)
-				wl.append({"pos": pp + dvv * 24.0, "dir": dvv, "hit": {}, "dist": 0.0, "tr": 0.0})
+				wl.append({"pos": _org() + dvv * 8.0, "dir": dvv, "hit": {}, "dist": 0.0, "tr": 0.0})
 			a["waves"] = wl
 		"seekers":
 			var n6: int = int(p["n"])
@@ -354,7 +365,7 @@ func _start(a: Dictionary) -> void :
 				if not fs.is_empty():
 					tgt = fs[i % fs.size()]
 				var ang: float = base2 + TAU * float(i) / float(n6)
-				sk.append({"pos": pp, "vel": Vector2.from_angle(ang) * 160.0, "tgt": tgt, "life": 0.0, "at": 0.08 * float(i), "done": false, "trail": []})
+				sk.append({"pos": _org(), "vel": Vector2.from_angle(ang) * 160.0, "tgt": tgt, "life": 0.0, "at": 0.08 * float(i), "done": false, "trail": []})
 			a["sk"] = sk
 			a["combo"] = 0
 		"nova":
@@ -519,7 +530,7 @@ func _u_beam(a: Dictionary, dt: float) -> bool:
 	if t < wind:
 		a["ang0"] = lerp_angle(float(a["ang0"]), _aim_dir().angle(), minf(1.0, dt * 6.0))
 		if randf() < 0.7:
-			_px(_pp() + Vector2.from_angle(randf() * TAU) * 60.0, a["ctx"]["col2"], Vector2.ZERO, 0.4, 2.0)
+			_px(_org() + Vector2.from_angle(randf() * TAU) * 60.0, a["ctx"]["col2"], Vector2.ZERO, 0.4, 2.0)
 		return false
 	var bt: float = t - wind
 	a["tk"] = float(a["tk"]) - dt
@@ -528,7 +539,7 @@ func _u_beam(a: Dictionary, dt: float) -> bool:
 		var cnt: int = int(p.get("count", 1))
 		for bi in cnt:
 			var ang: float = _beam_ang(a, bi, bt)
-			var o: Vector2 = _pp()
+			var o: Vector2 = _org()
 			var dv: Vector2 = Vector2.from_angle(ang)
 			var len: float = float(p["len"])
 			var hw: float = float(p["w"]) * 0.5
@@ -544,7 +555,7 @@ func _u_beam(a: Dictionary, dt: float) -> bool:
 	if randf() < 0.8:
 		var ang2: float = _beam_ang(a, 0, bt)
 		var dd: float = randf() * float(p["len"])
-		_px(_pp() + Vector2.from_angle(ang2) * dd, a["ctx"]["col2"], Vector2.from_angle(ang2 + randf_range(-1.5, 1.5)) * 70.0, 0.4, 2.0)
+		_px(_org() + Vector2.from_angle(ang2) * dd, a["ctx"]["col2"], Vector2.from_angle(ang2 + randf_range(-1.5, 1.5)) * 70.0, 0.4, 2.0)
 	main.shake = maxf(main.shake, 2.0)
 	return bt >= dur
 
@@ -1155,7 +1166,7 @@ func _d_vortex(a: Dictionary) -> void :
 func _d_beam(a: Dictionary) -> void :
 	var p: Dictionary = a["p"]
 	var ctx: Dictionary = a["ctx"]
-	var o: Vector2 = _gp(_pp())
+	var o: Vector2 = _gp(_org())
 	var wind: float = float(p.get("wind", 0.0))
 	var t: float = float(a["t"])
 	var w: float = float(p["w"])
@@ -1175,12 +1186,14 @@ func _d_beam(a: Dictionary) -> void :
 		var dv2: Vector2 = Vector2.from_angle(ang)
 		var tip: Vector2 = o + dv2 * float(p["len"])
 		var fl: float = 1.0 + 0.1 * sin(T * 40.0 + float(bi))
-		draw_line(o, tip, _a(ctx["col"], 0.32 * fade), w * 1.25 * fl)
-		draw_line(o, tip, _a(ctx["col"], 0.7 * fade), w * 0.85 * fl)
+		if lite == 0:
+			draw_line(o, tip, _a(ctx["col"], 0.32 * fade), w * 1.25 * fl)
+			draw_line(o, tip, _a(ctx["col"], 0.7 * fade), w * 0.85 * fl)
 		draw_line(o, tip, _a(ctx["col2"], 0.95 * fade), w * 0.5 * fl)
 		draw_line(o, tip, _a(Color.WHITE, 0.95 * fade), w * 0.2 * fl)
-		draw_circle(o + dv2 * 10.0, w * 0.5 * fade, _a(ctx["col2"], 0.9 * fade))
-		draw_circle(tip, w * 0.35 * fade, _a(ctx["col"], 0.6 * fade))
+		if lite == 0:
+			draw_circle(o + dv2 * 10.0, w * 0.5 * fade, _a(ctx["col2"], 0.9 * fade))
+			draw_circle(tip, w * 0.35 * fade, _a(ctx["col"], 0.6 * fade))
 
 
 func _d_bolts(a: Dictionary) -> void :
@@ -1508,6 +1521,8 @@ func _d_sanct(a: Dictionary) -> void :
 
 
 func _draw_tint() -> void :
+	if lite >= 2:
+		return
 	var k: String = String(tint["kind"])
 	var f: float = clampf(float(tint["t"]) / float(tint["dur"]), 0.0, 1.0)
 	var al: float = sin(f * PI)
