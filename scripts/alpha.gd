@@ -5,6 +5,9 @@ extends RefCounted
 
 
 const MAX_PER_RUN := 2
+const MAX_ALLIES := 2          # союзников за забег (Альфа + боссы/гиганты вместе)
+const BIG_RATE_BOSS := 0.6     # шанс поимки обычного босса
+const BIG_RATE_MINI := 0.75    # шанс поимки гиганта
 const FIRST_AT := 360.0
 const GAP_MIN := 480.0
 const GAP_MAX := 720.0
@@ -22,6 +25,7 @@ var poi = null
 var cur = null
 var next_id := 1
 var spawned := 0
+var allies_made := 0
 var t_next := FIRST_AT
 var throw_cd := 0.0
 var done := {}
@@ -80,7 +84,7 @@ class Down extends Node2D:
 
 
 func _legend_free() -> bool:
-	return not is_instance_valid(m.legend)
+	return allies_made < MAX_ALLIES
 
 
 func _spawn_ok() -> bool:
@@ -133,6 +137,24 @@ func spawn() -> bool:
 func on_down(e) -> void :
 	if cur == null or cur["state"] != "hostile" or cur["enemy"] != e:
 		return
+	_begin_down(e)
+
+
+# Ослабленный обычный босс (enc open_boss) или гигант (enc mini): то же окно броска, свой шанс.
+func on_big_down(e, kind: String) -> void :
+	if cur != null or allies_made >= MAX_ALLIES or m.balls <= 0 or not ["normal", "type", "daily", "coop"].has(m.mode):
+		return
+	var dx: int = int(e.dex)
+	if not m._smeta.has(str(dx)):
+		return
+	cur = {"id": next_id, "state": "hostile", "enemy": e, "dex": dx, "name": String(e.enemy_name), "ttl": WINDOW, "pos": e.position, "types": (e.types as Array).duplicate(),
+		"big": true, "rate": BIG_RATE_BOSS if kind == "open_boss" else BIG_RATE_MINI}
+	next_id += 1
+	_begin_down(e)
+	m._say(m.L.t("¡%s debilitado! Lanza una Poké Ball (8 s).") % String(cur["name"]), 3.0)
+
+
+func _begin_down(e) -> void :
 	cur["state"] = "down"
 	cur["ttl"] = WINDOW
 	cur["pos"] = e.position
@@ -142,13 +164,16 @@ func on_down(e) -> void :
 	m.world.add_child(node)
 	var a = m.Actor.new()
 	a.setup(int(cur["dex"]), m._sm(int(cur["dex"])), m.flash_shader, 1.35)
+	if is_instance_valid(e) and int(e.dex) == int(cur["dex"]) and not e.shiny:
+		a.textures = e.textures.duplicate()   # кадры уже загружены у врага: без повторной загрузки
 	a.modulate = Color(1, 0.8, 0.8)
 	node.add_child(a)
 	if a.has_anim("Faint"):
 		a.play("Faint", 1.0, true)
 	node.actor = a
 	cur["node"] = node
-	m._say(m.L.t("¡Alfa derrotado! Lanza una Poké Ball (8 s)."), 3.0)
+	if not cur.has("big"):
+		m._say(m.L.t("¡Alfa derrotado! Lanza una Poké Ball (8 s)."), 3.0)
 	m.pfx.burst(e.position + Vector2(0, -20), Color("#ffd23f"), 22, 160.0)
 	log.append(["down", cur["dex"]])
 
@@ -183,7 +208,7 @@ func throw() -> void :
 
 	cur["state"] = "throw"
 	m.balls -= 1
-	var ok: bool = randf() < RATE
+	var ok: bool = randf() < float(cur.get("rate", RATE))
 	cur["roll"] = ok
 	var fx2 := BallFx.new()
 	fx2.from = pp
@@ -246,8 +271,10 @@ func _vanish() -> void :
 
 
 func _finish(_ok: bool) -> void :
+	var was_big: bool = cur != null and cur.has("big")
 	cur = null
-	t_next = randf_range(GAP_MIN, GAP_MAX)
+	if not was_big:   # поимка босса/гиганта не сдвигает таймер Альфы
+		t_next = randf_range(GAP_MIN, GAP_MAX)
 
 
 func _resolve() -> void :
@@ -289,6 +316,7 @@ func _make_ally(c: Dictionary) -> void :
 	lg.position = c["pos"]
 	lg.z_index = 1
 	m.world.add_child(lg)
+	allies_made += 1
 	m.legend = lg
 	m._ring(lg.position, 8.0, 130.0, lg.col, 0.7, 5.0)
 	m.pfx.burst(lg.position + Vector2(0, -30), lg.col, 36, 240.0)

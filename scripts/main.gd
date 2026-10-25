@@ -6638,6 +6638,8 @@ func _drop(e) -> void :
 		call_deferred("_eternatus_win")
 	if e.has_meta("enc") and String(e.get_meta("enc")) == "alpha":
 		alpha.on_down(e)
+	elif e.has_meta("enc") and (String(e.get_meta("enc")) == "open_boss" or String(e.get_meta("enc")) == "mini"):
+		alpha.on_big_down(e, String(e.get_meta("enc")))   # обычный босс или гигант: окно поимки
 	if e.has_meta("enc") and String(e.get_meta("enc")) == "wildleg" and not e.has_meta("wl_paid"):
 		e.set_meta("wl_paid", true)
 		for k in range(2):
