@@ -987,6 +987,7 @@ func _ready() -> void:
 	DSP.apply(get_tree())
 	PAD.apply()
 	if not is_overlay:
+		DSP.apply_window()
 		Aud.setup(self)
 		Aud.music("village")
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1920,6 +1921,8 @@ func _release_screen(name: String) -> void:
 	if not screens.has(name):
 		return
 	match name:
+		"modes":
+			_mode_prev_free()
 		"lexicon":
 			_fq_cancel(lex_box, true)
 			lex_pages.clear()
@@ -2042,6 +2045,7 @@ func _flush_save() -> void:
 
 
 func _exit_tree() -> void:
+	_mode_prev_free()
 	_flush_save()
 	for e in fq:
 		if e[2] != null and is_instance_valid(e[2]):
@@ -2876,8 +2880,9 @@ func _modes_cols() -> int:
 
 
 # Tarjeta de modo (sin colgarla): icono + titulo + descripcion; mas compacta en pantallas estrechas.
-func _mode_card(title: String, desc: String, cb: Callable, icon: String = "") -> Button:
+func _mode_card(title: String, desc: String, cb: Callable, icon: String = "", vid: String = "") -> Button:
 	var b := Button.new()
+	b.set_meta("vid", vid)
 	var isz: int = 48 if compact else 64
 	if icon != "":
 		b.icon = IC.btn_tex(icon, isz)
@@ -2912,6 +2917,98 @@ func _mode_aux(text: String, cb: Callable) -> Button:
 	return b
 
 
+# --- Vista previa en video de las tarjetas de modo ---
+# Un solo VideoStreamPlayer para toda la pantalla: el flujo se carga solo para la tarjeta con el foco y se libera
+# al perderlo o al salir de la pantalla. Con perf >= 1 no hay video: un fotograma fijo (assets/previews/<id>.png)
+# si existe; si no, la tarjeta se queda sin vista previa.
+const PREV_VID := Vector2(640.0, 360.0)
+var mode_vp: VideoStreamPlayer = null
+var mode_vp_slot: Control = null
+
+
+func _daily_vid(ds: int) -> String:
+	var dmv: String = SV.natural_start_of(SV.daily_dex(ds))
+	if not ResourceLoader.exists("res://assets/previews/daily_%s.ogv" % dmv):
+		dmv = String(MD.START.get(String(SV.dex_by[SV.daily_dex(ds)]["types"][0]), "tackle"))
+	return "daily_" + dmv
+
+
+func _mode_prev_free() -> void:
+	if mode_vp != null and is_instance_valid(mode_vp):
+		mode_vp.stop()
+		mode_vp.stream = null
+		if mode_vp.get_parent() != null:
+			mode_vp.get_parent().remove_child(mode_vp)
+		mode_vp.queue_free()
+	mode_vp = null
+	if mode_vp_slot != null and is_instance_valid(mode_vp_slot):
+		for c in mode_vp_slot.get_children():
+			c.queue_free()
+		mode_vp_slot.visible = false
+	mode_vp_slot = null
+
+
+func _mode_prev_wire(cell: VBoxContainer, card: Button) -> void:
+	var vid: String = String(card.get_meta("vid", ""))
+	if vid == "":
+		return
+	var slot := Control.new()
+	slot.visible = false
+	slot.clip_contents = true
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slot.custom_minimum_size = Vector2(0, 150 if compact else 190)
+	cell.add_child(slot)
+	card.focus_entered.connect(func(): _mode_prev_show(slot, vid))
+	card.focus_exited.connect(func():
+		if mode_vp_slot == slot:
+			_mode_prev_free())
+
+
+func _mode_prev_show(slot: Control, vid: String) -> void:
+	_mode_prev_free()
+	var vpath := "res://assets/previews/%s.ogv" % vid
+	if SV.perf() >= 1:
+		var fpath := "res://assets/previews/%s.png" % vid
+		if not ResourceLoader.exists(fpath):
+			return
+		var tr := TextureRect.new()
+		tr.texture = load(fpath)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+		slot.add_child(tr)
+		slot.visible = true
+		mode_vp_slot = slot
+		return
+	if not ResourceLoader.exists(vpath):
+		return
+	var vp := VideoStreamPlayer.new()
+	vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vp.stream = load(vpath)
+	vp.expand = true
+	vp.loop = true
+	slot.add_child(vp)
+	slot.visible = true
+	mode_vp = vp
+	mode_vp_slot = slot
+	_mode_prev_fit()
+	if not slot.resized.is_connected(_mode_prev_fit):
+		slot.resized.connect(_mode_prev_fit)
+	vp.play()
+
+
+# Video a cubrir todo el hueco (recorta lo que sobra).
+func _mode_prev_fit() -> void:
+	if mode_vp == null or not is_instance_valid(mode_vp) or mode_vp_slot == null or not is_instance_valid(mode_vp_slot):
+		return
+	var sz: Vector2 = mode_vp_slot.size
+	var k: float = maxf(sz.x / PREV_VID.x, sz.y / PREV_VID.y)
+	mode_vp.size = PREV_VID * k
+	mode_vp.position = (sz - mode_vp.size) * 0.5
+
+
 # Un modo = tarjeta + (opcional) su boton auxiliar; las celdas se reparten en la cuadricula de modes_grid.
 func _mode_cell(grid: GridContainer, card: Button, aux: Button = null) -> void:
 	var cell := VBoxContainer.new()
@@ -2919,6 +3016,7 @@ func _mode_cell(grid: GridContainer, card: Button, aux: Button = null) -> void:
 	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	cell.add_child(card)
+	_mode_prev_wire(cell, card)
 	if aux != null:
 		cell.add_child(aux)
 	grid.add_child(cell)
@@ -2942,6 +3040,7 @@ var modes_cols_now := 0
 
 
 func _refresh_modes() -> void:
+	_mode_prev_free()
 	_fq_cancel(modes_box)
 	for c in modes_box.get_children():
 		_retire(c, modes_box)
@@ -2951,7 +3050,7 @@ func _refresh_modes() -> void:
 	var mg: GridContainer = _modes_grid(mcols)
 	SV.run_mods = Array(SV.d.get("mods", []))
 	# La primera tarjeta ya (recibe el foco); las demas, una por paso.
-	var first: Button = _mode_card(L.t("Partida normal"), L.t("La experiencia de siempre, igual que el juego original."), func(): _start_mode("normal"), "flag")
+	var first: Button = _mode_card(L.t("Partida normal"), L.t("La experiencia de siempre, igual que el juego original."), func(): _start_mode("normal"), "flag", "normal")
 	_mode_cell(mg, first)
 	_later(modes_box, func():
 		var ds: int = SV.daily_seed()
@@ -2960,17 +3059,17 @@ func _refresh_modes() -> void:
 		var dm: String = SV.daily_mod(ds)
 		var dtxt: String = L.t("Hoy: %s con la regla «%s» (misma para todos). +25%% de monedas.") % [_name_of(SV.daily_dex(ds)), L.t(String(MOD_INFO[dm][0]))]
 		dtxt += "  " + (L.t("Tu mejor tiempo de hoy: %s") % ("%d:%02d" % [best / 60, best % 60]) if best > 0 else L.t("Aún no lo has jugado hoy."))
-		_mode_cell(mg, _mode_card(L.t("Desafío diario"), dtxt, func(): _start_mode("daily"), "m_daily")))
+		_mode_cell(mg, _mode_card(L.t("Desafío diario"), dtxt, func(): _start_mode("daily"), "m_daily", _daily_vid(ds))))
 	_later(modes_box, func():
 		var rb: int = int(SV.d.get("rush_best", 0))
-		_mode_cell(mg, _mode_card(L.t("Rush de Jefes"), L.t("Solo jefes y legendarios, uno tras otro, cada vez más fuertes. Récord: %d jefes.") % rb, func(): _start_mode("rush"), "m_rush")))
+		_mode_cell(mg, _mode_card(L.t("Rush de Jefes"), L.t("Solo jefes y legendarios, uno tras otro, cada vez más fuertes. Récord: %d jefes.") % rb, func(): _start_mode("rush"), "m_rush", "rush")))
 	_later(modes_box, func():
 		var pd: int = SV.party_dex
 		var pb: Button = _mode_aux(L.t("Elegir Pokémon de la fiesta"), func():
 			dex_pick_party = true
 			toast(L.t("Toca un Pokémon para la fiesta"))
 			_show("dex"))
-		_mode_cell(mg, _mode_card(L.t("Modo Fiesta"), L.t("Cualquier Pokémon, no puedes morir y no se guarda progreso. Pokémon: %s") % _name_of(pd), func(): _start_mode("party"), "m_party"), pb))
+		_mode_cell(mg, _mode_card(L.t("Modo Fiesta"), L.t("Cualquier Pokémon, no puedes morir y no se guarda progreso. Pokémon: %s") % _name_of(pd), func(): _start_mode("party"), "m_party", "party"), pb))
 	_later(modes_box, func():
 		var cdx: int = int(SV.d.get("coop_dex", 0))
 		if cdx <= 0 or not SV.dex_by.has(cdx):
@@ -2983,7 +3082,7 @@ func _refresh_modes() -> void:
 			dex_pick_coop = true
 			toast(L.t("Toca el Pokémon que será tu compañero"))
 			_show("dex"))
-		_mode_cell(mg, _mode_card(L.t("Modo Cooperativo"), L.t("Un segundo Pokémon te acompaña y ataca solo. Si conectas un segundo mando, el jugador 2 lo mueve con su stick izquierdo. Comparte tus mejoras. -20%% de monedas. Compañero: %s") % _name_of(cdx), func(): _start_mode("coop"), "m_coop"), cb2))
+		_mode_cell(mg, _mode_card(L.t("Modo Cooperativo"), L.t("Un segundo Pokémon te acompaña y ataca solo. Si conectas un segundo mando, el jugador 2 lo mueve con su stick izquierdo. Comparte tus mejoras. -20%% de monedas. Compañero: %s") % _name_of(cdx), func(): _start_mode("coop"), "m_coop", "coop"), cb2))
 	_later(modes_box, func():
 		var tw: Dictionary = SV.d.get("tower", {})
 		var tbest: int = int(tw.get("best", 0))
@@ -3004,10 +3103,10 @@ func _refresh_modes() -> void:
 				SV.d["tower_start"] = int(tstarts[(i + 1) % tstarts.size()])
 				SV.save()
 				_refresh_modes())
-		_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("60 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 12."), [tbest, rel]), func(): _start_mode("tower"), "m_tower"), tsb))
+		_mode_cell(mg, _mode_card(L.t("Torre de pisos"), _fmt_d(L.t("60 pisos, cada uno con un jefe fijo. Cada piso da un premio la primera vez y cada 5 pisos ganas una reliquia permanente (+6 de vida y +2% de ataque dentro de la Torre). Entre pisos eliges descanso y pactos de riesgo. Mejor piso: %d · Reliquias: %d / 12."), [tbest, rel]), func(): _start_mode("tower"), "m_tower", "tower"), tsb))
 	_later(modes_box, func():
 		var rbest: int = int(SV.d.get("rifts_best", 0))
-		_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock")))
+		_mode_cell(mg, _mode_card(L.t("Contrarreloj de grietas"), L.t("8 minutos: las grietas se abren sin parar. Gana todas las peleas que puedas. +25%% de monedas. Récord: %d grietas.") % rbest, func(): _start_mode("rifts"), "m_clock", "rifts")))
 	_later(modes_box, func():
 		CH.st()
 		for ce in [["p", "Retos permanentes", ["100 retos de 10 minutos como máximo.", "Cada uno da su premio una sola vez.", "Los más difíciles dan Gachapon Coin Dorada."], "gcoin"], ["d", "Retos diarios", ["3 retos nuevos cada día.", "Cada uno da 1 Gachapon Coin la primera vez."], "gcoin"], ["w", "Retos semanales", ["5 retos nuevos cada semana.", "Uno es de nivel Experto y da Gachapon Coin Dorada."], "gcoin_gold"]]:
@@ -3035,9 +3134,9 @@ func _refresh_modes() -> void:
 				SV.d["team"] = []
 				toast(L.t("Toca hasta 3 Pokémon tuyos para el equipo"))
 				_show("dex"))
-			_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Lleva hasta 3 Pokémon y cámbialos en plena partida (botón táctil de la derecha, tocando su ficha, R3 o Tab). Si uno cae, entra el siguiente; los de banca se recuperan. Equipo: %s") % ", ".join(names), func(): _start_mode("team"), "m_team"), eb)
+			_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Lleva hasta 3 Pokémon y cámbialos en plena partida (botón táctil de la derecha, tocando su ficha, R3 o Tab). Si uno cae, entra el siguiente; los de banca se recuperan. Equipo: %s") % ", ".join(names), func(): _start_mode("team"), "m_team", "team"), eb)
 		else:
-			_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Necesitas al menos 2 Pokémon para formar un equipo."), func(): toast(L.t("Consigue otro Pokémon primero")), "m_team")))
+			_mode_cell(mg, _mode_card(L.t("Modo Equipo"), L.t("Necesitas al menos 2 Pokémon para formar un equipo."), func(): toast(L.t("Consigue otro Pokémon primero")), "m_team", "team")))
 	var mm: Array = [null]
 	_later(modes_box, func():
 		modes_box.add_child(_label(L.t("Modificadores (todos los modos menos Diario y Fiesta): +25% de monedas por cada uno activo"), 22, C_GOLD))
@@ -6925,6 +7024,17 @@ func _set_graphics() -> void:
 	_sx(func():
 		_sec("Pantalla")
 		_view_row())
+	if DSP.is_desktop():
+		_sx(func(): _srow("Modo de ventana", "Ventana o pantalla completa (solo en PC).", _seg(["Ventana", "Pantalla completa"], DSP.win_mode(), func(i: int):
+			DSP.set_window(i, DSP.win_res())
+			_refresh_settings())))
+		_sx(func():
+			var res_names: Array = []
+			for rv in DSP.WIN_RES:
+				res_names.append("%d×%d" % [rv.x, rv.y])
+			_srow("Resolución de la ventana", "Tamaño de la ventana en PC. Si no cabe en tu pantalla se ajusta solo. No se usa en pantalla completa.", _seg(res_names, DSP.win_res(), func(i: int):
+				DSP.set_window(DSP.win_mode(), i)
+				_refresh_settings(), false)))
 	_sx(func(): _srow("Límite de FPS", "Máximo de cuadros por segundo. En la consola 30 suele ir más fluido; más sube la velocidad, pero puede dar tirones.", _fps_btn()))
 	_sx(func(): _srow("Números de daño", "Los números que salen al golpear o ser golpeado.", _toggle_set("dmg_numbers")))
 	_sx(func(): _srow("Menos sacudidas y destellos", "La cámara tiembla menos y los destellos son más suaves.", _toggle_set("shake", true)))

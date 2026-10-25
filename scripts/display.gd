@@ -104,4 +104,47 @@ static func cols(avail_w: float, min_w: float, gap: float, max_cols: int = 4) ->
 			return c
 	return 1
 
+# Modo de ventana y resolucion (solo PC; en la consola PortMaster / handheld la pantalla es siempre completa).
+const WIN_RES := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+
+
+static func is_desktop() -> bool:
+	if OS.has_feature("handheld") or "--keys-only" in OS.get_cmdline_user_args():
+		return false
+	return OS.has_feature("pc") and not OS.has_feature("android")
+
+
+static func win_mode() -> int:
+	SV.ensure()
+	return clampi(int(SV.d["settings"].get("win_mode", 0)), 0, 1)
+
+
+static func win_res() -> int:
+	SV.ensure()
+	return clampi(int(SV.d["settings"].get("win_res", 0)), 0, WIN_RES.size() - 1)
+
+
+static func apply_window() -> void:
+	if not is_desktop():
+		return
+	if win_mode() == 1:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	var want: Vector2i = WIN_RES[win_res()]
+	var scr: Rect2i = DisplayServer.screen_get_usable_rect()
+	# si no cabe en la pantalla se ajusta, y se centra
+	var sz := Vector2i(mini(want.x, scr.size.x), mini(want.y, scr.size.y))
+	DisplayServer.window_set_size(sz)
+	DisplayServer.window_set_position(scr.position + (scr.size - sz) / 2)
+
+
+static func set_window(mode: int, res: int) -> void:
+	SV.ensure()
+	SV.d["settings"]["win_mode"] = clampi(mode, 0, 1)
+	SV.d["settings"]["win_res"] = clampi(res, 0, WIN_RES.size() - 1)
+	SV.save()
+	apply_window()
+
+
 static var menu_mode := false
