@@ -6920,6 +6920,8 @@ func _set_graphics() -> void:
 		_srow("Efectos y partículas", "Cuántos efectos se dibujan. Auto los baja solo si el juego va a tirones.", _seg(["Auto", "Alta", "Media", "Baja"], int(SV.d["settings"]["quality"]), func(i: int):
 			SV.d["settings"]["quality"] = i
 			SV.save())))
+	_sx(func(): _srow("Rendimiento", "Si el juego va a tirones (sobre todo con movimientos fusión): Ahorro y Mínimo quitan efectos, estelas y números de daño sueltos y simplifican los disparos. No cambia el daño ni la dificultad.", _seg(["Normal", "Ahorro", "Mínimo"], SV.perf(), func(i: int):
+		SV.set_perf(i))))
 	_sx(func():
 		_sec("Pantalla")
 		_view_row())
