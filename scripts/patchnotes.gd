@@ -9,6 +9,21 @@ const UPD = preload("res://scripts/updater.gd")
 
 const ENTRIES := [
 	{
+		"ver": "3.4.1",
+		"date": "2026-10-27",
+		"title": "Poke Survivors para PortMaster 3.4.1: correcciones de la 3.4.0",
+		"new": [],
+		"changes": [
+			"Barras de desplazamiento más gruesas en el Resumen de la pausa; el Léxico explica que el aliado Alfa lucha junto al del altar.",
+		],
+		"fixes": [
+			"Con Rendimiento Ahorro o Mínimo ya no se quedan disparos congelados en pantalla.",
+			"Si un Alfa ronda por la zona, ya puedes capturar al jefe o gigante que derrotes; el Alfa vuelve después.",
+			"Con 2 aliados el Alfa ya no aparece ni pide lanzar una Poké Ball que no se puede usar.",
+			"En la pausa, el stick vuelve a moverse a izquierda y derecha tras empezar desde la lista de modos.",
+		],
+	},
+	{
 		"ver": "3.4.0",
 		"date": "2026-10-25",
 		"title": "Poke Survivors para PortMaster 3.4.0: contenido de la V5.2–V5.6",
