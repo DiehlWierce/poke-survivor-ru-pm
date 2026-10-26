@@ -108,19 +108,10 @@ static func perf() -> int:
 	return clampi(int(d["settings"].get("perf", _perf_default())), 0, 2)
 
 
-# Aviso de cambio de Rendimiento: SV es estatico y no tiene senales propias, asi que van en un objeto aparte
-# (SV.bus.perf_changed.connect(...)). Lo emite set_perf().
-class Bus extends RefCounted:
-	signal perf_changed(level: int)
-
-static var bus := Bus.new()
-
-
 static func set_perf(level: int) -> void:
 	level = clampi(level, 0, 2)
 	d["settings"]["perf"] = level
 	save()
-	bus.perf_changed.emit(level)
 
 
 # 3.4.0: la calidad fija Media/Baja pasa a Rendimiento Ahorro/Minimo; la calidad vuelve a Auto (adaptativa)

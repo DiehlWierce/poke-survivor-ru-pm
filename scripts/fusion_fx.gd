@@ -6,12 +6,11 @@ extends Node2D
 const V0 := Vector2(0.0, -9.0)
 const Aud = preload("res://scripts/audio.gd")
 const L = preload("res://scripts/lang.gd")
-const SV = preload("res://scripts/save_data.gd")
 var main = null
 var acts: Array = []
 var T := 0.0
 var tint: Dictionary = {}
-var lite := 0
+var lite := 0   # Rendimiento: lo pone main.apply_perf
 const FRONT := 64.0
 
 
@@ -81,7 +80,6 @@ func _ready() -> void :
 
 
 func tick(m: Dictionary, delta: float) -> void :
-	lite = SV.perf()
 	m["sig_t"] = float(m.get("sig_t", 1.0)) - delta
 	if float(m["sig_t"]) > 0.0:
 		return
@@ -96,7 +94,6 @@ func tick(m: Dictionary, delta: float) -> void :
 
 
 func cast(m: Dictionary, spec: Dictionary) -> void :
-	lite = SV.perf()
 	if acts.size() > (40 if lite == 0 else (24 if lite == 1 else 14)):
 		return
 	var parts: Array = m["parts"]

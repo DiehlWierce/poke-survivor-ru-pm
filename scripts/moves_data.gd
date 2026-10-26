@@ -149,7 +149,7 @@ const LADDERS := {
 }
 
 # Empuje que se gana al mejorar el movimiento (nivel 1: sin empuje; sube un 50 % del base por cada nivel desde el 2)
-# отдача 1-го уровня (в v56 _f берёт её отсюда); пока main.gd читает "knock" из словаря приёма
+# отдача 1-го уровня: main._f берёт её отсюда (в словаре приёма "knock" для этих приёмов нет)
 const KNOCK_BASE := {"flamethrower": 45}
 const KNOCK_LV := {"heat-wave": 200, "bubble": 150, "psychic": 150, "mud-shot": 180, "hyper-voice": 260, "fairy-wind": 150, "dark-pulse": 170, "bulldoze": 200, "bug-buzz": 140, "hydro-pump": 180, "flamethrower": 120, "bubble-beam": 100, "water-gun": 60, "shadow-ball": 70, "aura-sphere": 90, "meteor-mash": 90, "hail": 60, "razor-leaf": 60, "fire-spin": 70, "leaf-storm": 70}
 

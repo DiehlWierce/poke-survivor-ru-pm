@@ -21,6 +21,7 @@ signal perf_changed(level: int)
 
 const GOLD := Color("#ffd23f")
 const TAB_H := 70.0
+const BAR_W := 30.0   # barras del Resumen gruesas: se agarran con el dedo (como en menu.gd)
 var th := Theme.new()
 var cont_btn: Button
 var mute_btn: Button
@@ -584,6 +585,7 @@ func _build_summary(root: Control) -> void :
 	lsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	lv.add_child(lsc)
 	stat_sc = lsc
+	lsc.get_v_scroll_bar().custom_minimum_size.x = BAR_W
 	stat_grid = GridContainer.new()
 	stat_grid.columns = 3
 	stat_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -606,6 +608,7 @@ func _build_summary(root: Control) -> void :
 	sum_sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sum_sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	rv.add_child(sum_sc)
+	sum_sc.get_v_scroll_bar().custom_minimum_size.x = BAR_W
 	moves_box = VBoxContainer.new()
 	moves_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	moves_box.add_theme_constant_override("separation", 8)

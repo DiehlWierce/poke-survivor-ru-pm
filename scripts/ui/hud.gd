@@ -1020,11 +1020,19 @@ func act_rect() -> Rect2:
 	return Rect2(ax, ay, 100.0, 100.0)
 
 # Tamano de letra (<= mx) con el que txt cabe en w, contando la escala de texto del usuario.
+# Se guarda el ultimo resultado: el texto del boton de accion casi no cambia y se dibuja en cada fotograma.
+var _fit_key := ""
+var _fit_val := 0
 func _fit_size(font: Font, txt: String, w: float, mx: int) -> int:
-	var sz: int = mx
 	var k: float = TXS.k()
+	var key: String = "%s|%.3f|%d|%d" % [txt, k, int(w), mx]
+	if key == _fit_key:
+		return _fit_val
+	var sz: int = mx
 	while sz > 11 and font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, roundi(float(sz) * k)).x > w:
 		sz -= 1
+	_fit_key = key
+	_fit_val = sz
 	return sz
 
 func draw_poi(font: Font, vp: Vector2) -> void :

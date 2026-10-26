@@ -1329,7 +1329,7 @@ func apply_perf() -> void:
 	quality = int(SV.setting("quality"))
 	var qd: float = [1.0, 1.0, 0.65, 0.35][clampi(quality, 0, 3)] * [1.0, 0.6, 0.3][perf_lv]
 	pfx.setup(qd)
-	if ffx != null and "lite" in ffx:
+	if ffx != null:
 		ffx.lite = perf_lv
 
 
@@ -1337,8 +1337,7 @@ func _fx_cap() -> int:
 	var k := 0.4 if _hh() else 1.0
 	var cap: int
 	if perf_lv > 0:
-		cap = 60 if perf_lv == 1 else 24
-		return mini(cap, 96) if _hh() else cap
+		return 60 if perf_lv == 1 else 24
 	match quality:
 		1:
 			cap = int(200.0 * k)
@@ -2851,20 +2850,28 @@ func _tick_move(m: Dictionary, delta: float) -> void :
 			_cone(m)
 
 
-# Tope de disparos propios en pantalla por Rendimiento: al llegar, se quita el mas viejo que no sea orbital.
+# Tope de disparos propios en pantalla por Rendimiento: al llegar, se marca el mas viejo que no sea orbital.
 # Las orbitales (Bullet.orb) no cuentan para quitarse: son el movimiento entero, no un disparo suelto.
+# Solo se marca (cut): lo quita _update_bullets. Quitarlo aqui moveria los indices de ese bucle,
+# porque una rafaga (burst) crea disparos nuevos dentro de el.
 func _bullet_room() -> void:
 	var cap: int = [90, 60, 36][perf_lv]
 	if bullets.size() < cap:
 		return
-	for i in range(bullets.size()):
-		var ob = bullets[i]
-		if not ob.orb:
-			ob.queue_free()
-			bullets.remove_at(i)
-			bullets_cut += 1
-			Prof.n_bullets_cut = bullets_cut
-			return
+	var live := 0
+	var oldest = null
+	for ob in bullets:
+		if ob.cut:
+			continue
+		live += 1
+		if oldest == null and not ob.orb:
+			oldest = ob
+	if live < cap or oldest == null:
+		return
+	oldest.cut = true
+	oldest.visible = false
+	bullets_cut += 1
+	Prof.n_bullets_cut = bullets_cut
 
 
 func _make_bullet(m: Dictionary, pos: Vector2, vel: Vector2, life: float, pierce: int) -> Bullet:
@@ -6580,6 +6587,10 @@ func _bullet_hit(b, e) -> void :
 func _update_bullets(delta: float) -> void:
 	for i in range(bullets.size() - 1, -1, -1):
 		var b = bullets[i]
+		if b.cut:   # quitado por el tope de Rendimiento (_bullet_room)
+			b.queue_free()
+			bullets.remove_at(i)
+			continue
 		b.age += delta
 		if arena == null:
 			_cut_grass(b.position, 20.0)
@@ -6988,7 +6999,6 @@ func _collect(kind: String, value: float) -> void:
 # Construye las cartas candidatas (levelup.js) y devuelve tres.
 func _offer() -> Array:
 	var pool: Array = []
-	var waiting := {}
 
 
 	if _slot_list().size() < _max_moves():
@@ -7030,11 +7040,7 @@ func _offer() -> Array:
 			break
 		if m.has("parts"):
 			continue
-		for ev in _evo_infos(m):
-			if not bool(ev["ready"]):
-				if STATS.has(String(ev["needs"])):
-					waiting[String(ev["needs"])] = m
-				continue
+		for ev in _evo_infos(m):   # 3.4.0: evolucionan solo por nivel maximo, sin mejora requerida
 			pool.append({"cat": "evo", "id": String(m["id"]), "alt": bool(ev["alt"]), "key": "evo:" + String(m["id"]) + (":alt" if bool(ev["alt"]) else ""), "w": 40.0,
 				"title": "%s > %s" % [L.t(String(m["name"])), L.t(String(ev["name"]))], "desc": String(ev["text"]),
 				"icon": "evo:" + String(m["id"]), "tag": "EVOLUCIÓN", "color": Color("#ffd23f")})
@@ -7051,28 +7057,18 @@ func _offer() -> Array:
 
 	var cand_s: Array = []
 	for sid in STAT_IDS:
-		if waiting.has(sid):
-			continue
 		if _lv(sid) >= int(STATS[sid]["max"]):
 			continue
 		cand_s.append(sid)
 	cand_s.shuffle()
 	var picks_s: Array = cand_s.slice(0, 5)
-	for sid in waiting:
-		picks_s.append(sid)
 	for sid in picks_s:
 		var sd: Dictionary = STATS[sid]
-		var evo_for: bool = waiting.has(sid)
 		var w: float = 7.0
-		if evo_for:
-			w = 14.0
-		elif _slot_list().size() < _max_moves():
+		if _slot_list().size() < _max_moves():
 			w = 4.0
 		var tag := "Mejora"
 		var colr := Color("#8fa3c4")
-		if evo_for:
-			tag = L.t("Evoluciona ") + L.t(String(waiting[sid]["name"]))
-			colr = Color("#ffd23f")
 		pool.append({"cat": "stat", "id": String(sid), "key": "stat:" + String(sid), "w": w,
 			"title": String(sd["title"]), "desc": String(sd["desc"]), "icon": String(STAT_ICON.get(sid, "star")), "tag": tag, "color": colr})
 
@@ -9154,6 +9150,7 @@ class Bullet extends Node2D:
 	var bsp := 0.0
 	var back := false
 	var orb := false
+	var cut := false   # tope de Rendimiento: _update_bullets lo quita en su bucle
 	var mid := ""
 	var oa := 0.0
 	var orad := 60.0

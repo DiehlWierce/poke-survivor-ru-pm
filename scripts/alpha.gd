@@ -23,6 +23,7 @@ static var _bt: Texture2D = null
 var m = null
 var poi = null
 var cur = null
+var stash = null    # Альфа, который ещё бродит, пока идёт окно поимки босса/гиганта (вернётся в cur после)
 var next_id := 1
 var spawned := 0
 var allies_made := 0
@@ -116,7 +117,7 @@ func _legend_free() -> bool:
 
 
 func _spawn_ok() -> bool:
-	return spawned < MAX_PER_RUN and ["normal", "type", "daily", "coop"].has(m.mode) and not poi._busy() and not m.shop_open and m.run_time >= FIRST_AT\
+	return spawned < MAX_PER_RUN and _legend_free() and ["normal", "type", "daily", "coop"].has(m.mode) and not poi._busy() and not m.shop_open and m.run_time >= FIRST_AT\
 	and (poi.supply == null or not is_instance_valid(poi.supply)) and (m.kec.active == null or not is_instance_valid(m.kec.active))\
 	and m.rescue.cur == null
 
@@ -163,6 +164,9 @@ func spawn() -> bool:
 
 
 func on_down(e) -> void :
+	if stash != null and stash["enemy"] == e:
+		log.append(["alpha_lost_in_stash"])   # Альфа добит во время окна поимки босса: окна для него нет
+		return
 	if cur == null or cur["state"] != "hostile" or cur["enemy"] != e:
 		return
 	_begin_down(e)
@@ -170,11 +174,17 @@ func on_down(e) -> void :
 
 # Ослабленный обычный босс (enc open_boss) или гигант (enc mini): то же окно броска, свой шанс.
 func on_big_down(e, kind: String) -> void :
-	if cur != null or allies_made >= MAX_ALLIES or m.balls <= 0 or not ["normal", "type", "daily", "coop"].has(m.mode):
+	if allies_made >= MAX_ALLIES or m.balls <= 0 or not ["normal", "type", "daily", "coop"].has(m.mode):
+		return
+	# бродящий Альфа не отменяет окно: он откладывается и возвращается, когда поимка закончится
+	if cur != null and not (cur["state"] == "hostile" and not cur.has("big") and stash == null):
 		return
 	var dx: int = int(e.dex)
 	if not m._smeta.has(str(dx)):
 		return
+	if cur != null:
+		stash = cur
+		log.append(["alpha_stash", stash["dex"]])
 	cur = {"id": next_id, "state": "hostile", "enemy": e, "dex": dx, "name": String(e.enemy_name), "ttl": WINDOW, "pos": e.position, "types": (e.types as Array).duplicate(),
 		"big": true, "rate": BIG_RATE_BOSS if kind == "open_boss" else BIG_RATE_MINI}
 	next_id += 1
@@ -201,7 +211,7 @@ func _begin_down(e) -> void :
 		a.play("Faint", 1.0, true)
 	node.actor = a
 	cur["node"] = node
-	if not cur.has("big"):
+	if not cur.has("big") and _legend_free():   # союзников уже 2: бросать некуда, не зовём бросать
 		m._say(m.L.t("¡Alfa derrotado! Lanza una Poké Ball (8 s)."), 3.0)
 	m.pfx.burst(e.position + Vector2(0, -20), Color("#ffd23f"), 22, 160.0)
 	log.append(["down", cur["dex"]])
@@ -307,7 +317,10 @@ func _vanish() -> void :
 func _finish(_ok: bool) -> void :
 	var was_big: bool = cur != null and cur.has("big")
 	cur = null
-	if not was_big:   # поимка босса/гиганта не сдвигает таймер Альфы
+	if was_big:   # поимка босса/гиганта не сдвигает таймер Альфы; отложенный Альфа возвращается
+		cur = stash
+		stash = null
+	else:
 		t_next = randf_range(GAP_MIN, GAP_MAX)
 
 
