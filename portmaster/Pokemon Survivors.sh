@@ -4,6 +4,7 @@
 # Кнопки идут через gptokeyb -> клавиши (pokesurvivors.gptk); выход по Select+Start.
 
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+XDG_DATA_HOME_ORIG="$XDG_DATA_HOME"
 
 if [ -d "/opt/system/Tools/PortMaster/" ]; then
   controlfolder="/opt/system/Tools/PortMaster"
@@ -44,7 +45,8 @@ if [ ! -f "$controlfolder/libs/${weston_runtime}.squashfs" ]; then
     sleep 5
     exit 1
   fi
-  $ESUDO $controlfolder/harbourmaster --quiet --no-check runtime_check "${weston_runtime}.squashfs"
+  # harbourmaster must see the real XDG_DATA_HOME, not conf/ (it would treat conf/PortMaster as the PortMaster install)
+  $ESUDO env XDG_DATA_HOME="$XDG_DATA_HOME_ORIG" $controlfolder/harbourmaster --quiet --no-check runtime_check "${weston_runtime}.squashfs"
 fi
 if [[ "$PM_CAN_MOUNT" != "N" ]]; then
   $ESUDO umount "${weston_dir}"
@@ -57,7 +59,7 @@ pm_platform_helper "$GAMEDIR/$BINARY"
 
 # Проект собран под рендерер Mobile (Vulkan), которого на Mali нет — принудительно OpenGL ES (Compatibility)
 $ESUDO env $weston_dir/westonwrap.sh headless noop kiosk crusty_x11egl \
-XDG_DATA_HOME=$CONFDIR SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig" \
+XDG_DATA_HOME=$CONFDIR \
 $GAMEDIR/$BINARY --resolution ${DISPLAY_WIDTH}x${DISPLAY_HEIGHT} -f \
 --rendering-method gl_compatibility --rendering-driver opengl3_es --audio-driver ALSA -- --keys-only
 
